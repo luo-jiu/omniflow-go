@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	domaintag "omniflow-go/internal/domain/tag"
@@ -19,7 +20,7 @@ type tagEntity struct {
 	Color       string         `gorm:"column:color"`
 	TextColor   *string        `gorm:"column:text_color"`
 	SortOrder   int32          `gorm:"column:sort_order"`
-	Enabled     int16          `gorm:"column:enabled"`
+	Enabled     bool           `gorm:"column:enabled"`
 	Description *string        `gorm:"column:description"`
 	DeletedAt   gorm.DeletedAt `gorm:"column:deleted_at"`
 	CreatedAt   time.Time      `gorm:"column:created_at"`
@@ -68,6 +69,40 @@ func (r *TagRepository) WithTx(tx *gorm.DB) *TagRepository {
 	return &TagRepository{db: tx}
 }
 
+// LockScopes 通过事务级 advisory lock 串行化同一业务唯一键范围的并发写入。
+func (r *TagRepository) LockScopes(ctx context.Context, scopes ...string) error {
+	if len(scopes) == 0 {
+		return nil
+	}
+
+	uniqueScopes := make([]string, 0, len(scopes))
+	seen := make(map[string]struct{}, len(scopes))
+	for _, scope := range scopes {
+		if scope == "" {
+			continue
+		}
+		if _, ok := seen[scope]; ok {
+			continue
+		}
+		seen[scope] = struct{}{}
+		uniqueScopes = append(uniqueScopes, scope)
+	}
+	if len(uniqueScopes) == 0 {
+		return nil
+	}
+
+	// 固定锁顺序，避免多锁场景下死锁。
+	sort.Strings(uniqueScopes)
+
+	db := r.dbWithContext(ctx)
+	for _, scope := range uniqueScopes {
+		if err := db.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", scope).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *TagRepository) dbWithContext(ctx context.Context) *gorm.DB {
 	if tx, ok := pgtx.FromContext(ctx); ok {
 		return tx.WithContext(ctx)
@@ -110,7 +145,7 @@ func (r *TagRepository) Create(ctx context.Context, input CreateTagInput) (domai
 		Color:       input.Color,
 		TextColor:   input.TextColor,
 		SortOrder:   int32(input.SortOrder),
-		Enabled:     int16(input.Enabled),
+		Enabled:     toDBEnabled(input.Enabled),
 		Description: input.Description,
 	}
 
@@ -136,7 +171,7 @@ func (r *TagRepository) UpdateOwnerByID(ctx context.Context, id, ownerUserID uin
 		"color":       input.Color,
 		"text_color":  input.TextColor,
 		"sort_order":  int32(input.SortOrder),
-		"enabled":     int16(input.Enabled),
+		"enabled":     toDBEnabled(input.Enabled),
 		"description": input.Description,
 		"updated_at":  time.Now().UTC(),
 	}
@@ -241,7 +276,7 @@ func toDomainTag(row *tagEntity) domaintag.Tag {
 		Color:       row.Color,
 		TextColor:   row.TextColor,
 		SortOrder:   int(row.SortOrder),
-		Enabled:     int(row.Enabled),
+		Enabled:     toAPIEnabled(row.Enabled),
 		Description: row.Description,
 		CreatedAt:   &createdAt,
 		UpdatedAt:   &updatedAt,
@@ -257,4 +292,15 @@ func toDomainUint64(value int64) uint64 {
 		return 0
 	}
 	return uint64(value)
+}
+
+func toDBEnabled(value int) bool {
+	return value == 1
+}
+
+func toAPIEnabled(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

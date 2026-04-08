@@ -60,12 +60,14 @@ type UpdateTagCommand struct {
 
 type TagUseCase struct {
 	tags       *repository.TagRepository
+	tx         repository.Transactor
 	searchType string
 }
 
-func NewTagUseCase(tags *repository.TagRepository) *TagUseCase {
+func NewTagUseCase(tags *repository.TagRepository, tx repository.Transactor) *TagUseCase {
 	return &TagUseCase{
 		tags:       tags,
+		tx:         tx,
 		searchType: "PostgreSQL",
 	}
 }
@@ -135,40 +137,52 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 		return domaintag.Tag{}, err
 	}
 
-	exists, err := u.tags.ExistsName(ctx, ownerUserID, *tagType, name, 0)
-	if err != nil {
-		return domaintag.Tag{}, err
-	}
-	if exists {
-		return domaintag.Tag{}, ErrConflict
-	}
-
-	targetExists, err := u.tags.ExistsTargetKey(ctx, ownerUserID, *tagType, targetKey, 0)
-	if err != nil {
-		return domaintag.Tag{}, err
-	}
-	if targetExists {
-		return domaintag.Tag{}, ErrConflict
-	}
-
-	tag, err := u.tags.Create(ctx, repository.CreateTagInput{
-		Name:        name,
-		Type:        *tagType,
-		TargetKey:   targetKey,
-		OwnerUserID: ownerUserID,
-		Color:       color,
-		TextColor:   textColor,
-		SortOrder:   sortOrder,
-		Enabled:     enabled,
-		Description: description,
-	})
-	if err != nil {
-		if errors.Is(err, repository.ErrConflict) {
-			return domaintag.Tag{}, ErrConflict
+	var created domaintag.Tag
+	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, name, targetKey); err != nil {
+			return err
 		}
+
+		exists, err := u.tags.ExistsName(txCtx, ownerUserID, *tagType, name, 0)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrConflict
+		}
+
+		targetExists, err := u.tags.ExistsTargetKey(txCtx, ownerUserID, *tagType, targetKey, 0)
+		if err != nil {
+			return err
+		}
+		if targetExists {
+			return ErrConflict
+		}
+
+		tag, err := u.tags.Create(txCtx, repository.CreateTagInput{
+			Name:        name,
+			Type:        *tagType,
+			TargetKey:   targetKey,
+			OwnerUserID: ownerUserID,
+			Color:       color,
+			TextColor:   textColor,
+			SortOrder:   sortOrder,
+			Enabled:     enabled,
+			Description: description,
+		})
+		if err != nil {
+			if errors.Is(err, repository.ErrConflict) {
+				return ErrConflict
+			}
+			return err
+		}
+		created = tag
+		return nil
+	}); err != nil {
 		return domaintag.Tag{}, err
 	}
-	return tag, nil
+
+	return created, nil
 }
 
 func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagCommand) (domaintag.Tag, error) {
@@ -183,13 +197,6 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 	if err != nil {
 		return domaintag.Tag{}, err
 	}
-	if _, err := u.tags.FindOwnerByID(ctx, tagID, ownerUserID); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return domaintag.Tag{}, ErrNotFound
-		}
-		return domaintag.Tag{}, err
-	}
-
 	name, err := normalizeTagName(cmd.Name)
 	if err != nil {
 		return domaintag.Tag{}, err
@@ -220,41 +227,60 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 		return domaintag.Tag{}, err
 	}
 
-	exists, err := u.tags.ExistsName(ctx, ownerUserID, *tagType, name, tagID)
-	if err != nil {
+	var updated domaintag.Tag
+	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.tags.FindOwnerByID(txCtx, tagID, ownerUserID); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, name, targetKey); err != nil {
+			return err
+		}
+
+		exists, err := u.tags.ExistsName(txCtx, ownerUserID, *tagType, name, tagID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return ErrConflict
+		}
+
+		targetExists, err := u.tags.ExistsTargetKey(txCtx, ownerUserID, *tagType, targetKey, tagID)
+		if err != nil {
+			return err
+		}
+		if targetExists {
+			return ErrConflict
+		}
+
+		row, err := u.tags.UpdateOwnerByID(txCtx, tagID, ownerUserID, repository.UpdateTagInput{
+			Name:        name,
+			Type:        *tagType,
+			TargetKey:   targetKey,
+			Color:       color,
+			TextColor:   textColor,
+			SortOrder:   sortOrder,
+			Enabled:     enabled,
+			Description: description,
+		})
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			if errors.Is(err, repository.ErrConflict) {
+				return ErrConflict
+			}
+			return err
+		}
+		updated = row
+		return nil
+	}); err != nil {
 		return domaintag.Tag{}, err
-	}
-	if exists {
-		return domaintag.Tag{}, ErrConflict
 	}
 
-	targetExists, err := u.tags.ExistsTargetKey(ctx, ownerUserID, *tagType, targetKey, tagID)
-	if err != nil {
-		return domaintag.Tag{}, err
-	}
-	if targetExists {
-		return domaintag.Tag{}, ErrConflict
-	}
-
-	updated, err := u.tags.UpdateOwnerByID(ctx, tagID, ownerUserID, repository.UpdateTagInput{
-		Name:        name,
-		Type:        *tagType,
-		TargetKey:   targetKey,
-		Color:       color,
-		TextColor:   textColor,
-		SortOrder:   sortOrder,
-		Enabled:     enabled,
-		Description: description,
-	})
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return domaintag.Tag{}, ErrNotFound
-		}
-		if errors.Is(err, repository.ErrConflict) {
-			return domaintag.Tag{}, ErrConflict
-		}
-		return domaintag.Tag{}, err
-	}
 	return updated, nil
 }
 
@@ -373,4 +399,26 @@ func normalizeDescription(raw string) (*string, error) {
 		return nil, fmt.Errorf("%w: description length must be <= 255", ErrInvalidArgument)
 	}
 	return &description, nil
+}
+
+func (u *TagUseCase) withinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if u.tx == nil {
+		return fn(ctx)
+	}
+	return u.tx.WithinTx(ctx, fn)
+}
+
+func (u *TagUseCase) lockTagUniqScopes(
+	ctx context.Context,
+	ownerUserID uint64,
+	tagType, name string,
+	targetKey *string,
+) error {
+	scopes := []string{
+		fmt.Sprintf("tags:name:%d:%s:%s", ownerUserID, tagType, name),
+	}
+	if targetKey != nil && *targetKey != "" {
+		scopes = append(scopes, fmt.Sprintf("tags:target:%d:%s:%s", ownerUserID, tagType, *targetKey))
+	}
+	return u.tags.LockScopes(ctx, scopes...)
 }

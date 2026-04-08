@@ -56,7 +56,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, objectStorage, allowAll, logSink)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
-	tagUseCase := usecase.NewTagUseCase(tagRepository)
+	tagUseCase := usecase.NewTagUseCase(tagRepository, transactor)
 
 	healthHandler := httpHandler.NewHealthHandler(healthUseCase)
 	authHandler := httpHandler.NewAuthHandler(authUseCase)
