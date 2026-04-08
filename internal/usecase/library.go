@@ -12,8 +12,6 @@ import (
 	"omniflow-go/internal/authz"
 	domainlibrary "omniflow-go/internal/domain/library"
 	"omniflow-go/internal/repository"
-
-	"gorm.io/gorm"
 )
 
 type ListLibrariesQuery struct {
@@ -23,8 +21,8 @@ type ListLibrariesQuery struct {
 }
 
 type ScrollLibrariesResult struct {
-	Items   []domainlibrary.Library
-	HasMore bool
+	Items   []domainlibrary.Library `json:"items"`
+	HasMore bool                    `json:"hasMore"`
 }
 
 type CreateLibraryCommand struct {
@@ -74,18 +72,8 @@ func (u *LibraryUseCase) Scroll(ctx context.Context, query ListLibrariesQuery) (
 		size = 100
 	}
 
-	db, err := dbFromRepository(u.libraries)
+	records, err := u.libraries.ScrollByUser(ctx, userID, query.LastID, size)
 	if err != nil {
-		return ScrollLibrariesResult{}, err
-	}
-
-	tx := db.WithContext(ctx).Model(&libraryRecord{}).Where("user_id = ?", userID).Order("id ASC").Limit(size)
-	if query.LastID > 0 {
-		tx = tx.Where("id > ?", query.LastID)
-	}
-
-	var records []libraryRecord
-	if err := tx.Find(&records).Error; err != nil {
 		return ScrollLibrariesResult{}, err
 	}
 
@@ -94,7 +82,7 @@ func (u *LibraryUseCase) Scroll(ctx context.Context, query ListLibrariesQuery) (
 		if err := u.AuthorizeRead(ctx, query.Actor, item.ID); err != nil {
 			return ScrollLibrariesResult{}, err
 		}
-		result = append(result, item.toDomain())
+		result = append(result, item)
 	}
 
 	return ScrollLibrariesResult{
@@ -114,16 +102,8 @@ func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (
 		return domainlibrary.Library{}, err
 	}
 
-	record := libraryRecord{
-		UserID: userID,
-		Name:   name,
-	}
-
-	db, err := dbFromRepository(u.libraries)
+	record, err := u.libraries.Create(ctx, userID, name)
 	if err != nil {
-		return domainlibrary.Library{}, err
-	}
-	if err := db.WithContext(ctx).Create(&record).Error; err != nil {
 		return domainlibrary.Library{}, err
 	}
 
@@ -133,7 +113,7 @@ func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (
 		"user_id":    userID,
 		"name":       record.Name,
 	})
-	return record.toDomain(), nil
+	return record, nil
 }
 
 func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibraryCommand) error {
@@ -150,22 +130,11 @@ func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibrar
 		return err
 	}
 
-	db, err := dbFromRepository(u.libraries)
+	updated, err := u.libraries.UpdateName(ctx, id, userID, name, time.Now().UTC())
 	if err != nil {
 		return err
 	}
-
-	result := db.WithContext(ctx).
-		Model(&libraryRecord{}).
-		Where("id = ? AND user_id = ?", id, userID).
-		Updates(map[string]any{
-			"name":       name,
-			"updated_at": time.Now().UTC(),
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
+	if !updated {
 		return ErrNotFound
 	}
 
@@ -189,19 +158,11 @@ func (u *LibraryUseCase) Delete(ctx context.Context, cmd DeleteLibraryCommand) e
 		return err
 	}
 
-	db, err := dbFromRepository(u.libraries)
+	deleted, err := u.libraries.SoftDelete(ctx, cmd.ID, userID, time.Now().UTC())
 	if err != nil {
 		return err
 	}
-
-	result := db.WithContext(ctx).
-		Model(&libraryRecord{}).
-		Where("id = ? AND user_id = ?", cmd.ID, userID).
-		Update("deleted_at", time.Now().UTC())
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
+	if !deleted {
 		return ErrNotFound
 	}
 
@@ -216,14 +177,9 @@ func (u *LibraryUseCase) HasPermission(ctx context.Context, principal actor.Acto
 		return false, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.libraries)
+	lib, err := u.libraries.FindByID(ctx, libraryID)
 	if err != nil {
-		return false, err
-	}
-
-	var lib libraryRecord
-	if err := db.WithContext(ctx).First(&lib, "id = ?", libraryID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return false, ErrNotFound
 		}
 		return false, err

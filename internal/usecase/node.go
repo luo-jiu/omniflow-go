@@ -12,8 +12,6 @@ import (
 	"omniflow-go/internal/authz"
 	domainnode "omniflow-go/internal/domain/node"
 	"omniflow-go/internal/repository"
-
-	"gorm.io/gorm"
 )
 
 type ListChildrenQuery struct {
@@ -23,9 +21,9 @@ type ListChildrenQuery struct {
 }
 
 type NodePath struct {
-	ID    uint64
-	Name  string
-	Depth int
+	ID    uint64 `json:"id"`
+	Name  string `json:"name"`
+	Depth int    `json:"depth"`
 }
 
 type CreateNodeCommand struct {
@@ -100,117 +98,41 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		return domainnode.Node{}, err
 	}
 
-	db, err := dbFromRepository(u.nodes)
-	if err != nil {
-		return domainnode.Node{}, err
-	}
-
-	var created nodeRecord
-	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if cmd.ParentID > 0 {
-			var parent nodeRecord
-			if err := tx.First(&parent, "id = ? AND library_id = ?", cmd.ParentID, cmd.LibraryID).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return ErrNotFound
-				}
-				return err
-			}
-			if parent.NodeType != nodeTypeDirectory {
-				return fmt.Errorf("%w: parent node must be a directory", ErrInvalidArgument)
-			}
-		}
-
-		if err := u.checkDuplicateName(tx, name, cmd.ParentID, cmd.LibraryID, 0); err != nil {
-			return err
-		}
-
-		query := tx.Model(&nodeRecord{}).
-			Select("COALESCE(MAX(sort_order), 0)").
-			Where("library_id = ?", cmd.LibraryID).
-			Where("deleted_at IS NULL")
-		query = applyParentFilter(query, cmd.ParentID)
-
-		var maxSort int
-		if err := query.Scan(&maxSort).Error; err != nil {
-			return err
-		}
-
-		var ext *string
-		if strings.TrimSpace(cmd.Ext) != "" {
-			trimmedExt := strings.TrimSpace(cmd.Ext)
-			ext = &trimmedExt
-		}
-		if cmd.Type == domainnode.TypeDirectory {
-			ext = nil
-		}
-
-		record := nodeRecord{
-			Name:      name,
-			Ext:       ext,
-			NodeType:  nodeTypeToCode(cmd.Type),
-			ParentID:  normalizeParentID(cmd.ParentID),
-			LibraryID: cmd.LibraryID,
-			BuiltIn:   "DEF",
-			Archive:   false,
-			SortOrder: maxSort + 15,
-		}
-
-		if err := tx.Create(&record).Error; err != nil {
-			return err
-		}
-
-		if cmd.Type == domainnode.TypeFile {
-			storageKey := strings.TrimSpace(cmd.StorageKey)
-			if storageKey == "" {
-				return fmt.Errorf("%w: storage key is required for file node", ErrInvalidArgument)
-			}
-			if cmd.FileSize < 0 {
-				return fmt.Errorf("%w: file size must be >= 0", ErrInvalidArgument)
-			}
-
-			storageObj := storageObjectRecord{
-				LibraryID:     cmd.LibraryID,
-				Provider:      defaultStorageProvider,
-				Bucket:        defaultStorageBucket,
-				ObjectKey:     storageKey,
-				ContentLength: cmd.FileSize,
-				ContentType:   strings.TrimSpace(cmd.MIMEType),
-			}
-			if err := tx.Create(&storageObj).Error; err != nil {
-				return err
-			}
-
-			fileRec := nodeFileRecord{
-				FileID:          record.ID,
-				LibraryID:       cmd.LibraryID,
-				StorageObjectID: storageObj.ID,
-				MIMEType:        strings.TrimSpace(cmd.MIMEType),
-				FileSize:        cmd.FileSize,
-			}
-			if err := tx.Create(&fileRec).Error; err != nil {
-				return err
-			}
-
-			record.MIMEType = fileRec.MIMEType
-			record.FileSize = fileRec.FileSize
-			record.StorageKey = storageObj.ObjectKey
-		}
-
-		created = record
-		return nil
+	created, err := u.nodes.CreateNode(ctx, repository.CreateNodeInput{
+		Name:            name,
+		Type:            cmd.Type,
+		ParentID:        cmd.ParentID,
+		LibraryID:       cmd.LibraryID,
+		Ext:             strings.TrimSpace(cmd.Ext),
+		MIMEType:        strings.TrimSpace(cmd.MIMEType),
+		FileSize:        cmd.FileSize,
+		StorageKey:      strings.TrimSpace(cmd.StorageKey),
+		BuiltInType:     "DEF",
+		ArchiveMode:     false,
+		StorageProvider: defaultStorageProvider,
+		StorageBucket:   defaultStorageBucket,
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return domainnode.Node{}, ErrNotFound
+		}
+		if errors.Is(err, repository.ErrConflict) {
+			return domainnode.Node{}, ErrConflict
+		}
+		if errors.Is(err, repository.ErrInvalidState) {
+			return domainnode.Node{}, fmt.Errorf("%w: invalid node create request", ErrInvalidArgument)
+		}
 		return domainnode.Node{}, err
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "node.create", true, map[string]any{
 		"node_id":    created.ID,
 		"library_id": created.LibraryID,
-		"parent_id":  parentIDValue(created.ParentID),
-		"type":       created.NodeType,
+		"parent_id":  created.ParentID,
+		"type":       created.Type,
 		"name":       created.Name,
 	})
-	return created.toDomain(), nil
+	return created, nil
 }
 
 func (u *NodeUseCase) GetAllDescendants(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
@@ -218,48 +140,14 @@ func (u *NodeUseCase) GetAllDescendants(ctx context.Context, nodeID, libraryID u
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.nodes)
+	rows, err := u.nodes.ListAllDescendants(ctx, nodeID, libraryID)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
-
-	var rows []nodeRecord
-	query := `
-WITH RECURSIVE tree AS (
-    SELECT id, parent_id, 0 AS depth
-    FROM nodes
-    WHERE id = ? AND library_id = ? AND deleted_at IS NULL
-    UNION ALL
-    SELECT n.id, n.parent_id, tree.depth + 1
-    FROM nodes n
-    JOIN tree ON n.parent_id = tree.id
-    WHERE n.library_id = ? AND n.deleted_at IS NULL
-)
-SELECT
-    v.id,
-    v.name,
-    v.parent_id,
-    v.node_type,
-    v.library_id,
-    v.ext,
-    v.mime_type,
-    v.file_size,
-    v.storage_key,
-    v.built_in_type,
-    v.archive_mode,
-    v.sort_order
-FROM tree
-JOIN v_live_nodes v ON v.id = tree.id AND v.library_id = ?
-ORDER BY tree.depth ASC, v.sort_order ASC, v.id ASC`
-	if err := db.WithContext(ctx).Raw(query, nodeID, libraryID, libraryID, libraryID).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	result := make([]domainnode.Node, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, row.toDomain())
-	}
-	return result, nil
+	return rows, nil
 }
 
 func (u *NodeUseCase) GetDirectChildren(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
@@ -267,27 +155,14 @@ func (u *NodeUseCase) GetDirectChildren(ctx context.Context, nodeID, libraryID u
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.nodes)
+	rows, err := u.nodes.ListDirectChildren(ctx, nodeID, libraryID)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
-
-	var rows []nodeRecord
-	if err := db.WithContext(ctx).
-		Table("v_live_nodes").
-		Select("id, name, parent_id, node_type, library_id, ext, mime_type, file_size, storage_key, built_in_type, archive_mode, sort_order").
-		Where("library_id = ? AND parent_id = ?", libraryID, nodeID).
-		Order("sort_order ASC").
-		Order("id ASC").
-		Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-
-	result := make([]domainnode.Node, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, row.toDomain())
-	}
-	return result, nil
+	return rows, nil
 }
 
 func (u *NodeUseCase) GetAncestors(ctx context.Context, nodeID, libraryID uint64) ([]NodePath, error) {
@@ -295,30 +170,23 @@ func (u *NodeUseCase) GetAncestors(ctx context.Context, nodeID, libraryID uint64
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.nodes)
+	rows, err := u.nodes.ListAncestors(ctx, nodeID, libraryID)
 	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 
-	var rows []NodePath
-	query := `
-WITH RECURSIVE ancestors AS (
-    SELECT id, name, parent_id, 0 AS depth
-    FROM nodes
-    WHERE id = ? AND library_id = ? AND deleted_at IS NULL
-    UNION ALL
-    SELECT p.id, p.name, p.parent_id, ancestors.depth + 1
-    FROM nodes p
-    JOIN ancestors ON ancestors.parent_id = p.id
-    WHERE p.library_id = ? AND p.deleted_at IS NULL
-)
-SELECT id, name, depth
-FROM ancestors
-ORDER BY depth DESC`
-	if err := db.WithContext(ctx).Raw(query, nodeID, libraryID, libraryID).Scan(&rows).Error; err != nil {
-		return nil, err
+	result := make([]NodePath, 0, len(rows))
+	for _, item := range rows {
+		result = append(result, NodePath{
+			ID:    item.ID,
+			Name:  item.Name,
+			Depth: item.Depth,
+		})
 	}
-	return rows, nil
+	return result, nil
 }
 
 func (u *NodeUseCase) GetFullPath(ctx context.Context, nodeID, libraryID uint64) (string, error) {
@@ -345,7 +213,7 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
 		return err
 	}
-	if _, err := u.findNode(ctx, nodeID, cmd.LibraryID); err != nil {
+	if _, err := u.findNodeView(ctx, nodeID, cmd.LibraryID); err != nil {
 		return err
 	}
 
@@ -364,18 +232,14 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 	}
 	updates["updated_at"] = time.Now().UTC()
 
-	db, err := dbFromRepository(u.nodes)
+	ok, err := u.nodes.UpdateNodeFields(ctx, nodeID, cmd.LibraryID, updates)
 	if err != nil {
+		if errors.Is(err, repository.ErrInvalidState) {
+			return fmt.Errorf("%w: invalid node update request", ErrInvalidArgument)
+		}
 		return err
 	}
-	result := db.WithContext(ctx).
-		Model(&nodeRecord{}).
-		Where("id = ? AND library_id = ?", nodeID, cmd.LibraryID).
-		Updates(updates)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
+	if !ok {
 		return ErrNotFound
 	}
 
@@ -395,35 +259,25 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 		return err
 	}
 
-	db, err := dbFromRepository(u.nodes)
-	if err != nil {
+	if err := u.nodes.RenameNode(ctx, nodeID, cmd.LibraryID, newName, time.Now().UTC()); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNotFound
+		}
+		if errors.Is(err, repository.ErrConflict) {
+			return ErrConflict
+		}
+		if errors.Is(err, repository.ErrInvalidState) {
+			return fmt.Errorf("%w: invalid node rename request", ErrInvalidArgument)
+		}
 		return err
 	}
 
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		node, err := u.findNodeWithDB(ctx, tx, nodeID, cmd.LibraryID)
-		if err != nil {
-			return err
-		}
-		if err := u.checkDuplicateName(tx, newName, parentIDValue(node.ParentID), node.LibraryID, node.ID); err != nil {
-			return err
-		}
-		if err := tx.Model(&nodeRecord{}).
-			Where("id = ? AND library_id = ?", nodeID, cmd.LibraryID).
-			Updates(map[string]any{
-				"name":       newName,
-				"updated_at": time.Now().UTC(),
-			}).Error; err != nil {
-			return err
-		}
-
-		_ = u.writeAudit(ctx, cmd.Actor, "node.rename", true, map[string]any{
-			"node_id":    nodeID,
-			"library_id": cmd.LibraryID,
-			"name":       newName,
-		})
-		return nil
+	_ = u.writeAudit(ctx, cmd.Actor, "node.rename", true, map[string]any{
+		"node_id":    nodeID,
+		"library_id": cmd.LibraryID,
+		"name":       newName,
 	})
+	return nil
 }
 
 func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
@@ -434,100 +288,34 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 		return err
 	}
 
-	db, err := dbFromRepository(u.nodes)
-	if err != nil {
+	if err := u.nodes.MoveNode(ctx, repository.MoveNodeInput{
+		LibraryID:    cmd.LibraryID,
+		NodeID:       cmd.NodeID,
+		NewParentID:  cmd.NewParentID,
+		BeforeNodeID: cmd.BeforeNodeID,
+		Name:         strings.TrimSpace(cmd.Name),
+		UpdatedAt:    time.Now().UTC(),
+	}); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNotFound
+		}
+		if errors.Is(err, repository.ErrConflict) {
+			return ErrConflict
+		}
+		if errors.Is(err, repository.ErrInvalidState) {
+			return fmt.Errorf("%w: invalid node move request", ErrInvalidArgument)
+		}
 		return err
 	}
 
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		node, err := u.findNodeWithDB(ctx, tx, cmd.NodeID, cmd.LibraryID)
-		if err != nil {
-			return err
-		}
-
-		if cmd.NewParentID == cmd.NodeID {
-			return fmt.Errorf("%w: node cannot be moved under itself", ErrInvalidArgument)
-		}
-
-		if cmd.NewParentID > 0 {
-			newParent, err := u.findNodeWithDB(ctx, tx, cmd.NewParentID, cmd.LibraryID)
-			if err != nil {
-				return err
-			}
-			if newParent.NodeType != nodeTypeDirectory {
-				return fmt.Errorf("%w: target parent must be a directory", ErrInvalidArgument)
-			}
-		}
-
-		if cmd.NewParentID > 0 {
-			isDescendant, err := u.isDescendant(tx, cmd.NodeID, cmd.NewParentID, cmd.LibraryID)
-			if err != nil {
-				return err
-			}
-			if isDescendant {
-				return fmt.Errorf("%w: cannot move node under a descendant", ErrInvalidArgument)
-			}
-		}
-
-		name := strings.TrimSpace(cmd.Name)
-		if name == "" {
-			name = node.Name
-		}
-		if err := u.checkDuplicateName(tx, name, cmd.NewParentID, cmd.LibraryID, cmd.NodeID); err != nil {
-			return err
-		}
-
-		var newOrder int
-		if cmd.BeforeNodeID > 0 {
-			beforeNode, err := u.findNodeWithDB(ctx, tx, cmd.BeforeNodeID, cmd.LibraryID)
-			if err != nil {
-				return err
-			}
-			if parentIDValue(beforeNode.ParentID) != cmd.NewParentID {
-				return fmt.Errorf("%w: before node is not under target parent", ErrInvalidArgument)
-			}
-
-			shiftQuery := tx.Model(&nodeRecord{}).
-				Where("library_id = ? AND sort_order >= ?", cmd.LibraryID, beforeNode.SortOrder).
-				Where("deleted_at IS NULL")
-			shiftQuery = applyParentFilter(shiftQuery, cmd.NewParentID)
-			if err := shiftQuery.Update("sort_order", gorm.Expr("sort_order + 1")).Error; err != nil {
-				return err
-			}
-			newOrder = beforeNode.SortOrder
-		} else {
-			maxSortQuery := tx.Model(&nodeRecord{}).
-				Select("COALESCE(MAX(sort_order), 0)").
-				Where("library_id = ?", cmd.LibraryID).
-				Where("deleted_at IS NULL")
-			maxSortQuery = applyParentFilter(maxSortQuery, cmd.NewParentID)
-
-			var maxSort int
-			if err := maxSortQuery.Scan(&maxSort).Error; err != nil {
-				return err
-			}
-			newOrder = maxSort + 15
-		}
-
-		if err := tx.Model(&nodeRecord{}).
-			Where("id = ? AND library_id = ?", cmd.NodeID, cmd.LibraryID).
-			Updates(map[string]any{
-				"parent_id":  normalizeParentID(cmd.NewParentID),
-				"sort_order": newOrder,
-				"updated_at": time.Now().UTC(),
-			}).Error; err != nil {
-			return err
-		}
-
-		_ = u.RecordMoveIntent(ctx, cmd)
-		_ = u.writeAudit(ctx, cmd.Actor, "node.move", true, map[string]any{
-			"node_id":        cmd.NodeID,
-			"library_id":     cmd.LibraryID,
-			"new_parent_id":  cmd.NewParentID,
-			"before_node_id": cmd.BeforeNodeID,
-		})
-		return nil
+	_ = u.RecordMoveIntent(ctx, cmd)
+	_ = u.writeAudit(ctx, cmd.Actor, "node.move", true, map[string]any{
+		"node_id":        cmd.NodeID,
+		"library_id":     cmd.LibraryID,
+		"new_parent_id":  cmd.NewParentID,
+		"before_node_id": cmd.BeforeNodeID,
 	})
+	return nil
 }
 
 func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeTreeCommand) (bool, error) {
@@ -538,165 +326,32 @@ func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeT
 		return false, err
 	}
 
-	db, err := dbFromRepository(u.nodes)
+	deleteResult, err := u.nodes.DeleteTree(ctx, cmd.NodeID, cmd.LibraryID)
 	if err != nil {
-		return false, err
-	}
-
-	var deletedNodeCount int
-	var fileCount int64
-	err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var descendantIDs []uint64
-		descendantQuery := `
-WITH RECURSIVE sub AS (
-    SELECT id
-    FROM nodes
-    WHERE id = ? AND library_id = ? AND deleted_at IS NULL
-    UNION ALL
-    SELECT n.id
-    FROM nodes n
-    JOIN sub s ON n.parent_id = s.id
-    WHERE n.library_id = ? AND n.deleted_at IS NULL
-)
-SELECT id FROM sub`
-		if err := tx.Raw(descendantQuery, cmd.NodeID, cmd.LibraryID, cmd.LibraryID).Scan(&descendantIDs).Error; err != nil {
-			return err
+		if errors.Is(err, repository.ErrNotFound) {
+			return false, ErrNotFound
 		}
-		if len(descendantIDs) == 0 {
-			return nil
-		}
-
-		if err := tx.Table("v_live_nodes").
-			Where("library_id = ? AND id IN ?", cmd.LibraryID, descendantIDs).
-			Where("node_type = ? AND storage_key IS NOT NULL AND storage_key <> ''", nodeTypeFile).
-			Count(&fileCount).Error; err != nil {
-			return err
-		}
-		deletedNodeCount = len(descendantIDs)
-
-		if err := tx.Where("library_id = ? AND id IN ?", cmd.LibraryID, descendantIDs).Delete(&nodeRecord{}).Error; err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
 		return false, err
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "node.delete_tree", true, map[string]any{
 		"node_id":       cmd.NodeID,
 		"library_id":    cmd.LibraryID,
-		"deleted_nodes": deletedNodeCount,
-		"file_nodes":    fileCount,
+		"deleted_nodes": deleteResult.DeletedNodeCount,
+		"file_nodes":    deleteResult.FileNodeCount,
 	})
 	return true, nil
 }
 
-func (u *NodeUseCase) findNode(ctx context.Context, nodeID, libraryID uint64) (nodeRecord, error) {
-	db, err := dbFromRepository(u.nodes)
+func (u *NodeUseCase) findNodeView(ctx context.Context, nodeID, libraryID uint64) (domainnode.Node, error) {
+	row, err := u.nodes.FindViewByID(ctx, nodeID, libraryID)
 	if err != nil {
-		return nodeRecord{}, err
-	}
-	return u.findNodeWithDB(ctx, db.WithContext(ctx), nodeID, libraryID)
-}
-
-func (u *NodeUseCase) findNodeWithDB(_ context.Context, db *gorm.DB, nodeID, libraryID uint64) (nodeRecord, error) {
-	var node nodeRecord
-	if err := db.First(&node, "id = ? AND library_id = ?", nodeID, libraryID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nodeRecord{}, ErrNotFound
+		if errors.Is(err, repository.ErrNotFound) {
+			return domainnode.Node{}, ErrNotFound
 		}
-		return nodeRecord{}, err
-	}
-	return node, nil
-}
-
-func (u *NodeUseCase) findNodeView(ctx context.Context, nodeID, libraryID uint64) (nodeRecord, error) {
-	db, err := dbFromRepository(u.nodes)
-	if err != nil {
-		return nodeRecord{}, err
-	}
-
-	var row nodeRecord
-	if err := db.WithContext(ctx).
-		Table("v_live_nodes").
-		Select("id, name, parent_id, node_type, library_id, ext, mime_type, file_size, storage_key, built_in_type, archive_mode, sort_order").
-		Where("id = ? AND library_id = ?", nodeID, libraryID).
-		Take(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nodeRecord{}, ErrNotFound
-		}
-		return nodeRecord{}, err
+		return domainnode.Node{}, err
 	}
 	return row, nil
-}
-
-func (u *NodeUseCase) checkDuplicateName(tx *gorm.DB, name string, parentID, libraryID, excludeID uint64) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("%w: node name is required", ErrInvalidArgument)
-	}
-
-	query := tx.Model(&nodeRecord{}).
-		Where("name = ? AND library_id = ?", name, libraryID).
-		Where("deleted_at IS NULL")
-	query = applyParentFilter(query, parentID)
-	if excludeID > 0 {
-		query = query.Where("id <> ?", excludeID)
-	}
-
-	var count int64
-	if err := query.Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return ErrConflict
-	}
-	return nil
-}
-
-func (u *NodeUseCase) isDescendant(tx *gorm.DB, nodeID, targetID, libraryID uint64) (bool, error) {
-	var count int64
-	query := `
-WITH RECURSIVE sub AS (
-    SELECT id
-    FROM nodes
-    WHERE id = ? AND library_id = ? AND deleted_at IS NULL
-    UNION ALL
-    SELECT n.id
-    FROM nodes n
-    JOIN sub s ON n.parent_id = s.id
-    WHERE n.library_id = ? AND n.deleted_at IS NULL
-)
-SELECT COUNT(1)
-FROM sub
-WHERE id = ?`
-	if err := tx.Raw(query, nodeID, libraryID, libraryID, targetID).Scan(&count).Error; err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-func normalizeParentID(parentID uint64) *uint64 {
-	if parentID == 0 {
-		return nil
-	}
-	value := parentID
-	return &value
-}
-
-func parentIDValue(parentID *uint64) uint64 {
-	if parentID == nil {
-		return 0
-	}
-	return *parentID
-}
-
-func applyParentFilter(query *gorm.DB, parentID uint64) *gorm.DB {
-	if parentID == 0 {
-		return query.Where("parent_id IS NULL")
-	}
-	return query.Where("parent_id = ?", parentID)
 }
 
 func (u *NodeUseCase) AuthorizeMutation(ctx context.Context, principal actor.Actor, libraryID uint64) error {

@@ -20,7 +20,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 const (
@@ -106,19 +105,14 @@ func (u *UserUseCase) GetByUsername(ctx context.Context, username string) (domai
 		return domainuser.User{}, fmt.Errorf("%w: username is required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.users)
+	user, err := u.users.FindByUsername(ctx, username)
 	if err != nil {
-		return domainuser.User{}, err
-	}
-
-	var user userRecord
-	if err := db.WithContext(ctx).Where("username = ?", username).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return domainuser.User{}, ErrNotFound
 		}
 		return domainuser.User{}, err
 	}
-	return u.enrichUser(ctx, user.toDomain()), nil
+	return u.enrichUser(ctx, user), nil
 }
 
 func (u *UserUseCase) GetCurrent(ctx context.Context, principal actor.Actor) (domainuser.User, error) {
@@ -127,11 +121,11 @@ func (u *UserUseCase) GetCurrent(ctx context.Context, principal actor.Actor) (do
 		return domainuser.User{}, err
 	}
 
-	record, err := u.getUserRecordByID(ctx, userID)
+	record, err := u.getUserByID(ctx, userID)
 	if err != nil {
 		return domainuser.User{}, err
 	}
-	return u.enrichUser(ctx, record.toDomain()), nil
+	return u.enrichUser(ctx, record), nil
 }
 
 func (u *UserUseCase) Exists(ctx context.Context, username string) (bool, error) {
@@ -140,19 +134,7 @@ func (u *UserUseCase) Exists(ctx context.Context, username string) (bool, error)
 		return false, fmt.Errorf("%w: username is required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.users)
-	if err != nil {
-		return false, err
-	}
-
-	var count int64
-	if err := db.WithContext(ctx).
-		Model(&userRecord{}).
-		Where("username = ?", username).
-		Count(&count).Error; err != nil {
-		return false, err
-	}
-	return count > 0, nil
+	return u.users.ExistsByUsername(ctx, username)
 }
 
 func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (domainuser.User, error) {
@@ -175,38 +157,27 @@ func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (do
 		return domainuser.User{}, err
 	}
 
-	record := userRecord{
+	created, err := u.users.Create(ctx, repository.CreateUserInput{
 		Username:     username,
 		Nickname:     username,
 		PasswordHash: string(hashed),
 		Phone:        strings.TrimSpace(cmd.Phone),
 		Email:        strings.TrimSpace(cmd.Email),
-		Status:       userStatusActive,
-	}
-
-	db, err := dbFromRepository(u.users)
+	})
 	if err != nil {
-		return domainuser.User{}, err
-	}
-	if err := db.WithContext(ctx).Create(&record).Error; err != nil {
 		return domainuser.User{}, err
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "user.register", true, map[string]any{
-		"user_id":   record.ID,
-		"username":  record.Username,
-		"has_phone": record.Phone != "",
-		"has_email": record.Email != "",
+		"user_id":   created.ID,
+		"username":  created.Username,
+		"has_phone": created.Phone != "",
+		"has_email": created.Email != "",
 	})
-	return u.enrichUser(ctx, record.toDomain()), nil
+	return u.enrichUser(ctx, created), nil
 }
 
 func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domainuser.User, error) {
-	db, err := dbFromRepository(u.users)
-	if err != nil {
-		return domainuser.User{}, err
-	}
-
 	targetID, err := u.resolveTargetUserID(cmd)
 	if err != nil {
 		return domainuser.User{}, err
@@ -215,9 +186,9 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 		return domainuser.User{}, err
 	}
 
-	var existing userRecord
-	if err := db.WithContext(ctx).First(&existing, "id = ?", targetID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	existing, err := u.users.FindByID(ctx, targetID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
 			return domainuser.User{}, ErrNotFound
 		}
 		return domainuser.User{}, err
@@ -256,19 +227,23 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 	}
 
 	if len(updates) == 0 {
-		return u.enrichUser(ctx, existing.toDomain()), nil
+		return u.enrichUser(ctx, existing), nil
 	}
 	updates["updated_at"] = time.Now().UTC()
 
-	if err := db.WithContext(ctx).
-		Model(&userRecord{}).
-		Where("id = ?", targetID).
-		Updates(updates).Error; err != nil {
+	ok, err := u.users.UpdateByID(ctx, targetID, updates)
+	if err != nil {
 		return domainuser.User{}, err
 	}
+	if !ok {
+		return domainuser.User{}, ErrNotFound
+	}
 
-	var updated userRecord
-	if err := db.WithContext(ctx).First(&updated, "id = ?", targetID).Error; err != nil {
+	updated, err := u.users.FindByID(ctx, targetID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return domainuser.User{}, ErrNotFound
+		}
 		return domainuser.User{}, err
 	}
 
@@ -276,7 +251,7 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 		"user_id": targetID,
 		"fields":  len(updates) - 1, // exclude updated_at
 	})
-	return u.enrichUser(ctx, updated.toDomain()), nil
+	return u.enrichUser(ctx, updated), nil
 }
 
 func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurrentPasswordCommand) error {
@@ -294,14 +269,9 @@ func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurre
 		return fmt.Errorf("%w: newPassword is required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.users)
+	existing, err := u.users.FindAuthByID(ctx, userID)
 	if err != nil {
-		return err
-	}
-
-	var existing userRecord
-	if err := db.WithContext(ctx).First(&existing, "id = ?", userID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return err
@@ -319,14 +289,15 @@ func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurre
 		return err
 	}
 
-	if err := db.WithContext(ctx).
-		Model(&userRecord{}).
-		Where("id = ?", userID).
-		Updates(map[string]any{
-			"password_hash": string(hashed),
-			"updated_at":    time.Now().UTC(),
-		}).Error; err != nil {
+	ok, err := u.users.UpdateByID(ctx, userID, map[string]any{
+		"password_hash": string(hashed),
+		"updated_at":    time.Now().UTC(),
+	})
+	if err != nil {
 		return err
+	}
+	if !ok {
+		return ErrNotFound
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "user.password.update", true, map[string]any{
@@ -364,20 +335,15 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 		contentType = "application/octet-stream"
 	}
 
-	db, err := dbFromRepository(u.users)
+	existing, err := u.users.FindByID(ctx, userID)
 	if err != nil {
-		return domainuser.User{}, err
-	}
-
-	var existing userRecord
-	if err := db.WithContext(ctx).First(&existing, "id = ?", userID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return domainuser.User{}, ErrNotFound
 		}
 		return domainuser.User{}, err
 	}
 
-	extJSON := parseUserExtJSON(existing.ExtJSON)
+	extJSON := parseUserExtJSON(existing.Ext)
 	oldAvatarKey := strings.TrimSpace(stringValue(extJSON[userAvatarExtKey]))
 	newAvatarKey := fmt.Sprintf("users/%d/avatar/%s%s", userID, uuid.NewString(), extWithDot)
 
@@ -393,22 +359,24 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 		return domainuser.User{}, err
 	}
 
-	if err := db.WithContext(ctx).
-		Model(&userRecord{}).
-		Where("id = ?", userID).
-		Updates(map[string]any{
-			"ext":        string(extRaw),
-			"updated_at": time.Now().UTC(),
-		}).Error; err != nil {
+	ok, err := u.users.UpdateByID(ctx, userID, map[string]any{
+		"ext":        string(extRaw),
+		"updated_at": time.Now().UTC(),
+	})
+	if err != nil {
 		_ = u.storage.Delete(ctx, newAvatarKey)
 		return domainuser.User{}, err
+	}
+	if !ok {
+		_ = u.storage.Delete(ctx, newAvatarKey)
+		return domainuser.User{}, ErrNotFound
 	}
 
 	if oldAvatarKey != "" && oldAvatarKey != newAvatarKey {
 		_ = u.storage.Delete(ctx, oldAvatarKey)
 	}
 
-	refreshed, err := u.getUserRecordByID(ctx, userID)
+	refreshed, err := u.getUserByID(ctx, userID)
 	if err != nil {
 		return domainuser.User{}, err
 	}
@@ -417,7 +385,7 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 		"user_id":    userID,
 		"avatar_key": newAvatarKey,
 	})
-	return u.enrichUser(ctx, refreshed.toDomain()), nil
+	return u.enrichUser(ctx, refreshed), nil
 }
 
 func (u *UserUseCase) resolveTargetUserID(cmd UpdateUserCommand) (uint64, error) {
@@ -445,18 +413,13 @@ func (u *UserUseCase) ensureSelfPermission(principal actor.Actor, targetID uint6
 	return nil
 }
 
-func (u *UserUseCase) getUserRecordByID(ctx context.Context, userID uint64) (userRecord, error) {
-	db, err := dbFromRepository(u.users)
+func (u *UserUseCase) getUserByID(ctx context.Context, userID uint64) (domainuser.User, error) {
+	user, err := u.users.FindByID(ctx, userID)
 	if err != nil {
-		return userRecord{}, err
-	}
-
-	var user userRecord
-	if err := db.WithContext(ctx).First(&user, "id = ?", userID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return userRecord{}, ErrNotFound
+		if errors.Is(err, repository.ErrNotFound) {
+			return domainuser.User{}, ErrNotFound
 		}
-		return userRecord{}, err
+		return domainuser.User{}, err
 	}
 	return user, nil
 }

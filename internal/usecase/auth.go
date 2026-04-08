@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 const (
@@ -62,28 +61,21 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 		return LoginResult{}, fmt.Errorf("%w: username and password are required", ErrInvalidArgument)
 	}
 
-	db, err := dbFromRepository(u.users)
-	if err != nil {
-		return LoginResult{}, err
-	}
-
 	client := u.redisClient()
 	if client == nil {
 		return LoginResult{}, fmt.Errorf("%w: redis client not configured", ErrInvalidArgument)
 	}
 
-	var user userRecord
-	if err := db.WithContext(ctx).
-		Where("username = ? AND status = ?", username, userStatusActive).
-		First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	authUser, err := u.users.FindActiveByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
 			_ = u.RecordAttempt(ctx, cmd.Actor, false)
 			return LoginResult{}, ErrInvalidCredentials
 		}
 		return LoginResult{}, err
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(authUser.PasswordHash), []byte(password)); err != nil {
 		_ = u.RecordAttempt(ctx, cmd.Actor, false)
 		return LoginResult{}, ErrInvalidCredentials
 	}
@@ -100,7 +92,7 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	}
 
 	token := uuid.NewString()
-	userPayload, err := json.Marshal(user.toDomain())
+	userPayload, err := json.Marshal(authUser.User)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -166,21 +158,14 @@ func (u *AuthUseCase) ResolveActor(ctx context.Context, username, token string) 
 	}
 
 	if sessionUser.ID == 0 {
-		db, err := dbFromRepository(u.users)
+		found, err := u.users.FindActiveByUsername(ctx, username)
 		if err != nil {
-			return actor.Actor{}, err
-		}
-
-		var found userRecord
-		if err := db.WithContext(ctx).
-			Where("username = ? AND status = ?", username, userStatusActive).
-			First(&found).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, repository.ErrNotFound) {
 				return actor.Actor{}, ErrUnauthorized
 			}
 			return actor.Actor{}, err
 		}
-		sessionUser = found.toDomain()
+		sessionUser = found.User
 	}
 
 	name := strings.TrimSpace(sessionUser.Username)

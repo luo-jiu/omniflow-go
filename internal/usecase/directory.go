@@ -136,7 +136,7 @@ func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLin
 	if err != nil {
 		return "", err
 	}
-	if node.NodeType != nodeTypeFile {
+	if node.Type != domainnode.TypeFile {
 		return "", fmt.Errorf("%w: node is not a file", ErrInvalidArgument)
 	}
 	if strings.TrimSpace(node.StorageKey) == "" {
