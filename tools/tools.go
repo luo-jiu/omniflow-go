@@ -3,4 +3,7 @@
 
 package tools
 
-import _ "github.com/google/wire/cmd/wire"
+import (
+	_ "github.com/google/wire/cmd/wire"
+	_ "gorm.io/gen"
+)

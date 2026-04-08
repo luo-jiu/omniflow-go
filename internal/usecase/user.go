@@ -18,7 +18,6 @@ import (
 	"omniflow-go/internal/storage"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -73,19 +72,15 @@ type UploadCurrentUserAvatarCommand struct {
 
 type UserUseCase struct {
 	users    *repository.UserRepository
-	redis    *redis.Client
 	storage  storage.ObjectStorage
 	auditLog audit.Sink
 }
 
 func NewUserUseCase(
 	users *repository.UserRepository,
-	redis *redis.Client,
 	storage storage.ObjectStorage,
 	auditLog ...audit.Sink,
 ) *UserUseCase {
-	setSharedRedisClient(redis)
-
 	var sink audit.Sink
 	if len(auditLog) > 0 {
 		sink = auditLog[0]
@@ -93,7 +88,6 @@ func NewUserUseCase(
 
 	return &UserUseCase{
 		users:    users,
-		redis:    redis,
 		storage:  storage,
 		auditLog: sink,
 	}

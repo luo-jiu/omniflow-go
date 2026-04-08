@@ -9,22 +9,8 @@ import (
 
 // ListAllDescendants 查询节点整棵子树，并按深度与排序返回。
 func (r *NodeRepository) ListAllDescendants(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
-	query := `
-WITH RECURSIVE tree AS (
-    SELECT id, 0 AS depth
-    FROM nodes
-    WHERE id = ? AND library_id = ? AND deleted_at IS NULL
-    UNION ALL
-    SELECT n.id, tree.depth + 1
-    FROM nodes n
-    JOIN tree ON n.parent_id = tree.id
-    WHERE n.library_id = ? AND n.deleted_at IS NULL
-)
-SELECT id, depth
-FROM tree`
-
 	var refs []descendantRow
-	if err := r.db.WithContext(ctx).Raw(query, nodeID, libraryID, libraryID).Scan(&refs).Error; err != nil {
+	if err := r.scanRaw(ctx, &refs, sqlListTreeDescendantRefs, nodeID, libraryID, libraryID); err != nil {
 		return nil, err
 	}
 	if len(refs) == 0 {
@@ -65,8 +51,8 @@ FROM tree`
 
 // ListDirectChildren 查询单层子节点，保持同级排序。
 func (r *NodeRepository) ListDirectChildren(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
-	var rows []nodeModel
-	if err := r.db.WithContext(ctx).
+	var rows []nodesEntity
+	if err := r.dbWithContext(ctx).
 		Where("library_id = ? AND parent_id = ?", libraryID, nodeID).
 		Order("sort_order ASC").
 		Order("id ASC").
@@ -102,23 +88,8 @@ func (r *NodeRepository) ListDirectChildren(ctx context.Context, nodeID, library
 
 // ListAncestors 查询从当前节点向上的祖先链。
 func (r *NodeRepository) ListAncestors(ctx context.Context, nodeID, libraryID uint64) ([]NodePathItem, error) {
-	query := `
-WITH RECURSIVE ancestors AS (
-    SELECT id, name, parent_id, 0 AS depth
-    FROM nodes
-    WHERE id = ? AND library_id = ? AND deleted_at IS NULL
-    UNION ALL
-    SELECT p.id, p.name, p.parent_id, ancestors.depth + 1
-    FROM nodes p
-    JOIN ancestors ON ancestors.parent_id = p.id
-    WHERE p.library_id = ? AND p.deleted_at IS NULL
-)
-SELECT id, name, depth
-FROM ancestors
-ORDER BY depth DESC`
-
 	var rows []NodePathItem
-	if err := r.db.WithContext(ctx).Raw(query, nodeID, libraryID, libraryID).Scan(&rows).Error; err != nil {
+	if err := r.scanRaw(ctx, &rows, sqlListAncestorPath, nodeID, libraryID, libraryID); err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -126,8 +97,8 @@ ORDER BY depth DESC`
 
 // FindViewByID 查询单个节点并补齐文件元信息。
 func (r *NodeRepository) FindViewByID(ctx context.Context, nodeID, libraryID uint64) (domainnode.Node, error) {
-	var row nodeModel
-	if err := r.db.WithContext(ctx).
+	var row nodesEntity
+	if err := r.dbWithContext(ctx).
 		Where("id = ? AND library_id = ?", nodeID, libraryID).
 		First(&row).Error; err != nil {
 		return domainnode.Node{}, mapDBError(err)
@@ -149,8 +120,8 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 		return []nodeWithSort{}, nil
 	}
 
-	var rows []nodeModel
-	if err := r.db.WithContext(ctx).
+	var rows []nodesEntity
+	if err := r.dbWithContext(ctx).
 		Where("library_id = ? AND id IN ?", libraryID, ids).
 		Find(&rows).Error; err != nil {
 		return nil, err
@@ -167,7 +138,7 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 			depth = depthByID[row.ID]
 		}
 
-		node := row.toDomain()
+		node := row.toDomainNode()
 		assembled[row.ID] = nodeWithSort{
 			Node:      node,
 			Depth:     depth,
@@ -186,15 +157,15 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 		return output, nil
 	}
 
-	var fileRows []nodeFileModel
-	if err := r.db.WithContext(ctx).
+	var fileRows []nodeFilesEntity
+	if err := r.dbWithContext(ctx).
 		Where("library_id = ? AND file_id IN ?", libraryID, fileIDs).
 		Find(&fileRows).Error; err != nil {
 		return nil, err
 	}
 
 	storageIDs := make([]uint64, 0, len(fileRows))
-	fileByID := make(map[uint64]nodeFileModel, len(fileRows))
+	fileByID := make(map[uint64]nodeFilesEntity, len(fileRows))
 	for _, row := range fileRows {
 		fileByID[row.FileID] = row
 		if row.StorageObjectID > 0 {
@@ -202,10 +173,10 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 		}
 	}
 
-	storageByID := map[uint64]storageObjectModel{}
+	storageByID := map[uint64]storageObjectsEntity{}
 	if len(storageIDs) > 0 {
-		var storageRows []storageObjectModel
-		if err := r.db.WithContext(ctx).
+		var storageRows []storageObjectsEntity
+		if err := r.dbWithContext(ctx).
 			Where("library_id = ? AND id IN ?", libraryID, storageIDs).
 			Find(&storageRows).Error; err != nil {
 			return nil, err

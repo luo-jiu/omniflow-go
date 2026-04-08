@@ -68,17 +68,20 @@ type DeleteNodeTreeCommand struct {
 
 type NodeUseCase struct {
 	nodes      *repository.NodeRepository
+	tx         repository.Transactor
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
 }
 
 func NewNodeUseCase(
 	nodes *repository.NodeRepository,
+	tx repository.Transactor,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
 ) *NodeUseCase {
 	return &NodeUseCase{
 		nodes:      nodes,
+		tx:         tx,
 		authorizer: authorizer,
 		auditLog:   auditLog,
 	}
@@ -98,30 +101,38 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		return domainnode.Node{}, err
 	}
 
-	created, err := u.nodes.CreateNode(ctx, repository.CreateNodeInput{
-		Name:            name,
-		Type:            cmd.Type,
-		ParentID:        cmd.ParentID,
-		LibraryID:       cmd.LibraryID,
-		Ext:             strings.TrimSpace(cmd.Ext),
-		MIMEType:        strings.TrimSpace(cmd.MIMEType),
-		FileSize:        cmd.FileSize,
-		StorageKey:      strings.TrimSpace(cmd.StorageKey),
-		BuiltInType:     "DEF",
-		ArchiveMode:     false,
-		StorageProvider: defaultStorageProvider,
-		StorageBucket:   defaultStorageBucket,
+	var created domainnode.Node
+	err := u.withinTx(ctx, func(txCtx context.Context) error {
+		result, err := u.nodes.CreateNode(txCtx, repository.CreateNodeInput{
+			Name:            name,
+			Type:            cmd.Type,
+			ParentID:        cmd.ParentID,
+			LibraryID:       cmd.LibraryID,
+			Ext:             strings.TrimSpace(cmd.Ext),
+			MIMEType:        strings.TrimSpace(cmd.MIMEType),
+			FileSize:        cmd.FileSize,
+			StorageKey:      strings.TrimSpace(cmd.StorageKey),
+			BuiltInType:     "DEF",
+			ArchiveMode:     false,
+			StorageProvider: defaultStorageProvider,
+			StorageBucket:   defaultStorageBucket,
+		})
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			if errors.Is(err, repository.ErrConflict) {
+				return ErrConflict
+			}
+			if errors.Is(err, repository.ErrInvalidState) {
+				return fmt.Errorf("%w: invalid node create request", ErrInvalidArgument)
+			}
+			return err
+		}
+		created = result
+		return nil
 	})
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return domainnode.Node{}, ErrNotFound
-		}
-		if errors.Is(err, repository.ErrConflict) {
-			return domainnode.Node{}, ErrConflict
-		}
-		if errors.Is(err, repository.ErrInvalidState) {
-			return domainnode.Node{}, fmt.Errorf("%w: invalid node create request", ErrInvalidArgument)
-		}
 		return domainnode.Node{}, err
 	}
 
@@ -271,16 +282,21 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 		return err
 	}
 
-	if err := u.nodes.RenameNode(ctx, nodeID, cmd.LibraryID, newName, time.Now().UTC()); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrNotFound
+	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+		if err := u.nodes.RenameNode(txCtx, nodeID, cmd.LibraryID, newName, time.Now().UTC()); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			if errors.Is(err, repository.ErrConflict) {
+				return ErrConflict
+			}
+			if errors.Is(err, repository.ErrInvalidState) {
+				return fmt.Errorf("%w: invalid node rename request", ErrInvalidArgument)
+			}
+			return err
 		}
-		if errors.Is(err, repository.ErrConflict) {
-			return ErrConflict
-		}
-		if errors.Is(err, repository.ErrInvalidState) {
-			return fmt.Errorf("%w: invalid node rename request", ErrInvalidArgument)
-		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
@@ -300,23 +316,28 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 		return err
 	}
 
-	if err := u.nodes.MoveNode(ctx, repository.MoveNodeInput{
-		LibraryID:    cmd.LibraryID,
-		NodeID:       cmd.NodeID,
-		NewParentID:  cmd.NewParentID,
-		BeforeNodeID: cmd.BeforeNodeID,
-		Name:         strings.TrimSpace(cmd.Name),
-		UpdatedAt:    time.Now().UTC(),
+	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+		if err := u.nodes.MoveNode(txCtx, repository.MoveNodeInput{
+			LibraryID:    cmd.LibraryID,
+			NodeID:       cmd.NodeID,
+			NewParentID:  cmd.NewParentID,
+			BeforeNodeID: cmd.BeforeNodeID,
+			Name:         strings.TrimSpace(cmd.Name),
+			UpdatedAt:    time.Now().UTC(),
+		}); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			if errors.Is(err, repository.ErrConflict) {
+				return ErrConflict
+			}
+			if errors.Is(err, repository.ErrInvalidState) {
+				return fmt.Errorf("%w: invalid node move request", ErrInvalidArgument)
+			}
+			return err
+		}
+		return nil
 	}); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrNotFound
-		}
-		if errors.Is(err, repository.ErrConflict) {
-			return ErrConflict
-		}
-		if errors.Is(err, repository.ErrInvalidState) {
-			return fmt.Errorf("%w: invalid node move request", ErrInvalidArgument)
-		}
 		return err
 	}
 
@@ -338,11 +359,19 @@ func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeT
 		return false, err
 	}
 
-	deleteResult, err := u.nodes.DeleteTree(ctx, cmd.NodeID, cmd.LibraryID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return false, ErrNotFound
+	var deleteResult repository.DeleteNodeTreeResult
+	err := u.withinTx(ctx, func(txCtx context.Context) error {
+		result, err := u.nodes.DeleteTree(txCtx, cmd.NodeID, cmd.LibraryID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			return err
 		}
+		deleteResult = result
+		return nil
+	})
+	if err != nil {
 		return false, err
 	}
 
@@ -364,6 +393,13 @@ func (u *NodeUseCase) findNodeView(ctx context.Context, nodeID, libraryID uint64
 		return domainnode.Node{}, err
 	}
 	return row, nil
+}
+
+func (u *NodeUseCase) withinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if u.tx == nil {
+		return fn(ctx)
+	}
+	return u.tx.WithinTx(ctx, fn)
 }
 
 func (u *NodeUseCase) AuthorizeMutation(ctx context.Context, principal actor.Actor, libraryID uint64) error {

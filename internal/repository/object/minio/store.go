@@ -1,4 +1,4 @@
-package storage
+package repository
 
 import (
 	"context"
@@ -7,24 +7,19 @@ import (
 	"time"
 
 	"omniflow-go/internal/config"
+	"omniflow-go/internal/storage"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-type ObjectStorage interface {
-	Upload(ctx context.Context, objectName string, reader io.Reader, size int64, contentType string) error
-	GetPresignedURL(ctx context.Context, objectName string, expiry time.Duration) (string, error)
-	Delete(ctx context.Context, objectName string) error
-	Bucket() string
-}
-
-type MinIOStore struct {
+// Store 是 MinIO 的对象存储实现。
+type Store struct {
 	client *minio.Client
 	bucket string
 }
 
-func NewMinIOStore(cfg *config.Config) (*MinIOStore, func(), error) {
+func NewStore(cfg *config.Config) (storage.ObjectStorage, func(), error) {
 	client, err := minio.New(cfg.MinIO.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.MinIO.AccessKey, cfg.MinIO.SecretKey, ""),
 		Secure: cfg.MinIO.UseSSL,
@@ -33,21 +28,17 @@ func NewMinIOStore(cfg *config.Config) (*MinIOStore, func(), error) {
 		return nil, nil, fmt.Errorf("new minio client: %w", err)
 	}
 
-	return &MinIOStore{
+	return &Store{
 		client: client,
 		bucket: cfg.MinIO.Bucket,
 	}, func() {}, nil
 }
 
-func (s *MinIOStore) Bucket() string {
+func (s *Store) Bucket() string {
 	return s.bucket
 }
 
-func (s *MinIOStore) Client() *minio.Client {
-	return s.client
-}
-
-func (s *MinIOStore) ensureBucket(ctx context.Context) error {
+func (s *Store) ensureBucket(ctx context.Context) error {
 	exists, err := s.client.BucketExists(ctx, s.bucket)
 	if err != nil {
 		return fmt.Errorf("check bucket exists: %w", err)
@@ -61,7 +52,7 @@ func (s *MinIOStore) ensureBucket(ctx context.Context) error {
 	return nil
 }
 
-func (s *MinIOStore) Upload(
+func (s *Store) Upload(
 	ctx context.Context,
 	objectName string,
 	reader io.Reader,
@@ -81,7 +72,7 @@ func (s *MinIOStore) Upload(
 	return nil
 }
 
-func (s *MinIOStore) GetPresignedURL(
+func (s *Store) GetPresignedURL(
 	ctx context.Context,
 	objectName string,
 	expiry time.Duration,
@@ -97,7 +88,7 @@ func (s *MinIOStore) GetPresignedURL(
 	return url.String(), nil
 }
 
-func (s *MinIOStore) Delete(ctx context.Context, objectName string) error {
+func (s *Store) Delete(ctx context.Context, objectName string) error {
 	err := s.client.RemoveObject(ctx, s.bucket, objectName, minio.RemoveObjectOptions{})
 	if err != nil {
 		return fmt.Errorf("delete object: %w", err)

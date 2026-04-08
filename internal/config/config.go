@@ -15,6 +15,7 @@ type Config struct {
 	Server   Server   `yaml:"server"`
 	Database Database `yaml:"database"`
 	Redis    Redis    `yaml:"redis"`
+	Storage  Storage  `yaml:"storage"`
 	MinIO    MinIO    `yaml:"minio"`
 }
 
@@ -46,6 +47,10 @@ type Redis struct {
 	Addr     string `yaml:"addr"`
 	Password string `yaml:"password"`
 	DB       int    `yaml:"db"`
+}
+
+type Storage struct {
+	Provider string `yaml:"provider"`
 }
 
 type MinIO struct {
@@ -112,6 +117,9 @@ func defaultConfig() *Config {
 			Addr: "127.0.0.1:6379",
 			DB:   0,
 		},
+		Storage: Storage{
+			Provider: "minio",
+		},
 		MinIO: MinIO{
 			Endpoint:  "127.0.0.1:9000",
 			AccessKey: "admin",
@@ -166,6 +174,10 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Database.LogLevel == "" {
 		c.Database.LogLevel = "warn"
+	}
+
+	if c.Storage.Provider == "" {
+		c.Storage.Provider = "minio"
 	}
 
 	if c.MinIO.Bucket == "" {

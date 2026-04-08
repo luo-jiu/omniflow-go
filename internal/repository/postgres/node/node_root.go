@@ -11,8 +11,8 @@ const defaultRootNodeName = "ROOT"
 
 // EnsureLibraryRootNodeID 返回资料库根节点 ID；若不存在则自动创建。
 func (r *NodeRepository) EnsureLibraryRootNodeID(ctx context.Context, libraryID uint64) (uint64, error) {
-	var root nodeModel
-	err := r.db.WithContext(ctx).
+	var root nodesEntity
+	err := r.dbWithContext(ctx).
 		Where("library_id = ? AND parent_id IS NULL", libraryID).
 		Order("id ASC").
 		First(&root).Error
@@ -23,7 +23,7 @@ func (r *NodeRepository) EnsureLibraryRootNodeID(ctx context.Context, libraryID 
 		return 0, err
 	}
 
-	root = nodeModel{
+	root = nodesEntity{
 		Name:      defaultRootNodeName,
 		BuiltIn:   "DEF",
 		NodeType:  nodeTypeDirectory,
@@ -32,7 +32,7 @@ func (r *NodeRepository) EnsureLibraryRootNodeID(ctx context.Context, libraryID 
 		ParentID:  nil,
 		LibraryID: libraryID,
 	}
-	if err := r.db.WithContext(ctx).Create(&root).Error; err != nil {
+	if err := r.dbWithContext(ctx).Create(&root).Error; err != nil {
 		return 0, err
 	}
 	return root.ID, nil

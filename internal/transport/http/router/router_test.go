@@ -30,9 +30,9 @@ func TestHealthRoutes(t *testing.T) {
 	authorizer := authz.NewAllowAll()
 	auditSink := audit.NewLogSink(logger)
 
-	nodeUseCase := usecase.NewNodeUseCase(nil, authorizer, auditSink)
+	nodeUseCase := usecase.NewNodeUseCase(nil, nil, authorizer, auditSink)
 	healthHandler := httpHandler.NewHealthHandler(usecase.NewHealthUseCase(cfg))
-	authHandler := httpHandler.NewAuthHandler(usecase.NewAuthUseCase(nil, auditSink))
+	authHandler := httpHandler.NewAuthHandler(usecase.NewAuthUseCase(nil, nil, auditSink))
 	userHandler := httpHandler.NewUserHandler(nil)
 	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, authorizer, auditSink))
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
@@ -71,9 +71,9 @@ func TestProtectedRouteRequiresAuthHeaders(t *testing.T) {
 	authorizer := authz.NewAllowAll()
 	auditSink := audit.NewLogSink(logger)
 
-	nodeUseCase := usecase.NewNodeUseCase(nil, authorizer, auditSink)
+	nodeUseCase := usecase.NewNodeUseCase(nil, nil, authorizer, auditSink)
 	healthHandler := httpHandler.NewHealthHandler(usecase.NewHealthUseCase(cfg))
-	authHandler := httpHandler.NewAuthHandler(usecase.NewAuthUseCase(nil, auditSink))
+	authHandler := httpHandler.NewAuthHandler(usecase.NewAuthUseCase(nil, nil, auditSink))
 	userHandler := httpHandler.NewUserHandler(nil)
 	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, authorizer, auditSink))
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)

@@ -9,7 +9,6 @@ import (
 	"omniflow-go/internal/config"
 	"omniflow-go/internal/repository"
 	"omniflow-go/internal/server"
-	"omniflow-go/internal/storage"
 	httpHandler "omniflow-go/internal/transport/http/handler"
 	httpRouter "omniflow-go/internal/transport/http/router"
 	"omniflow-go/internal/usecase"
@@ -36,7 +35,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 		return nil, nil, err
 	}
 
-	minioStore, minioCleanup, err := storage.NewMinIOStore(cfg)
+	objectStorage, objectStorageCleanup, err := repository.NewObjectStorage(cfg)
 	if err != nil {
 		redisCleanup()
 		databaseCleanup()
@@ -46,14 +45,16 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	userRepository := repository.NewUserRepository(database)
 	libraryRepository := repository.NewLibraryRepository(database)
 	nodeRepository := repository.NewNodeRepository(database)
+	sessionRepository := repository.NewSessionRepository(redisClient)
+	transactor := repository.NewTransactor(database)
 
 	healthUseCase := usecase.NewHealthUseCase(cfg)
-	authUseCase := usecase.NewAuthUseCase(userRepository, logSink, redisClient)
-	userUseCase := usecase.NewUserUseCase(userRepository, redisClient, minioStore, logSink)
+	authUseCase := usecase.NewAuthUseCase(userRepository, sessionRepository, logSink)
+	userUseCase := usecase.NewUserUseCase(userRepository, objectStorage, logSink)
 	libraryUseCase := usecase.NewLibraryUseCase(libraryRepository, allowAll, logSink)
-	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, allowAll, logSink)
-	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, minioStore, allowAll, logSink)
-	fileUseCase := usecase.NewFileUseCase(minioStore)
+	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink)
+	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, objectStorage, allowAll, logSink)
+	fileUseCase := usecase.NewFileUseCase(objectStorage)
 	tagUseCase := usecase.NewTagUseCase()
 
 	healthHandler := httpHandler.NewHealthHandler(healthUseCase)
@@ -70,7 +71,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	application := app.New(cfg, logger, httpServer)
 
 	cleanup := func() {
-		minioCleanup()
+		objectStorageCleanup()
 		redisCleanup()
 		databaseCleanup()
 	}

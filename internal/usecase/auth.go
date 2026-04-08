@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -11,17 +10,11 @@ import (
 
 	"omniflow-go/internal/actor"
 	"omniflow-go/internal/audit"
-	domainuser "omniflow-go/internal/domain/user"
+	domainauth "omniflow-go/internal/domain/auth"
 	"omniflow-go/internal/repository"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
-)
-
-const (
-	loginRedisPrefix = "login:"
-	loginTTL         = 30 * 24 * time.Hour
 )
 
 type LoginCommand struct {
@@ -36,21 +29,16 @@ type LoginResult struct {
 
 type AuthUseCase struct {
 	users    *repository.UserRepository
+	sessions domainauth.SessionStore
 	auditLog audit.Sink
-	redis    *redis.Client
 }
 
-func NewAuthUseCase(users *repository.UserRepository, auditLog audit.Sink, redisClient ...*redis.Client) *AuthUseCase {
-	var client *redis.Client
-	if len(redisClient) > 0 {
-		client = redisClient[0]
-		setSharedRedisClient(client)
-	}
-
+// NewAuthUseCase 构建认证用例，依赖用户仓储与会话仓储。
+func NewAuthUseCase(users *repository.UserRepository, sessions domainauth.SessionStore, auditLog audit.Sink) *AuthUseCase {
 	return &AuthUseCase{
 		users:    users,
+		sessions: sessions,
 		auditLog: auditLog,
-		redis:    client,
 	}
 }
 
@@ -61,9 +49,8 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 		return LoginResult{}, fmt.Errorf("%w: username and password are required", ErrInvalidArgument)
 	}
 
-	client := u.redisClient()
-	if client == nil {
-		return LoginResult{}, fmt.Errorf("%w: redis client not configured", ErrInvalidArgument)
+	if u.sessions == nil {
+		return LoginResult{}, fmt.Errorf("%w: session store not configured", ErrInvalidArgument)
 	}
 
 	authUser, err := u.users.FindActiveByUsername(ctx, username)
@@ -80,8 +67,11 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 		return LoginResult{}, ErrInvalidCredentials
 	}
 
-	key := loginRedisPrefix + username
-	if token, err := u.firstActiveToken(ctx, client, key); err == nil && token != "" {
+	token, err := u.sessions.FindFirstToken(ctx, username)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if token != "" {
 		_ = u.RecordAttempt(ctx, cmd.Actor, true)
 		_ = u.writeAudit(ctx, cmd.Actor, "auth.login", true, map[string]any{
 			"username": username,
@@ -91,16 +81,8 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 		return LoginResult{Token: token}, nil
 	}
 
-	token := uuid.NewString()
-	userPayload, err := json.Marshal(authUser.User)
-	if err != nil {
-		return LoginResult{}, err
-	}
-
-	if err := client.HSet(ctx, key, token, userPayload).Err(); err != nil {
-		return LoginResult{}, err
-	}
-	if err := client.Expire(ctx, key, loginTTL).Err(); err != nil {
+	token = uuid.NewString()
+	if err := u.sessions.Save(ctx, username, token, authUser.User); err != nil {
 		return LoginResult{}, err
 	}
 
@@ -120,12 +102,11 @@ func (u *AuthUseCase) Check(ctx context.Context, username, token string) (bool, 
 		return false, fmt.Errorf("%w: username and token are required", ErrInvalidArgument)
 	}
 
-	client := u.redisClient()
-	if client == nil {
-		return false, fmt.Errorf("%w: redis client not configured", ErrInvalidArgument)
+	if u.sessions == nil {
+		return false, fmt.Errorf("%w: session store not configured", ErrInvalidArgument)
 	}
 
-	ok, err := client.HExists(ctx, loginRedisPrefix+username, token).Result()
+	ok, err := u.sessions.Exists(ctx, username, token)
 	if err != nil {
 		return false, err
 	}
@@ -139,21 +120,15 @@ func (u *AuthUseCase) ResolveActor(ctx context.Context, username, token string) 
 		return actor.Actor{}, fmt.Errorf("%w: username and token are required", ErrInvalidArgument)
 	}
 
-	client := u.redisClient()
-	if client == nil {
-		return actor.Actor{}, fmt.Errorf("%w: redis client not configured", ErrInvalidArgument)
+	if u.sessions == nil {
+		return actor.Actor{}, fmt.Errorf("%w: session store not configured", ErrInvalidArgument)
 	}
 
-	payload, err := client.HGet(ctx, loginRedisPrefix+username, token).Result()
+	sessionUser, err := u.sessions.GetUser(ctx, username, token)
 	if err != nil {
-		if errors.Is(err, redis.Nil) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return actor.Actor{}, ErrUnauthorized
 		}
-		return actor.Actor{}, err
-	}
-
-	var sessionUser domainuser.User
-	if err := json.Unmarshal([]byte(payload), &sessionUser); err != nil {
 		return actor.Actor{}, err
 	}
 
@@ -189,31 +164,14 @@ func (u *AuthUseCase) Logout(ctx context.Context, username, token string) error 
 		return fmt.Errorf("%w: username and token are required", ErrInvalidArgument)
 	}
 
-	client := u.redisClient()
-	if client == nil {
-		return fmt.Errorf("%w: redis client not configured", ErrInvalidArgument)
+	if u.sessions == nil {
+		return fmt.Errorf("%w: session store not configured", ErrInvalidArgument)
 	}
 
-	loginKey := loginRedisPrefix + username
-	removed, err := client.HDel(ctx, loginKey, token).Result()
-	if err != nil {
-		return err
-	}
-	if removed == 0 {
-		return ErrUnauthorized
-	}
-
-	remainCount, err := client.HLen(ctx, loginKey).Result()
-	if err != nil {
-		return err
-	}
-	if remainCount == 0 {
-		if err := client.Del(ctx, loginKey).Err(); err != nil {
-			return err
+	if err := u.sessions.Delete(ctx, username, token); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrUnauthorized
 		}
-	}
-
-	if err := client.Expire(ctx, loginKey, loginTTL).Err(); err != nil {
 		return err
 	}
 
@@ -237,30 +195,8 @@ func (u *AuthUseCase) RecordAttempt(ctx context.Context, principal actor.Actor, 
 	})
 }
 
-func (u *AuthUseCase) firstActiveToken(ctx context.Context, client *redis.Client, key string) (string, error) {
-	exists, err := client.Exists(ctx, key).Result()
-	if err != nil || exists == 0 {
-		return "", err
-	}
-	entries, err := client.HGetAll(ctx, key).Result()
-	if err != nil {
-		return "", err
-	}
-	for token := range entries {
-		return token, nil
-	}
-	return "", nil
-}
-
-func (u *AuthUseCase) redisClient() *redis.Client {
-	if u.redis != nil {
-		return u.redis
-	}
-	return getSharedRedisClient()
-}
-
 func (u *AuthUseCase) CanAuthenticate() bool {
-	return u.redisClient() != nil
+	return u.sessions != nil
 }
 
 func (u *AuthUseCase) writeAudit(ctx context.Context, principal actor.Actor, action string, success bool, metadata map[string]any) error {

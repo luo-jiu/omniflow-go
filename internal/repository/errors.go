@@ -1,9 +1,9 @@
 package repository
 
-import "errors"
+import "omniflow-go/internal/repository/repoerr"
 
 var (
-	ErrNotFound     = errors.New("repository: resource not found")
-	ErrConflict     = errors.New("repository: resource conflict")
-	ErrInvalidState = errors.New("repository: invalid resource state")
+	ErrNotFound     = repoerr.ErrNotFound
+	ErrConflict     = repoerr.ErrConflict
+	ErrInvalidState = repoerr.ErrInvalidState
 )

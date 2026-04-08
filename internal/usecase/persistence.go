@@ -5,11 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync/atomic"
 
 	"omniflow-go/internal/actor"
-
-	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -21,18 +18,6 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUnsupportedStorage = errors.New("unsupported object storage implementation")
 )
-
-var sharedRedisClient atomic.Pointer[redis.Client]
-
-func setSharedRedisClient(client *redis.Client) {
-	if client != nil {
-		sharedRedisClient.Store(client)
-	}
-}
-
-func getSharedRedisClient() *redis.Client {
-	return sharedRedisClient.Load()
-}
 
 func actorIDToUint64(principal actor.Actor) (uint64, error) {
 	id := strings.TrimSpace(principal.ID)

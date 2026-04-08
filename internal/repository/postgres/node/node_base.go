@@ -1,6 +1,12 @@
 package repository
 
-import "gorm.io/gorm"
+import (
+	"context"
+
+	pgtx "omniflow-go/internal/repository/postgres/txctx"
+
+	"gorm.io/gorm"
+)
 
 const (
 	nodeTypeDirectory = 0
@@ -31,4 +37,11 @@ func (r *NodeRepository) WithTx(tx *gorm.DB) *NodeRepository {
 		return r
 	}
 	return &NodeRepository{db: tx}
+}
+
+func (r *NodeRepository) dbWithContext(ctx context.Context) *gorm.DB {
+	if tx, ok := pgtx.FromContext(ctx); ok {
+		return tx.WithContext(ctx)
+	}
+	return r.db.WithContext(ctx)
 }

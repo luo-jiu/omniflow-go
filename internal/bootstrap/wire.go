@@ -10,7 +10,6 @@ import (
 	"omniflow-go/internal/config"
 	"omniflow-go/internal/repository"
 	"omniflow-go/internal/server"
-	"omniflow-go/internal/storage"
 	httpHandler "omniflow-go/internal/transport/http/handler"
 	httpRouter "omniflow-go/internal/transport/http/router"
 	"omniflow-go/internal/usecase"
@@ -26,10 +25,11 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 		NewRedis,
 		authz.NewAllowAll,
 		audit.NewLogSink,
-		storage.NewMinIOStore,
-		wire.Bind(new(storage.ObjectStorage), new(*storage.MinIOStore)),
+		repository.NewObjectStorage,
 		wire.Bind(new(authz.Authorizer), new(*authz.AllowAll)),
 		wire.Bind(new(audit.Sink), new(*audit.LogSink)),
+		repository.NewSessionRepository,
+		repository.NewTransactor,
 		repository.NewUserRepository,
 		repository.NewLibraryRepository,
 		repository.NewNodeRepository,
