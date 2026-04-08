@@ -19,9 +19,14 @@ func (r *NodeRepository) DeleteTree(ctx context.Context, nodeID, libraryID uint6
 		return DeleteNodeTreeResult{}, err
 	}
 
-	if err := r.dbWithContext(ctx).
-		Where("library_id = ? AND id IN ?", libraryID, descendantIDs).
-		Delete(&nodesEntity{}).Error; err != nil {
+	q := r.query(ctx)
+	_, err = q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ID.In(toPGInt64Slice(descendantIDs)...),
+		).
+		Delete()
+	if err != nil {
 		return DeleteNodeTreeResult{}, err
 	}
 
@@ -32,11 +37,11 @@ func (r *NodeRepository) DeleteTree(ctx context.Context, nodeID, libraryID uint6
 }
 
 func (r *NodeRepository) listDescendantIDs(ctx context.Context, nodeID, libraryID uint64) ([]uint64, error) {
-	var ids []uint64
-	if err := r.scanRaw(ctx, &ids, sqlListSubtreeNodeIDs, nodeID, libraryID, libraryID); err != nil {
+	var rawIDs []int64
+	if err := r.scanRaw(ctx, &rawIDs, sqlListSubtreeNodeIDs, nodeID, libraryID, libraryID); err != nil {
 		return nil, err
 	}
-	return ids, nil
+	return toDomainUint64Slice(rawIDs), nil
 }
 
 func (r *NodeRepository) countFileNodesWithStorageKey(ctx context.Context, libraryID uint64, nodeIDs []uint64) (int64, error) {
@@ -44,17 +49,21 @@ func (r *NodeRepository) countFileNodesWithStorageKey(ctx context.Context, libra
 		return 0, nil
 	}
 
-	var fileRows []nodeFilesEntity
-	if err := r.dbWithContext(ctx).
-		Where("library_id = ? AND file_id IN ?", libraryID, nodeIDs).
-		Find(&fileRows).Error; err != nil {
+	q := r.query(ctx)
+	fileRows, err := q.NodeFile.WithContext(ctx).
+		Where(
+			q.NodeFile.LibraryID.Eq(toPGInt64(libraryID)),
+			q.NodeFile.FileID.In(toPGInt64Slice(nodeIDs)...),
+		).
+		Find()
+	if err != nil {
 		return 0, err
 	}
 	if len(fileRows) == 0 {
 		return 0, nil
 	}
 
-	storageIDs := make([]uint64, 0, len(fileRows))
+	storageIDs := make([]int64, 0, len(fileRows))
 	for _, row := range fileRows {
 		if row.StorageObjectID > 0 {
 			storageIDs = append(storageIDs, row.StorageObjectID)
@@ -64,22 +73,26 @@ func (r *NodeRepository) countFileNodesWithStorageKey(ctx context.Context, libra
 		return 0, nil
 	}
 
-	var storageRows []storageObjectsEntity
-	if err := r.dbWithContext(ctx).
-		Select("id, object_key").
-		Where("library_id = ? AND id IN ? AND object_key <> ''", libraryID, storageIDs).
-		Find(&storageRows).Error; err != nil {
+	storageRows, err := q.StorageObject.WithContext(ctx).
+		Select(q.StorageObject.ID, q.StorageObject.ObjectKey).
+		Where(
+			q.StorageObject.LibraryID.Eq(toPGInt64(libraryID)),
+			q.StorageObject.ID.In(storageIDs...),
+			q.StorageObject.ObjectKey.Neq(""),
+		).
+		Find()
+	if err != nil {
 		return 0, err
 	}
 
 	aliveStorage := make(map[uint64]struct{}, len(storageRows))
 	for _, row := range storageRows {
-		aliveStorage[row.ID] = struct{}{}
+		aliveStorage[toDomainUint64(row.ID)] = struct{}{}
 	}
 
 	var count int64
 	for _, row := range fileRows {
-		if _, ok := aliveStorage[row.StorageObjectID]; ok {
+		if _, ok := aliveStorage[toDomainUint64(row.StorageObjectID)]; ok {
 			count++
 		}
 	}

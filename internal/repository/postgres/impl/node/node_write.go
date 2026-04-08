@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	domainnode "omniflow-go/internal/domain/node"
+	pgmodel "omniflow-go/internal/repository/postgres/model"
 
 	"gorm.io/gorm"
 )
@@ -38,6 +40,10 @@ type MoveNodeInput struct {
 // CreateNode 创建节点并在文件类型时补齐对象存储关联。
 func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) (domainnode.Node, error) {
 	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return domainnode.Node{}, fmt.Errorf("%w: node name is required", ErrInvalidState)
+	}
+
 	if input.ParentID > 0 {
 		parent, err := r.findNodeModel(ctx, input.ParentID, input.LibraryID)
 		if err != nil {
@@ -75,58 +81,69 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 		}
 	}
 
-	row := nodesEntity{
-		Name:      name,
-		Ext:       ext,
-		BuiltIn:   strings.TrimSpace(input.BuiltInType),
-		NodeType:  nodeTypeCode(input.Type),
-		Archive:   input.ArchiveMode,
-		SortOrder: maxSort + 15,
-		ParentID:  normalizeParentID(input.ParentID),
-		LibraryID: input.LibraryID,
+	builtInType := strings.TrimSpace(input.BuiltInType)
+	if builtInType == "" {
+		builtInType = "DEF"
 	}
-	if err := r.dbWithContext(ctx).Create(&row).Error; err != nil {
+
+	row := &pgmodel.Node{
+		Name:        name,
+		Ext:         ext,
+		BuiltInType: builtInType,
+		NodeType:    nodeTypeCode(input.Type),
+		ArchiveMode: input.ArchiveMode,
+		ViewMeta:    "{}",
+		SortOrder:   int32(maxSort + 15),
+		ParentID:    normalizePGParentID(input.ParentID),
+		LibraryID:   toPGInt64(input.LibraryID),
+	}
+	q := r.query(ctx)
+	if err := q.Node.WithContext(ctx).Create(row); err != nil {
 		return domainnode.Node{}, err
 	}
 
 	if input.Type == domainnode.TypeFile {
-		storageRow := storageObjectsEntity{
-			LibraryID:     input.LibraryID,
+		storageRow := &pgmodel.StorageObject{
+			LibraryID:     toPGInt64(input.LibraryID),
 			Provider:      strings.TrimSpace(input.StorageProvider),
 			Bucket:        strings.TrimSpace(input.StorageBucket),
 			ObjectKey:     strings.TrimSpace(input.StorageKey),
 			ContentLength: input.FileSize,
-			ContentType:   strings.TrimSpace(input.MIMEType),
+			ContentType:   nullableString(strings.TrimSpace(input.MIMEType)),
+			Extra:         "{}",
 		}
-		if err := r.dbWithContext(ctx).Create(&storageRow).Error; err != nil {
+		if err := q.StorageObject.WithContext(ctx).Create(storageRow); err != nil {
 			return domainnode.Node{}, err
 		}
 
-		fileRow := nodeFilesEntity{
+		fileRow := &pgmodel.NodeFile{
 			FileID:          row.ID,
-			LibraryID:       input.LibraryID,
+			LibraryID:       toPGInt64(input.LibraryID),
 			StorageObjectID: storageRow.ID,
-			MIMEType:        strings.TrimSpace(input.MIMEType),
+			MimeType:        nullableString(strings.TrimSpace(input.MIMEType)),
 			FileSize:        input.FileSize,
 		}
-		if err := r.dbWithContext(ctx).Create(&fileRow).Error; err != nil {
+		if err := q.NodeFile.WithContext(ctx).Create(fileRow); err != nil {
 			return domainnode.Node{}, err
 		}
 	}
 
-	return r.FindViewByID(ctx, row.ID, input.LibraryID)
+	return r.FindViewByID(ctx, toDomainUint64(row.ID), input.LibraryID)
 }
 
 // UpdateNodeFields 更新节点元数据字段。
 func (r *NodeRepository) UpdateNodeFields(ctx context.Context, nodeID, libraryID uint64, updates map[string]any) (bool, error) {
-	result := r.dbWithContext(ctx).
-		Model(&nodesEntity{}).
-		Where("id = ? AND library_id = ?", nodeID, libraryID).
+	q := r.query(ctx)
+	info, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.ID.Eq(toPGInt64(nodeID)),
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+		).
 		Updates(updates)
-	if result.Error != nil {
-		return false, result.Error
+	if err != nil {
+		return false, err
 	}
-	return result.RowsAffected > 0, nil
+	return info.RowsAffected > 0, nil
 }
 
 // RenameNode 在同级目录内重命名节点。
@@ -206,7 +223,7 @@ func (r *NodeRepository) MoveNode(ctx context.Context, input MoveNodeInput) erro
 	}
 
 	updated, err := r.UpdateNodeFields(ctx, input.NodeID, input.LibraryID, map[string]any{
-		"parent_id":  normalizeParentID(input.NewParentID),
+		"parent_id":  normalizePGParentID(input.NewParentID),
 		"sort_order": newOrder,
 		"updated_at": input.UpdatedAt,
 	})
@@ -229,15 +246,19 @@ func (r *NodeRepository) resolveMoveSortOrder(ctx context.Context, input MoveNod
 			return 0, fmt.Errorf("%w: before node is not under target parent", ErrInvalidState)
 		}
 
-		shift := r.dbWithContext(ctx).
-			Model(&nodesEntity{}).
-			Where("library_id = ? AND sort_order >= ?", input.LibraryID, beforeNode.SortOrder).
-			Where("deleted_at IS NULL")
-		shift = applyParentFilter(shift, nodeParentFilter{ParentID: input.NewParentID})
-		if err := shift.Update("sort_order", gorm.Expr("sort_order + 1")).Error; err != nil {
+		q := r.query(ctx)
+		shift := q.Node.WithContext(ctx).
+			Where(
+				q.Node.LibraryID.Eq(toPGInt64(input.LibraryID)),
+				q.Node.SortOrder.Gte(beforeNode.SortOrder),
+			)
+		shift = r.applyParentCondition(shift, q, input.NewParentID)
+		if _, err := shift.Updates(map[string]any{
+			"sort_order": gorm.Expr("sort_order + 1"),
+		}); err != nil {
 			return 0, err
 		}
-		return beforeNode.SortOrder, nil
+		return int(beforeNode.SortOrder), nil
 	}
 
 	maxSort, err := r.maxSortOrder(ctx, input.LibraryID, input.NewParentID)
@@ -247,42 +268,42 @@ func (r *NodeRepository) resolveMoveSortOrder(ctx context.Context, input MoveNod
 	return maxSort + 15, nil
 }
 
-func (r *NodeRepository) findNodeModel(ctx context.Context, nodeID, libraryID uint64) (nodesEntity, error) {
-	var row nodesEntity
-	if err := r.dbWithContext(ctx).First(&row, "id = ? AND library_id = ?", nodeID, libraryID).Error; err != nil {
-		return nodesEntity{}, mapDBError(err)
-	}
-	return row, nil
-}
-
 func (r *NodeRepository) hasDuplicateName(ctx context.Context, name string, parentID, libraryID, excludeID uint64) (bool, error) {
-	query := r.dbWithContext(ctx).Model(&nodesEntity{}).
-		Where("name = ? AND library_id = ?", name, libraryID).
-		Where("deleted_at IS NULL")
-	query = applyParentFilter(query, nodeParentFilter{ParentID: parentID})
+	q := r.query(ctx)
+	query := q.Node.WithContext(ctx).
+		Where(
+			q.Node.Name.Eq(name),
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+		)
+	query = r.applyParentCondition(query, q, parentID)
 	if excludeID > 0 {
-		query = query.Where("id <> ?", excludeID)
+		query = query.Where(q.Node.ID.Neq(toPGInt64(excludeID)))
 	}
 
-	var count int64
-	if err := query.Count(&count).Error; err != nil {
+	count, err := query.Count()
+	if err != nil {
 		return false, err
 	}
 	return count > 0, nil
 }
 
 func (r *NodeRepository) maxSortOrder(ctx context.Context, libraryID, parentID uint64) (int, error) {
-	query := r.dbWithContext(ctx).Model(&nodesEntity{}).
-		Select("COALESCE(MAX(sort_order), 0)").
-		Where("library_id = ?", libraryID).
-		Where("deleted_at IS NULL")
-	query = applyParentFilter(query, nodeParentFilter{ParentID: parentID})
+	q := r.query(ctx)
+	query := q.Node.WithContext(ctx).
+		Where(q.Node.LibraryID.Eq(toPGInt64(libraryID)))
+	query = r.applyParentCondition(query, q, parentID)
 
-	var maxSort int
-	if err := query.Scan(&maxSort).Error; err != nil {
+	row, err := query.
+		Order(q.Node.SortOrder.Desc()).
+		Limit(1).
+		First()
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
 		return 0, err
 	}
-	return maxSort, nil
+	return int(row.SortOrder), nil
 }
 
 func (r *NodeRepository) isDescendant(ctx context.Context, nodeID, targetID, libraryID uint64) (bool, error) {
@@ -293,17 +314,9 @@ func (r *NodeRepository) isDescendant(ctx context.Context, nodeID, targetID, lib
 	return count > 0, nil
 }
 
-func nodeTypeCode(t domainnode.Type) int {
+func nodeTypeCode(t domainnode.Type) int16 {
 	if t == domainnode.TypeFile {
 		return nodeTypeFile
 	}
 	return nodeTypeDirectory
-}
-
-func normalizeParentID(parentID uint64) *uint64 {
-	if parentID == 0 {
-		return nil
-	}
-	value := parentID
-	return &value
 }

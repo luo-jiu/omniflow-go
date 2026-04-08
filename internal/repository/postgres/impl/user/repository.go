@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	domainuser "omniflow-go/internal/domain/user"
+	pgtx "omniflow-go/internal/repository/postgres/impl/txctx"
 	pgmodel "omniflow-go/internal/repository/postgres/model"
 	pgquery "omniflow-go/internal/repository/postgres/query"
-	pgtx "omniflow-go/internal/repository/postgres/txctx"
 
 	"gorm.io/gorm"
 )
@@ -48,8 +48,12 @@ func (r *UserRepository) dbWithContext(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx)
 }
 
+func (r *UserRepository) query(ctx context.Context) *pgquery.Query {
+	return pgquery.Use(r.dbWithContext(ctx))
+}
+
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (domainuser.User, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	row, err := q.User.WithContext(ctx).
 		Where(q.User.Username.Eq(username)).
@@ -61,7 +65,7 @@ func (r *UserRepository) FindByUsername(ctx context.Context, username string) (d
 }
 
 func (r *UserRepository) FindByID(ctx context.Context, userID uint64) (domainuser.User, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	row, err := q.User.WithContext(ctx).
 		Where(q.User.ID.Eq(int64(userID))).
@@ -73,7 +77,7 @@ func (r *UserRepository) FindByID(ctx context.Context, userID uint64) (domainuse
 }
 
 func (r *UserRepository) FindAuthByID(ctx context.Context, userID uint64) (UserAuth, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	row, err := q.User.WithContext(ctx).
 		Where(q.User.ID.Eq(int64(userID))).
@@ -88,7 +92,7 @@ func (r *UserRepository) FindAuthByID(ctx context.Context, userID uint64) (UserA
 }
 
 func (r *UserRepository) FindActiveByUsername(ctx context.Context, username string) (UserAuth, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	row, err := q.User.WithContext(ctx).
 		Where(
@@ -106,7 +110,7 @@ func (r *UserRepository) FindActiveByUsername(ctx context.Context, username stri
 }
 
 func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	count, err := q.User.WithContext(ctx).
 		Where(q.User.Username.Eq(username)).
@@ -138,7 +142,7 @@ func (r *UserRepository) Create(ctx context.Context, input CreateUserInput) (dom
 		Status:       int16(userStatusActive),
 	}
 
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 	if err := q.User.WithContext(ctx).Create(row); err != nil {
 		return domainuser.User{}, err
 	}
@@ -146,7 +150,7 @@ func (r *UserRepository) Create(ctx context.Context, input CreateUserInput) (dom
 }
 
 func (r *UserRepository) UpdateByID(ctx context.Context, userID uint64, updates map[string]any) (bool, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	info, err := q.User.WithContext(ctx).
 		Where(q.User.ID.Eq(int64(userID))).

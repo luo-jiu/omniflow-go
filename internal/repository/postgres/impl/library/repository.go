@@ -5,9 +5,9 @@ import (
 	"time"
 
 	domainlibrary "omniflow-go/internal/domain/library"
+	pgtx "omniflow-go/internal/repository/postgres/impl/txctx"
 	pgmodel "omniflow-go/internal/repository/postgres/model"
 	pgquery "omniflow-go/internal/repository/postgres/query"
-	pgtx "omniflow-go/internal/repository/postgres/txctx"
 
 	"gorm.io/gorm"
 )
@@ -34,8 +34,12 @@ func (r *LibraryRepository) dbWithContext(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx)
 }
 
+func (r *LibraryRepository) query(ctx context.Context) *pgquery.Query {
+	return pgquery.Use(r.dbWithContext(ctx))
+}
+
 func (r *LibraryRepository) ScrollByUser(ctx context.Context, userID, lastID uint64, size int) ([]domainlibrary.Library, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	do := q.Library.WithContext(ctx).
 		Where(q.Library.UserID.Eq(int64(userID))).
@@ -63,7 +67,7 @@ func (r *LibraryRepository) Create(ctx context.Context, userID uint64, name stri
 		Name:   name,
 	}
 
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 	if err := q.Library.WithContext(ctx).Create(row); err != nil {
 		return domainlibrary.Library{}, err
 	}
@@ -71,7 +75,7 @@ func (r *LibraryRepository) Create(ctx context.Context, userID uint64, name stri
 }
 
 func (r *LibraryRepository) UpdateName(ctx context.Context, id, userID uint64, name string, updatedAt time.Time) (bool, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	info, err := q.Library.WithContext(ctx).
 		Where(
@@ -89,7 +93,7 @@ func (r *LibraryRepository) UpdateName(ctx context.Context, id, userID uint64, n
 }
 
 func (r *LibraryRepository) SoftDelete(ctx context.Context, id, userID uint64, deletedAt time.Time) (bool, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	info, err := q.Library.WithContext(ctx).
 		Where(
@@ -104,7 +108,7 @@ func (r *LibraryRepository) SoftDelete(ctx context.Context, id, userID uint64, d
 }
 
 func (r *LibraryRepository) FindByID(ctx context.Context, id uint64) (domainlibrary.Library, error) {
-	q := pgquery.Use(r.dbWithContext(ctx))
+	q := r.query(ctx)
 
 	row, err := q.Library.WithContext(ctx).
 		Where(q.Library.ID.Eq(int64(id))).

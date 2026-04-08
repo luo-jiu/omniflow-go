@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	domainnode "omniflow-go/internal/domain/node"
+	pgmodel "omniflow-go/internal/repository/postgres/model"
 )
 
 // ListAllDescendants 查询节点整棵子树，并按深度与排序返回。
@@ -51,12 +52,19 @@ func (r *NodeRepository) ListAllDescendants(ctx context.Context, nodeID, library
 
 // ListDirectChildren 查询单层子节点，保持同级排序。
 func (r *NodeRepository) ListDirectChildren(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
-	var rows []nodesEntity
-	if err := r.dbWithContext(ctx).
-		Where("library_id = ? AND parent_id = ?", libraryID, nodeID).
-		Order("sort_order ASC").
-		Order("id ASC").
-		Find(&rows).Error; err != nil {
+	q := r.query(ctx)
+
+	rows, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.Eq(toPGInt64(nodeID)),
+		).
+		Order(
+			q.Node.SortOrder.Asc(),
+			q.Node.ID.Asc(),
+		).
+		Find()
+	if err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
@@ -66,8 +74,9 @@ func (r *NodeRepository) ListDirectChildren(ctx context.Context, nodeID, library
 	ids := make([]uint64, 0, len(rows))
 	order := make(map[uint64]int, len(rows))
 	for i, row := range rows {
-		ids = append(ids, row.ID)
-		order[row.ID] = i
+		id := toDomainUint64(row.ID)
+		ids = append(ids, id)
+		order[id] = i
 	}
 
 	nodes, err := r.loadNodesWithFileMeta(ctx, libraryID, ids, nil)
@@ -97,14 +106,18 @@ func (r *NodeRepository) ListAncestors(ctx context.Context, nodeID, libraryID ui
 
 // FindViewByID 查询单个节点并补齐文件元信息。
 func (r *NodeRepository) FindViewByID(ctx context.Context, nodeID, libraryID uint64) (domainnode.Node, error) {
-	var row nodesEntity
-	if err := r.dbWithContext(ctx).
-		Where("id = ? AND library_id = ?", nodeID, libraryID).
-		First(&row).Error; err != nil {
+	q := r.query(ctx)
+	row, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.ID.Eq(toPGInt64(nodeID)),
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+		).
+		First()
+	if err != nil {
 		return domainnode.Node{}, mapDBError(err)
 	}
 
-	nodes, err := r.loadNodesWithFileMeta(ctx, libraryID, []uint64{row.ID}, nil)
+	nodes, err := r.loadNodesWithFileMeta(ctx, libraryID, []uint64{toDomainUint64(row.ID)}, nil)
 	if err != nil {
 		return domainnode.Node{}, err
 	}
@@ -120,29 +133,34 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 		return []nodeWithSort{}, nil
 	}
 
-	var rows []nodesEntity
-	if err := r.dbWithContext(ctx).
-		Where("library_id = ? AND id IN ?", libraryID, ids).
-		Find(&rows).Error; err != nil {
+	q := r.query(ctx)
+	rows, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ID.In(toPGInt64Slice(ids)...),
+		).
+		Find()
+	if err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
 		return []nodeWithSort{}, nil
 	}
 
-	fileIDs := make([]uint64, 0, len(rows))
+	fileIDs := make([]int64, 0, len(rows))
 	assembled := make(map[uint64]nodeWithSort, len(rows))
 	for _, row := range rows {
+		nodeID := toDomainUint64(row.ID)
 		depth := 0
 		if depthByID != nil {
-			depth = depthByID[row.ID]
+			depth = depthByID[nodeID]
 		}
 
-		node := row.toDomainNode()
-		assembled[row.ID] = nodeWithSort{
+		node := toDomainNodeModel(row)
+		assembled[nodeID] = nodeWithSort{
 			Node:      node,
 			Depth:     depth,
-			SortOrder: row.SortOrder,
+			SortOrder: int(row.SortOrder),
 		}
 		if row.NodeType == nodeTypeFile {
 			fileIDs = append(fileIDs, row.ID)
@@ -157,32 +175,38 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 		return output, nil
 	}
 
-	var fileRows []nodeFilesEntity
-	if err := r.dbWithContext(ctx).
-		Where("library_id = ? AND file_id IN ?", libraryID, fileIDs).
-		Find(&fileRows).Error; err != nil {
+	fileRows, err := q.NodeFile.WithContext(ctx).
+		Where(
+			q.NodeFile.LibraryID.Eq(toPGInt64(libraryID)),
+			q.NodeFile.FileID.In(fileIDs...),
+		).
+		Find()
+	if err != nil {
 		return nil, err
 	}
 
-	storageIDs := make([]uint64, 0, len(fileRows))
-	fileByID := make(map[uint64]nodeFilesEntity, len(fileRows))
+	storageIDs := make([]int64, 0, len(fileRows))
+	fileByID := make(map[uint64]*pgmodel.NodeFile, len(fileRows))
 	for _, row := range fileRows {
-		fileByID[row.FileID] = row
+		fileByID[toDomainUint64(row.FileID)] = row
 		if row.StorageObjectID > 0 {
 			storageIDs = append(storageIDs, row.StorageObjectID)
 		}
 	}
 
-	storageByID := map[uint64]storageObjectsEntity{}
+	storageByID := map[uint64]*pgmodel.StorageObject{}
 	if len(storageIDs) > 0 {
-		var storageRows []storageObjectsEntity
-		if err := r.dbWithContext(ctx).
-			Where("library_id = ? AND id IN ?", libraryID, storageIDs).
-			Find(&storageRows).Error; err != nil {
+		storageRows, err := q.StorageObject.WithContext(ctx).
+			Where(
+				q.StorageObject.LibraryID.Eq(toPGInt64(libraryID)),
+				q.StorageObject.ID.In(storageIDs...),
+			).
+			Find()
+		if err != nil {
 			return nil, err
 		}
 		for _, row := range storageRows {
-			storageByID[row.ID] = row
+			storageByID[toDomainUint64(row.ID)] = row
 		}
 	}
 
@@ -192,9 +216,9 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 			continue
 		}
 
-		item.Node.MIMEType = fileRow.MIMEType
+		item.Node.MIMEType = derefString(fileRow.MimeType)
 		item.Node.FileSize = fileRow.FileSize
-		if storage, ok := storageByID[fileRow.StorageObjectID]; ok {
+		if storage, ok := storageByID[toDomainUint64(fileRow.StorageObjectID)]; ok {
 			item.Node.StorageKey = storage.ObjectKey
 		}
 		assembled[nodeID] = item

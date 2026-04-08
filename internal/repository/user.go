@@ -1,7 +1,7 @@
 package repository
 
 import (
-	userpg "omniflow-go/internal/repository/postgres/user"
+	userpg "omniflow-go/internal/repository/postgres/impl/user"
 
 	"gorm.io/gorm"
 )

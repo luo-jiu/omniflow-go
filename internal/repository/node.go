@@ -1,7 +1,7 @@
 package repository
 
 import (
-	nodepg "omniflow-go/internal/repository/postgres/node"
+	nodepg "omniflow-go/internal/repository/postgres/impl/node"
 
 	"gorm.io/gorm"
 )

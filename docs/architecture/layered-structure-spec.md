@@ -49,15 +49,24 @@ internal/
 
   repository/
     postgres/
-      user/
-        repository.go
-      library/
-        repository.go
-      node/
-        node_base.go
-        node_query.go
-        node_write.go
-        ...
+      gen/
+        main.go
+      model/
+        *.gen.go
+      query/
+        *.gen.go
+      impl/
+        txctx/
+          txctx.go
+        user/
+          repository.go
+        library/
+          repository.go
+        node/
+          node_base.go
+          node_query.go
+          node_write.go
+          ...
     redis/
       session/
         repository.go
@@ -139,7 +148,7 @@ internal/
 - 仓储函数统一通过 `dbWithContext(ctx)` 获取执行器：
   - `ctx` 中存在事务时自动复用事务；
   - 不存在事务时回落到默认 `db`。
-- 事务上下文通过 `repository/postgres/txctx` 传递。
+- 事务上下文通过 `repository/postgres/impl/txctx` 传递。
 - 避免在业务代码中大量显式 `WithTx(tx)` 串联调用，优先使用上下文感知方式。
 
 ### 6.5 SQL 编写规范
@@ -165,7 +174,7 @@ internal/
 
 1. `handler/auth` 解析请求。
 2. `usecase/auth` 编排登录流程。
-3. `repository/postgres/user` 校验用户凭证。
+3. `repository/postgres/impl/user` 校验用户凭证。
 4. `repository/redis/session` 维护会话 token。
 5. handler 返回统一响应结构。
 
@@ -196,7 +205,7 @@ internal/
 
 1. `auth/session`：先把 Redis 会话抽成 domain port + repository impl。
 2. `object/minio`：对象存储实现沉到底层仓储目录，并保留 provider 切换能力。
-3. `node`：按 `repository/postgres/node` 持续细化 query/command。
+3. `node`：按 `repository/postgres/impl/node` 持续细化 query/command。
 4. `library/user`：完成同样重组。
 5. 清理历史遗留目录与过渡实现。
 

@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	pgtx "omniflow-go/internal/repository/postgres/txctx"
+	pgtx "omniflow-go/internal/repository/postgres/impl/txctx"
 
 	"gorm.io/gorm"
 )
