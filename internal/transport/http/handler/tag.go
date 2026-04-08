@@ -19,7 +19,7 @@ func NewTagHandler(tagUseCase *usecase.TagUseCase) *TagHandler {
 // GetSearchTypes 返回前端可用的搜索类型标签。
 func (h *TagHandler) GetSearchTypes(ctx *gin.Context) {
 	if h.tagUseCase == nil {
-		Success(ctx, "PostgreSQL")
+		Success(ctx, "MySQL")
 		return
 	}
 	Success(ctx, h.tagUseCase.SearchType())

@@ -145,11 +145,7 @@ func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLin
 
 	expiry := query.Expiry
 	if expiry <= 0 {
-		expiry = 15 * time.Minute
-	}
-	maxExpiry := 7 * 24 * time.Hour
-	if expiry > maxExpiry {
-		expiry = maxExpiry
+		expiry = 60 * time.Minute
 	}
 
 	url, err := u.storage.GetPresignedURL(ctx, node.StorageKey, expiry)

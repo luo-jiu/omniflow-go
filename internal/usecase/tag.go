@@ -68,13 +68,13 @@ func NewTagUseCase(tags *repository.TagRepository, tx repository.Transactor) *Ta
 	return &TagUseCase{
 		tags:       tags,
 		tx:         tx,
-		searchType: "PostgreSQL",
+		searchType: "MySQL",
 	}
 }
 
 func (u *TagUseCase) SearchType() string {
 	if u == nil || u.searchType == "" {
-		return "PostgreSQL"
+		return "MySQL"
 	}
 	return u.searchType
 }

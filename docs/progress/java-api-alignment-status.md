@@ -12,8 +12,8 @@
 | 指标 | 数量 |
 |---|---:|
 | Java 接口总数 | 41 |
-| 已实现并已校对 | 36 |
-| 已实现待校对 | 5 |
+| 已实现并已校对 | 41 |
+| 已实现待校对 | 0 |
 | 未实现 | 0 |
 
 ## 全量清单
@@ -52,11 +52,11 @@
 | Node | GET | /api/v1/nodes/recycle/library/{libraryId} | 已实现并已校对 | 回收站顶层列表已补齐。 |
 | Node | PATCH | /api/v1/nodes/{ancestorId}/library/{libraryId}/restore | 已实现并已校对 | 恢复链路已补齐。 |
 | Node | DELETE | /api/v1/nodes/{ancestorId}/library/{libraryId}/hard | 已实现并已校对 | 彻底删除链路已补齐。 |
-| File | POST | /api/v1/files/upload | 已实现待校对 | 已有实现，待确认回包/错误语义。 |
-| File | GET | /api/v1/files/link | 已实现待校对 | 已有实现，待确认参数兼容。 |
-| Directory | POST | /api/v1/directory/upload | 已实现待校对 | 已有实现，待确认上传细节。 |
-| Directory | GET | /api/v1/directory/link | 已实现待校对 | 已有实现，待确认参数兼容。 |
-| Tag | GET | /api/v1/tags/search-types | 已实现待校对 | 已有实现，待确认返回值与 Java 一致。 |
+| File | POST | /api/v1/files/upload | 已实现并已校对 | 已对齐 path 默认值、上传后直接回预签名链接语义。 |
+| File | GET | /api/v1/files/link | 已实现并已校对 | 已对齐 file_name/path/expiry 参数语义与默认值。 |
+| Directory | POST | /api/v1/directory/upload | 已实现并已校对 | 已对齐上传建节点流程与失败补偿语义。 |
+| Directory | GET | /api/v1/directory/link | 已实现并已校对 | 已对齐 node_id/library_id/expiry 参数与默认时长语义。 |
+| Tag | GET | /api/v1/tags/search-types | 已实现并已校对 | 已对齐 Java 黑盒返回语义（MySQL）。 |
 | Tag | GET | /api/v1/tags | 已实现并已校对 | 已按 Java 逻辑支持 owner+global 查询与 type 过滤。 |
 | Tag | POST | /api/v1/tags | 已实现并已校对 | 已补齐 type/targetKey/color/enabled 等参数校验与唯一性检查。 |
 | Tag | PUT | /api/v1/tags/{tagId} | 已实现并已校对 | 已补齐 owner 约束更新、冲突检查与字段归一化。 |
@@ -64,6 +64,6 @@
 
 ## 下一步建议（按优先级）
 
-1. 对 `已实现待校对` 的 `file/directory` 与 `tags/search-types` 接口做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
-2. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
-3. 跟前端联调 `tags`，重点确认错误码与消息文案是否需要完全贴合 Java。
+1. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
+2. 跟前端做一轮全量冒烟联调（Auth/User/Library/Node/File/Directory/Tag）。
+3. 把联调发现的行为差异回灌到该表，维持持续可追踪。
