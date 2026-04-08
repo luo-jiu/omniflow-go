@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const defaultRootNodeName = "ROOT"
+const defaultRootNodeName = "根目录"
 
 // EnsureLibraryRootNodeID 返回资料库根节点 ID；若不存在则自动创建。
 func (r *NodeRepository) EnsureLibraryRootNodeID(ctx context.Context, libraryID uint64) (uint64, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -190,9 +191,14 @@ func (r *NodeRepository) MoveNode(ctx context.Context, input MoveNodeInput) erro
 	if err != nil {
 		return err
 	}
+	oldParentID := parentIDValue(node.ParentID)
 
 	if input.NewParentID == input.NodeID {
 		return fmt.Errorf("%w: node cannot be moved under itself", ErrInvalidState)
+	}
+
+	if err := r.lockMoveScope(ctx, input.LibraryID, oldParentID, input.NewParentID); err != nil {
+		return err
 	}
 
 	if input.NewParentID > 0 {
@@ -329,4 +335,32 @@ func nodeTypeCode(t domainnode.Type) int16 {
 		return nodeTypeFile
 	}
 	return nodeTypeDirectory
+}
+
+func (r *NodeRepository) lockMoveScope(ctx context.Context, libraryID, oldParentID, newParentID uint64) error {
+	scopes := []string{
+		fmt.Sprintf("nodes:move:parent:%d:%d", libraryID, oldParentID),
+		fmt.Sprintf("nodes:move:children:%d:%d", libraryID, oldParentID),
+		fmt.Sprintf("nodes:move:parent:%d:%d", libraryID, newParentID),
+		fmt.Sprintf("nodes:move:children:%d:%d", libraryID, newParentID),
+	}
+
+	unique := make([]string, 0, len(scopes))
+	seen := make(map[string]struct{}, len(scopes))
+	for _, scope := range scopes {
+		if _, ok := seen[scope]; ok {
+			continue
+		}
+		seen[scope] = struct{}{}
+		unique = append(unique, scope)
+	}
+	sort.Strings(unique)
+
+	db := r.dbWithContext(ctx)
+	for _, scope := range unique {
+		if err := db.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", scope).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

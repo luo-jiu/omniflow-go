@@ -74,32 +74,8 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
-// ReorderNode 根据请求参数执行节点重排或移动。
+// ReorderNode 与 Java 保持一致：当前为兼容保留接口（空实现）。
 func (h *NodeHandler) ReorderNode(ctx *gin.Context) {
-	var req moveNodeRequest
-	if !BindJSON(ctx, &req) {
-		return
-	}
-	if req.NodeID == 0 {
-		BadRequest(ctx, "nodeId is required")
-		return
-	}
-	if h.nodeUseCase == nil {
-		SuccessNoData(ctx)
-		return
-	}
-
-	if err := h.nodeUseCase.Move(ctx.Request.Context(), usecase.MoveNodeCommand{
-		Actor:        actorFromContext(ctx),
-		LibraryID:    req.LibraryID,
-		NodeID:       req.NodeID,
-		NewParentID:  req.NewParentID,
-		BeforeNodeID: req.BeforeNodeID,
-		Name:         strings.TrimSpace(req.Name),
-	}); err != nil {
-		HandleUseCaseError(ctx, err)
-		return
-	}
 	SuccessNoData(ctx)
 }
 

@@ -131,10 +131,15 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 
 	var created domainnode.Node
 	err := u.withinTx(ctx, func(txCtx context.Context) error {
+		parentID, err := u.resolveCreateParentID(txCtx, cmd.LibraryID, cmd.ParentID)
+		if err != nil {
+			return err
+		}
+
 		result, err := u.nodes.CreateNode(txCtx, repository.CreateNodeInput{
 			Name:            name,
 			Type:            cmd.Type,
-			ParentID:        cmd.ParentID,
+			ParentID:        parentID,
 			LibraryID:       cmd.LibraryID,
 			Ext:             strings.TrimSpace(cmd.Ext),
 			MIMEType:        strings.TrimSpace(cmd.MIMEType),
@@ -412,11 +417,19 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
 		return fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}
+	if cmd.NewParentID == 0 {
+		return fmt.Errorf("%w: new parent id is required", ErrInvalidArgument)
+	}
 	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
 		return err
 	}
 
 	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+		if cmd.BeforeNodeID > 0 && cmd.BeforeNodeID == cmd.NodeID {
+			// Java 语义：beforeNode 指向自己时直接视为 no-op。
+			return nil
+		}
+
 		if err := u.nodes.MoveNode(txCtx, repository.MoveNodeInput{
 			LibraryID:    cmd.LibraryID,
 			NodeID:       cmd.NodeID,
@@ -756,6 +769,39 @@ func normalizeTagMatchMode(rawMode string) string {
 		return "ALL"
 	}
 	return "ANY"
+}
+
+func (u *NodeUseCase) resolveCreateParentID(ctx context.Context, libraryID, parentID uint64) (uint64, error) {
+	if parentID == 0 {
+		return u.nodes.EnsureLibraryRootNodeID(ctx, libraryID)
+	}
+
+	parent, err := u.nodes.FindViewByID(ctx, parentID, libraryID)
+	if err == nil {
+		if parent.Type != domainnode.TypeDirectory {
+			return 0, fmt.Errorf("%w: target parent must be directory", ErrInvalidArgument)
+		}
+		return parentID, nil
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		return 0, err
+	}
+
+	rootID, rootErr := u.nodes.EnsureLibraryRootNodeID(ctx, libraryID)
+	if rootErr != nil {
+		return 0, rootErr
+	}
+	root, rootLoadErr := u.nodes.FindViewByID(ctx, rootID, libraryID)
+	if rootLoadErr != nil {
+		if errors.Is(rootLoadErr, repository.ErrNotFound) {
+			return 0, ErrNotFound
+		}
+		return 0, rootLoadErr
+	}
+	if root.Type != domainnode.TypeDirectory {
+		return 0, fmt.Errorf("%w: target parent must be directory", ErrInvalidArgument)
+	}
+	return rootID, nil
 }
 
 func normalizeSearchLimit(rawLimit int) int {

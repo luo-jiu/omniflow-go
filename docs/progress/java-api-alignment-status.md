@@ -12,8 +12,8 @@
 | 指标 | 数量 |
 |---|---:|
 | Java 接口总数 | 41 |
-| 已实现并已校对 | 22 |
-| 已实现待校对 | 19 |
+| 已实现并已校对 | 24 |
+| 已实现待校对 | 17 |
 | 未实现 | 0 |
 
 ## 全量清单
@@ -35,7 +35,7 @@
 | Library | POST | /api/v1/libraries | 已实现并已校对 | 创建流程已对齐。 |
 | Library | PUT | /api/v1/libraries/{id} | 已实现并已校对 | name/starred 更新语义已对齐。 |
 | Library | DELETE | /api/v1/libraries/{id} | 已实现并已校对 | 删除流程已对齐。 |
-| Node | POST | /api/v1/nodes | 已实现待校对 | 已有实现，待确认创建规则与校验细节。 |
+| Node | POST | /api/v1/nodes | 已实现并已校对 | 已对齐 parent 缺失/失效回退 root 的 Java 语义。 |
 | Node | GET | /api/v1/nodes/{nodeId} | 已实现并已校对 | 节点详情链路已补齐并对齐。 |
 | Node | GET | /api/v1/nodes/{nodeId}/descendants | 已实现待校对 | 已有实现，待确认排序/字段细节。 |
 | Node | GET | /api/v1/nodes/{nodeId}/children | 已实现待校对 | 已有实现，待确认排序/字段细节。 |
@@ -45,8 +45,8 @@
 | Node | GET | /api/v1/nodes/{nodeId}/path | 已实现待校对 | 已有实现，待确认路径字符串规则。 |
 | Node | PUT | /api/v1/nodes/{nodeId} | 已实现并已校对 | builtInType/archiveMode/viewMeta 已对齐。 |
 | Node | PATCH | /api/v1/nodes/{nodeId}/rename | 已实现并已校对 | 已支持 rename + 文件 ext 处理。 |
-| Node | PATCH | /api/v1/nodes | 已实现待校对 | 已有实现，但与 Java 的空实现语义待定。 |
-| Node | PATCH | /api/v1/nodes/{nodeId}/move | 已实现待校对 | 已有实现，待确认冲突/排序边界。 |
+| Node | PATCH | /api/v1/nodes | 已实现并已校对 | 已对齐为兼容保留空实现（与 Java 一致）。 |
+| Node | PATCH | /api/v1/nodes/{nodeId}/move | 已实现待校对 | 已补并发锁域和 beforeNode==nodeId 的 no-op，待继续校对排序细节。 |
 | Node | PATCH | /api/v1/nodes/{nodeId}/comic/sort-by-name | 已实现并已校对 | 已按 COMIC 目录排序语义补齐。 |
 | Node | DELETE | /api/v1/nodes/{ancestorId}/library/{libraryId} | 已实现并已校对 | Go 路由参数名使用 nodeId，行为等价。 |
 | Node | GET | /api/v1/nodes/recycle/library/{libraryId} | 已实现并已校对 | 回收站顶层列表已补齐。 |
@@ -64,6 +64,6 @@
 
 ## 下一步建议（按优先级）
 
-1. 对 `已实现待校对` 的 `node create/move/reorder` 做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
+1. 对 `已实现待校对` 的 `node move` 做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
 2. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
 3. 跟前端联调 `tags`，重点确认错误码与消息文案是否需要完全贴合 Java。
