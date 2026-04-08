@@ -12,8 +12,8 @@
 | 指标 | 数量 |
 |---|---:|
 | Java 接口总数 | 41 |
-| 已实现并已校对 | 30 |
-| 已实现待校对 | 11 |
+| 已实现并已校对 | 36 |
+| 已实现待校对 | 5 |
 | 未实现 | 0 |
 
 ## 全量清单
@@ -23,14 +23,14 @@
 | Auth | POST | /api/v1/auth/login | 已实现并已校对 | 登录返回结构已按 Java 契约对齐。 |
 | Auth | GET | /api/v1/auth/status | 已实现并已校对 | 状态校验链路已对齐。 |
 | Auth | DELETE | /api/v1/auth/logout | 已实现并已校对 | 已支持注销。 |
-| User | GET | /api/v1/user/{username} | 已实现待校对 | 已有实现，待联调确认字段细节。 |
-| User | GET | /api/v1/user/me | 已实现待校对 | 已有实现，待联调确认响应一致性。 |
-| User | GET | /api/v1/user/exists | 已实现待校对 | 已有实现。 |
+| User | GET | /api/v1/user/{username} | 已实现并已校对 | 已按 Java 语义返回不脱敏用户资料。 |
+| User | GET | /api/v1/user/me | 已实现并已校对 | 已按当前登录用户语义返回不脱敏资料。 |
+| User | GET | /api/v1/user/exists | 已实现并已校对 | 已对齐 Java 语义：返回“用户名是否可用（未占用）”。 |
 | User | POST | /api/v1/user | 已实现并已校对 | 注册入参与返回语义已对齐。 |
 | User | PUT | /api/v1/user/{id} | 已实现并已校对 | 更新语义已对齐。 |
-| User | PUT | /api/v1/user/me | 已实现待校对 | 已有实现，待确认边界行为。 |
-| User | PUT | /api/v1/user/me/password | 已实现待校对 | 已有实现，待确认错误码/提示细节。 |
-| User | POST | /api/v1/user/me/avatar | 已实现待校对 | 已有实现，待确认上传与响应细节。 |
+| User | PUT | /api/v1/user/me | 已实现并已校对 | 已按“仅本人更新”与更新后回包语义对齐。 |
+| User | PUT | /api/v1/user/me/password | 已实现并已校对 | 已对齐旧密码校验与“新旧密码不能相同”语义。 |
+| User | POST | /api/v1/user/me/avatar | 已实现并已校对 | 已对齐图片上传校验、对象键格式与头像 URL 过期策略。 |
 | Library | GET | /api/v1/libraries/scroll | 已实现并已校对 | 滚动分页语义已对齐。 |
 | Library | POST | /api/v1/libraries | 已实现并已校对 | 创建流程已对齐。 |
 | Library | PUT | /api/v1/libraries/{id} | 已实现并已校对 | name/starred 更新语义已对齐。 |
@@ -64,6 +64,6 @@
 
 ## 下一步建议（按优先级）
 
-1. 对 `已实现待校对` 的 `user me/password/avatar` 与 `file/directory` 接口做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
+1. 对 `已实现待校对` 的 `file/directory` 与 `tags/search-types` 接口做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
 2. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
 3. 跟前端联调 `tags`，重点确认错误码与消息文案是否需要完全贴合 Java。

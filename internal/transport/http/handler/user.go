@@ -69,7 +69,7 @@ func (h *UserHandler) GetActualUserByUsername(ctx *gin.Context) {
 	Success(ctx, user)
 }
 
-// HasUsername 校验用户名是否已存在。
+// HasUsername 校验用户名是否可用（与 Java 语义保持一致）。
 func (h *UserHandler) HasUsername(ctx *gin.Context) {
 	var query usernameExistsQuery
 	if !BindQuery(ctx, &query) {
@@ -77,11 +77,11 @@ func (h *UserHandler) HasUsername(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		Success(ctx, false)
+		Success(ctx, true)
 		return
 	}
 
-	ok, err := h.userUseCase.Exists(ctx.Request.Context(), query.Username)
+	ok, err := h.userUseCase.HasUsername(ctx.Request.Context(), query.Username)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return

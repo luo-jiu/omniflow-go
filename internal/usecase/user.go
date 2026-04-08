@@ -24,17 +24,19 @@ import (
 const (
 	userAvatarExtKey       = "avatarKey"
 	userAvatarLegacyExtKey = "avatar"
-	userAvatarURLExpiry    = 60 * time.Minute
+	userAvatarURLExpiry    = 24 * time.Hour
 )
 
 var allowedAvatarExtensions = map[string]struct{}{
 	".jpg":  {},
 	".jpeg": {},
 	".png":  {},
-	".webp": {},
 	".gif":  {},
 	".bmp":  {},
-	".svg":  {},
+	".webp": {},
+	".avif": {},
+	".heic": {},
+	".heif": {},
 }
 
 type RegisterUserCommand struct {
@@ -129,6 +131,15 @@ func (u *UserUseCase) Exists(ctx context.Context, username string) (bool, error)
 	}
 
 	return u.users.ExistsByUsername(ctx, username)
+}
+
+// HasUsername 与 Java 语义保持一致：返回“用户名是否可用（未被占用）”。
+func (u *UserUseCase) HasUsername(ctx context.Context, username string) (bool, error) {
+	exists, err := u.Exists(ctx, username)
+	if err != nil {
+		return false, err
+	}
+	return !exists, nil
 }
 
 func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (domainuser.User, error) {
@@ -308,13 +319,19 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 	}
 
 	extWithDot := strings.ToLower(filepath.Ext(strings.TrimSpace(cmd.FileName)))
-	if _, ok := allowedAvatarExtensions[extWithDot]; !ok {
-		return domainuser.User{}, fmt.Errorf("%w: avatar only supports jpg/png/webp/gif/bmp/svg", ErrInvalidArgument)
+	_, extAllowed := allowedAvatarExtensions[extWithDot]
+	contentType := strings.TrimSpace(cmd.ContentType)
+	imageByMIME := strings.HasPrefix(strings.ToLower(contentType), "image/")
+	if !extAllowed && !imageByMIME {
+		return domainuser.User{}, fmt.Errorf("%w: avatar only supports image files", ErrInvalidArgument)
 	}
 
-	contentType := strings.TrimSpace(cmd.ContentType)
+	resolvedExt := resolveAvatarUploadExt(extWithDot, contentType)
+	if resolvedExt == "" {
+		resolvedExt = ".bin"
+	}
 	if contentType == "" || contentType == "application/octet-stream" {
-		contentType = mime.TypeByExtension(extWithDot)
+		contentType = resolveAvatarContentType(resolvedExt)
 	}
 	if contentType == "" {
 		contentType = "application/octet-stream"
@@ -330,7 +347,7 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 
 	extJSON := parseUserExtJSON(existing.Ext)
 	oldAvatarKey := strings.TrimSpace(stringValue(extJSON[userAvatarExtKey]))
-	newAvatarKey := fmt.Sprintf("users/%d/avatar/%s%s", userID, uuid.NewString(), extWithDot)
+	newAvatarKey := buildAvatarStorageKey(userID, resolvedExt)
 
 	if err := u.storage.Upload(ctx, newAvatarKey, cmd.Content, cmd.FileSize, contentType); err != nil {
 		return domainuser.User{}, err
@@ -427,6 +444,67 @@ func (u *UserUseCase) resolveAvatarURL(ctx context.Context, extRaw string) strin
 		}
 	}
 	return strings.TrimSpace(stringValue(extJSON[userAvatarLegacyExtKey]))
+}
+
+func resolveAvatarUploadExt(extWithDot, contentType string) string {
+	if extWithDot != "" {
+		return extWithDot
+	}
+	contentType = strings.ToLower(strings.TrimSpace(contentType))
+	switch contentType {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/bmp":
+		return ".bmp"
+	case "image/webp":
+		return ".webp"
+	case "image/avif":
+		return ".avif"
+	case "image/heic":
+		return ".heic"
+	case "image/heif":
+		return ".heif"
+	default:
+		return ""
+	}
+}
+
+func resolveAvatarContentType(extWithDot string) string {
+	switch strings.ToLower(strings.TrimSpace(extWithDot)) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".bmp":
+		return "image/bmp"
+	case ".webp":
+		return "image/webp"
+	case ".avif":
+		return "image/avif"
+	case ".heic":
+		return "image/heic"
+	case ".heif":
+		return "image/heif"
+	default:
+		return mime.TypeByExtension(extWithDot)
+	}
+}
+
+func buildAvatarStorageKey(userID uint64, extWithDot string) string {
+	normalizedExt := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(extWithDot)), ".")
+	if normalizedExt == "" {
+		normalizedExt = "bin"
+	}
+
+	datePath := time.Now().UTC().Format("2006/01")
+	id := strings.ReplaceAll(uuid.NewString(), "-", "")
+	return fmt.Sprintf("user/%d/avatar/%s/%s.%s", userID, datePath, id, normalizedExt)
 }
 
 func parseUserExtJSON(raw string) map[string]any {
