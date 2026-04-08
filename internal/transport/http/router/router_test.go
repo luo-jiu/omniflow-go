@@ -99,3 +99,39 @@ func TestProtectedRouteRequiresAuthHeaders(t *testing.T) {
 		t.Fatalf("expected protected route to return 404 with auth, got %d", authedRecorder.Code)
 	}
 }
+
+func TestAuthStatusRouteRequiresAuthHeaders(t *testing.T) {
+	cfg := &config.Config{
+		App: config.App{
+			Name:    "omniflow-go",
+			Env:     "test",
+			Version: "0.1.0",
+		},
+		Server: config.Server{
+			Mode: "release",
+		},
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authorizer := authz.NewAllowAll()
+	auditSink := audit.NewLogSink(logger)
+
+	nodeUseCase := usecase.NewNodeUseCase(nil, nil, authorizer, auditSink)
+	healthHandler := httpHandler.NewHealthHandler(usecase.NewHealthUseCase(cfg))
+	authHandler := httpHandler.NewAuthHandler(usecase.NewAuthUseCase(nil, nil, auditSink))
+	userHandler := httpHandler.NewUserHandler(nil)
+	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, authorizer, auditSink))
+	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
+	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink))
+	fileHandler := httpHandler.NewFileHandler(nil)
+	tagHandler := httpHandler.NewTagHandler(nil)
+
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/status?username=test&token=test", nil)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected /api/v1/auth/status to return 401 without auth headers, got %d", recorder.Code)
+	}
+}

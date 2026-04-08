@@ -12,7 +12,6 @@ func buildAuthOptions(authHandler *handler.AuthHandler) middleware.AuthOptions {
 			"/healthz",
 			"/api/v1/health",
 			"/api/v1/auth/login",
-			"/api/v1/auth/status",
 			"/api/v1/user",
 			"/api/v1/user/exists",
 			"/api/v1/files/upload",

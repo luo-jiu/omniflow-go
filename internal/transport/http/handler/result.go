@@ -74,6 +74,8 @@ func HandleUseCaseError(ctx *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidArgument):
 		BadRequest(ctx, err.Error())
+	case errors.Is(err, usecase.ErrInvalidCredentials):
+		Unauthorized(ctx, err.Error())
 	case errors.Is(err, usecase.ErrUnauthorized):
 		Unauthorized(ctx, "")
 	case errors.Is(err, authz.ErrPermissionDenied):

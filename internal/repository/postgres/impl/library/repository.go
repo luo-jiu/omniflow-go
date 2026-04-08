@@ -75,6 +75,13 @@ func (r *LibraryRepository) Create(ctx context.Context, userID uint64, name stri
 }
 
 func (r *LibraryRepository) UpdateName(ctx context.Context, id, userID uint64, name string, updatedAt time.Time) (bool, error) {
+	return r.UpdateFields(ctx, id, userID, map[string]any{
+		"name":       name,
+		"updated_at": updatedAt,
+	})
+}
+
+func (r *LibraryRepository) UpdateFields(ctx context.Context, id, userID uint64, updates map[string]any) (bool, error) {
 	q := r.query(ctx)
 
 	info, err := q.Library.WithContext(ctx).
@@ -82,10 +89,7 @@ func (r *LibraryRepository) UpdateName(ctx context.Context, id, userID uint64, n
 			q.Library.ID.Eq(int64(id)),
 			q.Library.UserID.Eq(int64(userID)),
 		).
-		Updates(map[string]any{
-			"name":       name,
-			"updated_at": updatedAt,
-		})
+		Updates(updates)
 	if err != nil {
 		return false, err
 	}

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"omniflow-go/internal/actor"
-	domainuser "omniflow-go/internal/domain/user"
 	"omniflow-go/internal/usecase"
 
 	"github.com/gin-gonic/gin"
@@ -30,9 +29,17 @@ type authStatusQuery struct {
 }
 
 type loginResponse struct {
-	Token    string         `json:"token"`
-	Username string         `json:"username"`
-	UserInfo map[string]any `json:"userInfo"`
+	Token    string        `json:"token"`
+	Username string        `json:"username"`
+	UserInfo loginUserInfo `json:"userInfo"`
+}
+
+type loginUserInfo struct {
+	ID       uint64 `json:"id"`
+	Username string `json:"username"`
+	Nickname string `json:"nickname"`
+	Avatar   string `json:"avatar,omitempty"`
+	Ext      string `json:"ext,omitempty"`
 }
 
 // Login 使用用户名密码登录，并返回 token 与用户信息。
@@ -62,12 +69,20 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 		return
 	}
 
+	responseUsername := strings.TrimSpace(result.User.Username)
+	if responseUsername == "" {
+		responseUsername = username
+	}
+
 	Success(ctx, loginResponse{
 		Token:    result.Token,
-		Username: username,
-		UserInfo: map[string]any{
-			"username": username,
-			"status":   domainuser.StatusActive,
+		Username: responseUsername,
+		UserInfo: loginUserInfo{
+			ID:       result.User.ID,
+			Username: responseUsername,
+			Nickname: result.User.Nickname,
+			Avatar:   result.User.Avatar,
+			Ext:      result.User.Ext,
 		},
 	})
 }

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"omniflow-go/internal/actor"
 	"omniflow-go/internal/audit"
 	domainauth "omniflow-go/internal/domain/auth"
+	domainuser "omniflow-go/internal/domain/user"
 	"omniflow-go/internal/repository"
 
 	"github.com/google/uuid"
@@ -25,6 +27,7 @@ type LoginCommand struct {
 
 type LoginResult struct {
 	Token string
+	User  domainuser.User
 }
 
 type AuthUseCase struct {
@@ -57,14 +60,14 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			_ = u.RecordAttempt(ctx, cmd.Actor, false)
-			return LoginResult{}, ErrInvalidCredentials
+			return LoginResult{}, fmt.Errorf("%w: username or password is invalid", ErrInvalidCredentials)
 		}
 		return LoginResult{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(authUser.PasswordHash), []byte(password)); err != nil {
 		_ = u.RecordAttempt(ctx, cmd.Actor, false)
-		return LoginResult{}, ErrInvalidCredentials
+		return LoginResult{}, fmt.Errorf("%w: username or password is invalid", ErrInvalidCredentials)
 	}
 
 	token, err := u.sessions.FindFirstToken(ctx, username)
@@ -72,13 +75,17 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 		return LoginResult{}, err
 	}
 	if token != "" {
+		userInfo := normalizeLoginUser(authUser.User)
 		_ = u.RecordAttempt(ctx, cmd.Actor, true)
 		_ = u.writeAudit(ctx, cmd.Actor, "auth.login", true, map[string]any{
 			"username": username,
 			"token":    token,
 			"cached":   true,
 		})
-		return LoginResult{Token: token}, nil
+		return LoginResult{
+			Token: token,
+			User:  userInfo,
+		}, nil
 	}
 
 	token = uuid.NewString()
@@ -86,20 +93,25 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 		return LoginResult{}, err
 	}
 
+	userInfo := normalizeLoginUser(authUser.User)
 	_ = u.RecordAttempt(ctx, cmd.Actor, true)
 	_ = u.writeAudit(ctx, cmd.Actor, "auth.login", true, map[string]any{
 		"username": username,
 		"token":    token,
 		"cached":   false,
 	})
-	return LoginResult{Token: token}, nil
+	return LoginResult{
+		Token: token,
+		User:  userInfo,
+	}, nil
 }
 
 func (u *AuthUseCase) Check(ctx context.Context, username, token string) (bool, error) {
 	username = strings.TrimSpace(username)
 	token = strings.TrimSpace(token)
 	if username == "" || token == "" {
-		return false, fmt.Errorf("%w: username and token are required", ErrInvalidArgument)
+		// 对齐 Java 黑盒语义：参数为空时直接返回未登录，而不是参数错误。
+		return false, nil
 	}
 
 	if u.sessions == nil {
@@ -211,4 +223,46 @@ func (u *AuthUseCase) writeAudit(ctx context.Context, principal actor.Actor, act
 		OccurredAt: time.Now().UTC(),
 		Metadata:   metadata,
 	})
+}
+
+func normalizeLoginUser(user domainuser.User) domainuser.User {
+	user.Username = strings.TrimSpace(user.Username)
+	user.Nickname = strings.TrimSpace(user.Nickname)
+	if user.Nickname == "" {
+		user.Nickname = user.Username
+	}
+	user.Avatar = resolveLoginAvatar(user.Ext)
+	return user
+}
+
+func resolveLoginAvatar(extRaw string) string {
+	ext := parseExtJSON(extRaw)
+	if avatar := strings.TrimSpace(stringFromAny(ext["avatar"])); avatar != "" {
+		return avatar
+	}
+	return ""
+}
+
+func parseExtJSON(raw string) map[string]any {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return map[string]any{}
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		return map[string]any{}
+	}
+	if parsed == nil {
+		return map[string]any{}
+	}
+	return parsed
+}
+
+func stringFromAny(v any) string {
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
 }

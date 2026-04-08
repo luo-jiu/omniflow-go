@@ -30,7 +30,8 @@ type createLibraryRequest struct {
 }
 
 type updateLibraryRequest struct {
-	Name string `json:"name" binding:"required"`
+	Name    *string `json:"name"`
+	Starred *int    `json:"starred"`
 }
 
 // Scroll 分页查询当前用户的资料库列表。
@@ -97,15 +98,26 @@ func (h *LibraryHandler) Update(ctx *gin.Context) {
 	if !BindJSON(ctx, &req) {
 		return
 	}
+	if req.Name == nil && req.Starred == nil {
+		BadRequest(ctx, "name or starred is required")
+		return
+	}
 
 	if h.libraryUseCase == nil {
 		SuccessNoData(ctx)
 		return
 	}
 
+	var name *string
+	if req.Name != nil {
+		trimmed := strings.TrimSpace(*req.Name)
+		name = &trimmed
+	}
+
 	if err := h.libraryUseCase.Update(ctx.Request.Context(), uri.ID, usecase.UpdateLibraryCommand{
-		Actor: actorFromContext(ctx),
-		Name:  strings.TrimSpace(req.Name),
+		Actor:   actorFromContext(ctx),
+		Name:    name,
+		Starred: req.Starred,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return

@@ -31,8 +31,9 @@ type CreateLibraryCommand struct {
 }
 
 type UpdateLibraryCommand struct {
-	Actor actor.Actor
-	Name  string
+	Actor   actor.Actor
+	Name    *string
+	Starred *int
 }
 
 type DeleteLibraryCommand struct {
@@ -117,9 +118,11 @@ func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (
 }
 
 func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibraryCommand) error {
-	name := strings.TrimSpace(cmd.Name)
-	if id == 0 || name == "" {
-		return fmt.Errorf("%w: id and name are required", ErrInvalidArgument)
+	if id == 0 {
+		return fmt.Errorf("%w: id is required", ErrInvalidArgument)
+	}
+	if cmd.Name == nil && cmd.Starred == nil {
+		return fmt.Errorf("%w: name or starred is required", ErrInvalidArgument)
 	}
 	if err := u.AuthorizeRead(ctx, cmd.Actor, id); err != nil {
 		return err
@@ -130,7 +133,24 @@ func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibrar
 		return err
 	}
 
-	updated, err := u.libraries.UpdateName(ctx, id, userID, name, time.Now().UTC())
+	updates := map[string]any{
+		"updated_at": time.Now().UTC(),
+	}
+	if cmd.Name != nil {
+		name := strings.TrimSpace(*cmd.Name)
+		if name == "" {
+			return fmt.Errorf("%w: name cannot be empty", ErrInvalidArgument)
+		}
+		updates["name"] = name
+	}
+	if cmd.Starred != nil {
+		if *cmd.Starred != 0 && *cmd.Starred != 1 {
+			return fmt.Errorf("%w: starred only supports 0 or 1", ErrInvalidArgument)
+		}
+		updates["starred"] = (*cmd.Starred == 1)
+	}
+
+	updated, err := u.libraries.UpdateFields(ctx, id, userID, updates)
 	if err != nil {
 		return err
 	}
@@ -140,7 +160,8 @@ func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibrar
 
 	_ = u.writeAudit(ctx, cmd.Actor, "library.update", true, map[string]any{
 		"library_id": id,
-		"name":       name,
+		"name":       updates["name"],
+		"starred":    updates["starred"],
 	})
 	return nil
 }
