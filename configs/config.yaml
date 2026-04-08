@@ -1,0 +1,32 @@
+app:
+  name: omniflow-go
+  env: local
+  version: 0.1.0
+
+server:
+  host: 0.0.0.0
+  port: 8848
+  mode: debug
+  read_timeout: 10s
+  write_timeout: 15s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+
+database:
+  dsn: postgres://postgres:123456@127.0.0.1:5432/omniflow?sslmode=disable
+  max_open_conns: 20
+  max_idle_conns: 10
+  conn_max_lifetime: 30m
+  log_level: warn
+
+redis:
+  addr: 127.0.0.1:6379
+  password: ""
+  db: 0
+
+minio:
+  endpoint: 127.0.0.1:9000
+  access_key: admin
+  secret_key: admin123
+  use_ssl: false
+  bucket: my-bucket

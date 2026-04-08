@@ -1,0 +1,6 @@
+.cache/
+bin/
+dist/
+.idea/
+/server
+.DS_Store
