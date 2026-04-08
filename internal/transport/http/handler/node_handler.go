@@ -27,6 +27,10 @@ type deleteNodeURI struct {
 	LibraryID  uint64 `uri:"libraryId" binding:"required"`
 }
 
+type libraryRootURI struct {
+	LibraryID uint64 `uri:"libraryId" binding:"required"`
+}
+
 type createNodeRequest struct {
 	Name       string `json:"name" binding:"required"`
 	Ext        string `json:"ext"`

@@ -2,6 +2,26 @@ package handler
 
 import "github.com/gin-gonic/gin"
 
+// GetLibraryRootNodeID 获取资料库根节点 ID；当根节点缺失时由后端自动补齐。
+func (h *NodeHandler) GetLibraryRootNodeID(ctx *gin.Context) {
+	var uri libraryRootURI
+	if !BindURI(ctx, &uri) {
+		return
+	}
+
+	if h.nodeUseCase == nil {
+		Success(ctx, uint64(0))
+		return
+	}
+
+	rootNodeID, err := h.nodeUseCase.GetLibraryRootNodeID(ctx.Request.Context(), uri.LibraryID)
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, rootNodeID)
+}
+
 // GetAllDescendants 获取当前节点及其完整子树。
 func (h *NodeHandler) GetAllDescendants(ctx *gin.Context) {
 	nodeID, libraryID, ok := h.parseNodeScope(ctx)

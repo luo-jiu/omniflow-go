@@ -206,6 +206,18 @@ func (u *NodeUseCase) GetFullPath(ctx context.Context, nodeID, libraryID uint64)
 	return b.String(), nil
 }
 
+func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, libraryID uint64) (uint64, error) {
+	if libraryID == 0 {
+		return 0, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
+	}
+
+	rootNodeID, err := u.nodes.EnsureLibraryRootNodeID(ctx, libraryID)
+	if err != nil {
+		return 0, err
+	}
+	return rootNodeID, nil
+}
+
 func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeCommand) error {
 	if nodeID == 0 || cmd.LibraryID == 0 {
 		return fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
