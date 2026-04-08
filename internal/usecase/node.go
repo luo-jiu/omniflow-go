@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -61,7 +62,24 @@ type MoveNodeCommand struct {
 	Name         string
 }
 
+type SortComicChildrenCommand struct {
+	Actor  actor.Actor
+	NodeID uint64
+}
+
 type DeleteNodeTreeCommand struct {
+	Actor     actor.Actor
+	LibraryID uint64
+	NodeID    uint64
+}
+
+type RestoreNodeTreeCommand struct {
+	Actor     actor.Actor
+	LibraryID uint64
+	NodeID    uint64
+}
+
+type HardDeleteNodeTreeCommand struct {
 	Actor     actor.Actor
 	LibraryID uint64
 	NodeID    uint64
@@ -399,6 +417,53 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 	return nil
 }
 
+func (u *NodeUseCase) SortComicChildrenByName(ctx context.Context, cmd SortComicChildrenCommand) error {
+	if cmd.NodeID == 0 {
+		return fmt.Errorf("%w: node id is required", ErrInvalidArgument)
+	}
+
+	node, err := u.GetNodeDetail(ctx, cmd.NodeID)
+	if err != nil {
+		return err
+	}
+	if node.Type != domainnode.TypeDirectory {
+		return fmt.Errorf("%w: target node must be a directory", ErrInvalidArgument)
+	}
+
+	builtInType := strings.ToUpper(strings.TrimSpace(node.BuiltInType))
+	if builtInType == "" {
+		builtInType = "DEF"
+	}
+	if builtInType != "COMIC" {
+		return fmt.Errorf("%w: only COMIC directories support name sorting", ErrInvalidArgument)
+	}
+
+	if err := u.AuthorizeMutation(ctx, cmd.Actor, node.LibraryID); err != nil {
+		return err
+	}
+
+	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+		if err := u.nodes.SortDirectChildrenByName(txCtx, cmd.NodeID, node.LibraryID, time.Now().UTC()); err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			if errors.Is(err, repository.ErrInvalidState) {
+				return fmt.Errorf("%w: invalid comic sort request", ErrInvalidArgument)
+			}
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	_ = u.writeAudit(ctx, cmd.Actor, "node.sort_comic_children", true, map[string]any{
+		"node_id":    cmd.NodeID,
+		"library_id": node.LibraryID,
+	})
+	return nil
+}
+
 func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeTreeCommand) (bool, error) {
 	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
 		return false, fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
@@ -430,6 +495,129 @@ func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeT
 		"file_nodes":    deleteResult.FileNodeCount,
 	})
 	return true, nil
+}
+
+func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) ([]domainnode.RecycleItem, error) {
+	if libraryID == 0 {
+		return nil, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
+	}
+
+	rows, err := u.nodes.ListDeletedNodes(ctx, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []domainnode.RecycleItem{}, nil
+	}
+
+	deletedSet := make(map[uint64]struct{}, len(rows))
+	childrenByParent := make(map[uint64][]uint64, len(rows))
+	for _, item := range rows {
+		deletedSet[item.ID] = struct{}{}
+	}
+	for _, item := range rows {
+		if item.ParentID == 0 {
+			continue
+		}
+		if _, ok := deletedSet[item.ParentID]; !ok {
+			continue
+		}
+		childrenByParent[item.ParentID] = append(childrenByParent[item.ParentID], item.ID)
+	}
+
+	topLevel := make([]domainnode.RecycleItem, 0, len(rows))
+	for _, item := range rows {
+		if item.ParentID == 0 {
+			topLevel = append(topLevel, item)
+			continue
+		}
+		if _, ok := deletedSet[item.ParentID]; !ok {
+			topLevel = append(topLevel, item)
+		}
+	}
+
+	for i := range topLevel {
+		subtreeCount := countDeletedSubtree(childrenByParent, topLevel[i].ID)
+		if subtreeCount > 1 {
+			topLevel[i].DeletedDescendantCount = subtreeCount - 1
+		}
+	}
+
+	sort.Slice(topLevel, func(i, j int) bool {
+		if !topLevel[i].DeletedAt.Equal(topLevel[j].DeletedAt) {
+			return topLevel[i].DeletedAt.After(topLevel[j].DeletedAt)
+		}
+		return topLevel[i].ID > topLevel[j].ID
+	})
+	return topLevel, nil
+}
+
+func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNodeTreeCommand) (bool, error) {
+	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
+		return false, fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
+		return false, err
+	}
+
+	var ok bool
+	err := u.withinTx(ctx, func(txCtx context.Context) error {
+		result, err := u.nodes.RestoreTree(txCtx, cmd.NodeID, cmd.LibraryID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			if errors.Is(err, repository.ErrConflict) {
+				return ErrConflict
+			}
+			if errors.Is(err, repository.ErrInvalidState) {
+				return fmt.Errorf("%w: invalid node restore request", ErrInvalidArgument)
+			}
+			return err
+		}
+		ok = result
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	_ = u.writeAudit(ctx, cmd.Actor, "node.restore_tree", true, map[string]any{
+		"node_id":    cmd.NodeID,
+		"library_id": cmd.LibraryID,
+	})
+	return ok, nil
+}
+
+func (u *NodeUseCase) HardDeleteNodeAndChildren(ctx context.Context, cmd HardDeleteNodeTreeCommand) (bool, error) {
+	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
+		return false, fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
+		return false, err
+	}
+
+	var ok bool
+	err := u.withinTx(ctx, func(txCtx context.Context) error {
+		result, err := u.nodes.HardDeleteTree(txCtx, cmd.NodeID, cmd.LibraryID)
+		if err != nil {
+			if errors.Is(err, repository.ErrInvalidState) {
+				return fmt.Errorf("%w: invalid node hard delete request", ErrInvalidArgument)
+			}
+			return err
+		}
+		ok = result
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	_ = u.writeAudit(ctx, cmd.Actor, "node.hard_delete_tree", true, map[string]any{
+		"node_id":    cmd.NodeID,
+		"library_id": cmd.LibraryID,
+	})
+	return ok, nil
 }
 
 func (u *NodeUseCase) findNodeView(ctx context.Context, nodeID, libraryID uint64) (domainnode.Node, error) {
@@ -494,4 +682,25 @@ func (u *NodeUseCase) writeAudit(ctx context.Context, principal actor.Actor, act
 		OccurredAt: time.Now().UTC(),
 		Metadata:   metadata,
 	})
+}
+
+func countDeletedSubtree(childrenByParent map[uint64][]uint64, rootID uint64) int {
+	if rootID == 0 {
+		return 0
+	}
+
+	count := 0
+	stack := []uint64{rootID}
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		current := stack[last]
+		stack = stack[:last]
+		count++
+
+		children := childrenByParent[current]
+		if len(children) > 0 {
+			stack = append(stack, children...)
+		}
+	}
+	return count
 }

@@ -61,6 +61,19 @@ WITH RECURSIVE sub AS (
 SELECT COUNT(1)
 FROM sub
 WHERE id = ?`
+
+	sqlListSubtreeNodeIDsAny = `
+WITH RECURSIVE sub AS (
+    SELECT id
+    FROM nodes
+    WHERE id = ? AND library_id = ?
+    UNION ALL
+    SELECT n.id
+    FROM nodes n
+    JOIN sub s ON n.parent_id = s.id
+    WHERE n.library_id = ?
+)
+SELECT id FROM sub`
 )
 
 // scanRaw 统一执行 Raw SQL 查询，避免方法体里重复样板代码。

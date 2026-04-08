@@ -145,6 +145,17 @@ func (r *NodeRepository) findNodeModelByID(ctx context.Context, nodeID uint64) (
 	return row, nil
 }
 
+func (r *NodeRepository) findNodeModelIncludingDeleted(ctx context.Context, nodeID, libraryID uint64) (*pgmodel.Node, error) {
+	db := r.dbWithContext(ctx).Unscoped()
+	var row pgmodel.Node
+	if err := db.
+		Where("id = ? AND library_id = ?", toPGInt64(nodeID), toPGInt64(libraryID)).
+		First(&row).Error; err != nil {
+		return nil, mapDBError(err)
+	}
+	return &row, nil
+}
+
 func (r *NodeRepository) applyParentCondition(do pgquery.INodeDo, q *pgquery.Query, parentID uint64) pgquery.INodeDo {
 	if parentID == 0 {
 		return do.Where(q.Node.ParentID.IsNull())

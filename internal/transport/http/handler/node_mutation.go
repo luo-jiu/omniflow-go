@@ -137,6 +137,28 @@ func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
+// SortComicChildrenByName 对 COMIC 目录的直接子节点按名称重排。
+func (h *NodeHandler) SortComicChildrenByName(ctx *gin.Context) {
+	var uri nodeURI
+	if !BindURI(ctx, &uri) {
+		return
+	}
+
+	if h.nodeUseCase == nil {
+		SuccessNoData(ctx)
+		return
+	}
+
+	if err := h.nodeUseCase.SortComicChildrenByName(ctx.Request.Context(), usecase.SortComicChildrenCommand{
+		Actor:  actorFromContext(ctx),
+		NodeID: uri.NodeID,
+	}); err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	SuccessNoData(ctx)
+}
+
 // DeleteNodeAndChildren 删除指定祖先节点及其子树。
 func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
 	var uri deleteNodeURI
@@ -152,7 +174,7 @@ func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
 	ok, err := h.nodeUseCase.DeleteNodeAndChildren(ctx.Request.Context(), usecase.DeleteNodeTreeCommand{
 		Actor:     actorFromContext(ctx),
 		LibraryID: uri.LibraryID,
-		NodeID:    uri.AncestorID,
+		NodeID:    uri.NodeID,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

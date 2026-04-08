@@ -23,8 +23,8 @@ type nodeLibraryQuery struct {
 }
 
 type deleteNodeURI struct {
-	AncestorID uint64 `uri:"ancestorId" binding:"required"`
-	LibraryID  uint64 `uri:"libraryId" binding:"required"`
+	NodeID    uint64 `uri:"nodeId" binding:"required"`
+	LibraryID uint64 `uri:"libraryId" binding:"required"`
 }
 
 type libraryRootURI struct {
