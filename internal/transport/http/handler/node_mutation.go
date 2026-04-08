@@ -33,9 +33,9 @@ func (h *NodeHandler) UpdateNode(ctx *gin.Context) {
 
 	if err := h.nodeUseCase.Update(ctx.Request.Context(), uri.NodeID, usecase.UpdateNodeCommand{
 		Actor:       actorFromContext(ctx),
-		LibraryID:   req.LibraryID,
 		BuiltInType: builtInPtr,
 		ArchiveMode: req.ArchiveMode,
+		ViewMeta:    req.ViewMeta,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -64,9 +64,9 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 	}
 
 	if err := h.nodeUseCase.Rename(ctx.Request.Context(), uri.NodeID, usecase.RenameNodeCommand{
-		Actor:     actorFromContext(ctx),
-		LibraryID: req.LibraryID,
-		Name:      strings.TrimSpace(req.Name),
+		Actor: actorFromContext(ctx),
+		Name:  strings.TrimSpace(req.Name),
+		Ext:   req.Ext,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return

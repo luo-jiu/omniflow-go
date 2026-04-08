@@ -10,6 +10,7 @@ func registerNodeRoutes(api *gin.RouterGroup, nodeHandler *handler.NodeHandler) 
 	// 节点资源
 	api.POST("/nodes", nodeHandler.CreateNode)
 	api.GET("/nodes/library/:libraryId/root", nodeHandler.GetLibraryRootNodeID)
+	api.GET("/nodes/:nodeId", nodeHandler.GetNodeDetail)
 	api.GET("/nodes/:nodeId/descendants", nodeHandler.GetAllDescendants)
 	api.GET("/nodes/:nodeId/children", nodeHandler.GetDirectChildren)
 	api.GET("/nodes/:nodeId/ancestors", nodeHandler.GetAncestors)

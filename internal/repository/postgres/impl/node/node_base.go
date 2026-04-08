@@ -134,6 +134,17 @@ func (r *NodeRepository) findNodeModel(ctx context.Context, nodeID, libraryID ui
 	return row, nil
 }
 
+func (r *NodeRepository) findNodeModelByID(ctx context.Context, nodeID uint64) (*pgmodel.Node, error) {
+	q := r.query(ctx)
+	row, err := q.Node.WithContext(ctx).
+		Where(q.Node.ID.Eq(toPGInt64(nodeID))).
+		First()
+	if err != nil {
+		return nil, mapDBError(err)
+	}
+	return row, nil
+}
+
 func (r *NodeRepository) applyParentCondition(do pgquery.INodeDo, q *pgquery.Query, parentID uint64) pgquery.INodeDo {
 	if parentID == 0 {
 		return do.Where(q.Node.ParentID.IsNull())

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,15 +41,15 @@ type CreateNodeCommand struct {
 
 type UpdateNodeCommand struct {
 	Actor       actor.Actor
-	LibraryID   uint64
 	BuiltInType *string
 	ArchiveMode *int
+	ViewMeta    *string
 }
 
 type RenameNodeCommand struct {
-	Actor     actor.Actor
-	LibraryID uint64
-	Name      string
+	Actor actor.Actor
+	Name  string
+	Ext   *string
 }
 
 type MoveNodeCommand struct {
@@ -229,20 +230,46 @@ func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, libraryID uint64
 	return rootNodeID, nil
 }
 
-func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeCommand) error {
-	if nodeID == 0 || cmd.LibraryID == 0 {
-		return fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
+func (u *NodeUseCase) GetNodeDetail(ctx context.Context, nodeID uint64) (domainnode.Node, error) {
+	if nodeID == 0 {
+		return domainnode.Node{}, fmt.Errorf("%w: node id is required", ErrInvalidArgument)
 	}
-	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
+
+	row, err := u.nodes.FindViewByNodeID(ctx, nodeID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return domainnode.Node{}, ErrNotFound
+		}
+		return domainnode.Node{}, err
+	}
+	return row, nil
+}
+
+func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeCommand) error {
+	if nodeID == 0 {
+		return fmt.Errorf("%w: node id is required", ErrInvalidArgument)
+	}
+
+	node, err := u.GetNodeDetail(ctx, nodeID)
+	if err != nil {
 		return err
 	}
-	if _, err := u.findNodeView(ctx, nodeID, cmd.LibraryID); err != nil {
+	if err := u.AuthorizeMutation(ctx, cmd.Actor, node.LibraryID); err != nil {
 		return err
 	}
 
 	updates := map[string]any{}
 	if cmd.BuiltInType != nil {
-		updates["built_in_type"] = strings.TrimSpace(*cmd.BuiltInType)
+		builtInType := strings.TrimSpace(*cmd.BuiltInType)
+		if builtInType == "" {
+			builtInType = strings.TrimSpace(node.BuiltInType)
+			if builtInType == "" {
+				builtInType = "DEF"
+			}
+		} else {
+			builtInType = strings.ToUpper(builtInType)
+		}
+		updates["built_in_type"] = builtInType
 	}
 	if cmd.ArchiveMode != nil {
 		if *cmd.ArchiveMode != 0 && *cmd.ArchiveMode != 1 {
@@ -250,12 +277,22 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 		}
 		updates["archive_mode"] = (*cmd.ArchiveMode == 1)
 	}
+	if cmd.ViewMeta != nil {
+		viewMeta := strings.TrimSpace(*cmd.ViewMeta)
+		if viewMeta == "" {
+			viewMeta = "{}"
+		}
+		if !json.Valid([]byte(viewMeta)) {
+			return fmt.Errorf("%w: viewMeta must be valid json", ErrInvalidArgument)
+		}
+		updates["view_meta"] = viewMeta
+	}
 	if len(updates) == 0 {
 		return nil
 	}
 	updates["updated_at"] = time.Now().UTC()
 
-	ok, err := u.nodes.UpdateNodeFields(ctx, nodeID, cmd.LibraryID, updates)
+	ok, err := u.nodes.UpdateNodeFields(ctx, nodeID, node.LibraryID, updates)
 	if err != nil {
 		if errors.Is(err, repository.ErrInvalidState) {
 			return fmt.Errorf("%w: invalid node update request", ErrInvalidArgument)
@@ -268,22 +305,33 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 
 	_ = u.writeAudit(ctx, cmd.Actor, "node.update", true, map[string]any{
 		"node_id":    nodeID,
-		"library_id": cmd.LibraryID,
+		"library_id": node.LibraryID,
 	})
 	return nil
 }
 
 func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeCommand) error {
 	newName := strings.TrimSpace(cmd.Name)
-	if nodeID == 0 || cmd.LibraryID == 0 || newName == "" {
-		return fmt.Errorf("%w: node id, library id and name are required", ErrInvalidArgument)
+	if nodeID == 0 || newName == "" {
+		return fmt.Errorf("%w: node id and name are required", ErrInvalidArgument)
 	}
-	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
+
+	node, err := u.GetNodeDetail(ctx, nodeID)
+	if err != nil {
+		return err
+	}
+	if err := u.AuthorizeMutation(ctx, cmd.Actor, node.LibraryID); err != nil {
 		return err
 	}
 
+	var ext *string
+	if node.Type == domainnode.TypeFile && cmd.Ext != nil {
+		trimmed := strings.TrimSpace(*cmd.Ext)
+		ext = &trimmed
+	}
+
 	if err := u.withinTx(ctx, func(txCtx context.Context) error {
-		if err := u.nodes.RenameNode(txCtx, nodeID, cmd.LibraryID, newName, time.Now().UTC()); err != nil {
+		if err := u.nodes.RenameNode(txCtx, nodeID, node.LibraryID, newName, ext, time.Now().UTC()); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return ErrNotFound
 			}
@@ -302,7 +350,7 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 
 	_ = u.writeAudit(ctx, cmd.Actor, "node.rename", true, map[string]any{
 		"node_id":    nodeID,
-		"library_id": cmd.LibraryID,
+		"library_id": node.LibraryID,
 		"name":       newName,
 	})
 	return nil

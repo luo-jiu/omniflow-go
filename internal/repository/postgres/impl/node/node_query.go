@@ -127,6 +127,24 @@ func (r *NodeRepository) FindViewByID(ctx context.Context, nodeID, libraryID uin
 	return nodes[0].Node, nil
 }
 
+// FindViewByNodeID 仅按节点 ID 查询节点视图。
+func (r *NodeRepository) FindViewByNodeID(ctx context.Context, nodeID uint64) (domainnode.Node, error) {
+	row, err := r.findNodeModelByID(ctx, nodeID)
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+
+	libraryID := toDomainUint64(row.LibraryID)
+	nodes, err := r.loadNodesWithFileMeta(ctx, libraryID, []uint64{toDomainUint64(row.ID)}, nil)
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+	if len(nodes) == 0 {
+		return domainnode.Node{}, ErrNotFound
+	}
+	return nodes[0].Node, nil
+}
+
 // loadNodesWithFileMeta 通过分表查询补齐 MIME/FileSize/StorageKey，避免读路径 join。
 func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID uint64, ids []uint64, depthByID map[uint64]int) ([]nodeWithSort, error) {
 	if len(ids) == 0 {

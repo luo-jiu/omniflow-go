@@ -146,8 +146,8 @@ func (r *NodeRepository) UpdateNodeFields(ctx context.Context, nodeID, libraryID
 	return info.RowsAffected > 0, nil
 }
 
-// RenameNode 在同级目录内重命名节点。
-func (r *NodeRepository) RenameNode(ctx context.Context, nodeID, libraryID uint64, name string, updatedAt time.Time) error {
+// RenameNode 在同级目录内重命名节点，并在文件节点时支持扩展名修改。
+func (r *NodeRepository) RenameNode(ctx context.Context, nodeID, libraryID uint64, name string, ext *string, updatedAt time.Time) error {
 	current, err := r.findNodeModel(ctx, nodeID, libraryID)
 	if err != nil {
 		return err
@@ -161,10 +161,20 @@ func (r *NodeRepository) RenameNode(ctx context.Context, nodeID, libraryID uint6
 		return ErrConflict
 	}
 
-	updated, err := r.UpdateNodeFields(ctx, nodeID, libraryID, map[string]any{
+	updates := map[string]any{
 		"name":       name,
 		"updated_at": updatedAt,
-	})
+	}
+	if current.NodeType == nodeTypeFile && ext != nil {
+		trimmedExt := strings.TrimSpace(*ext)
+		if trimmedExt == "" {
+			updates["ext"] = nil
+		} else {
+			updates["ext"] = trimmedExt
+		}
+	}
+
+	updated, err := r.UpdateNodeFields(ctx, nodeID, libraryID, updates)
 	if err != nil {
 		return err
 	}

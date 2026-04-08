@@ -43,14 +43,14 @@ type createNodeRequest struct {
 }
 
 type updateNodeRequest struct {
-	LibraryID   uint64  `json:"libraryId" binding:"required"`
 	BuiltInType *string `json:"builtInType"`
 	ArchiveMode *int    `json:"archiveMode"`
+	ViewMeta    *string `json:"viewMeta"`
 }
 
 type renameNodeRequest struct {
-	LibraryID uint64 `json:"libraryId" binding:"required"`
-	Name      string `json:"name" binding:"required"`
+	Name string  `json:"name" binding:"required"`
+	Ext  *string `json:"ext"`
 }
 
 type moveNodeRequest struct {
