@@ -16,13 +16,6 @@ func NewUserHandler(userUseCase *usecase.UserUseCase) *UserHandler {
 	return &UserHandler{userUseCase: userUseCase}
 }
 
-func (h *UserHandler) Register(group *gin.RouterGroup) {
-	group.GET("/exists", h.HasUsername)
-	group.GET("/:username", h.GetActualUserByUsername)
-	group.POST("", h.RegisterUser)
-	group.PUT("/:id", h.UpdateUser)
-}
-
 type userNameURI struct {
 	Username string `uri:"username" binding:"required"`
 }
@@ -45,10 +38,18 @@ type registerUserRequest struct {
 type updateUserRequest struct {
 	Username *string `json:"username"`
 	Password *string `json:"password"`
+	Nickname *string `json:"nickname"`
 	Phone    *string `json:"phone"`
 	Email    *string `json:"email"`
+	Ext      *string `json:"ext"`
 }
 
+type updateCurrentPasswordRequest struct {
+	OldPassword string `json:"oldPassword" binding:"required"`
+	NewPassword string `json:"newPassword" binding:"required"`
+}
+
+// GetActualUserByUsername 根据用户名获取用户信息。
 func (h *UserHandler) GetActualUserByUsername(ctx *gin.Context) {
 	var uri userNameURI
 	if !BindURI(ctx, &uri) {
@@ -68,6 +69,7 @@ func (h *UserHandler) GetActualUserByUsername(ctx *gin.Context) {
 	Success(ctx, user)
 }
 
+// HasUsername 校验用户名是否已存在。
 func (h *UserHandler) HasUsername(ctx *gin.Context) {
 	var query usernameExistsQuery
 	if !BindQuery(ctx, &query) {
@@ -87,6 +89,7 @@ func (h *UserHandler) HasUsername(ctx *gin.Context) {
 	Success(ctx, ok)
 }
 
+// RegisterUser 注册新用户。
 func (h *UserHandler) RegisterUser(ctx *gin.Context) {
 	var req registerUserRequest
 	if !BindJSON(ctx, &req) {
@@ -118,6 +121,7 @@ func (h *UserHandler) RegisterUser(ctx *gin.Context) {
 	Success(ctx, created)
 }
 
+// UpdateUser 按用户 ID 更新用户资料。
 func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 	var uri userIDURI
 	if !BindURI(ctx, &uri) {
@@ -139,8 +143,116 @@ func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 		ID:       uri.ID,
 		Username: req.Username,
 		Password: req.Password,
+		Nickname: req.Nickname,
 		Phone:    req.Phone,
 		Email:    req.Email,
+		Ext:      req.Ext,
+	})
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, updated)
+}
+
+// GetCurrentUser 获取当前登录用户资料。
+func (h *UserHandler) GetCurrentUser(ctx *gin.Context) {
+	if h.userUseCase == nil {
+		Success(ctx, map[string]any{})
+		return
+	}
+
+	user, err := h.userUseCase.GetCurrent(ctx.Request.Context(), actorFromContext(ctx))
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, user)
+}
+
+// UpdateCurrentUser 更新当前登录用户资料。
+func (h *UserHandler) UpdateCurrentUser(ctx *gin.Context) {
+	var req updateUserRequest
+	if !BindJSON(ctx, &req) {
+		return
+	}
+
+	if h.userUseCase == nil {
+		SuccessNoData(ctx)
+		return
+	}
+
+	updated, err := h.userUseCase.Update(ctx.Request.Context(), usecase.UpdateUserCommand{
+		Actor:    actorFromContext(ctx),
+		Username: req.Username,
+		Password: req.Password,
+		Nickname: req.Nickname,
+		Phone:    req.Phone,
+		Email:    req.Email,
+		Ext:      req.Ext,
+	})
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, updated)
+}
+
+// UpdateCurrentUserPassword 修改当前登录用户密码。
+func (h *UserHandler) UpdateCurrentUserPassword(ctx *gin.Context) {
+	var req updateCurrentPasswordRequest
+	if !BindJSON(ctx, &req) {
+		return
+	}
+	if !RequireNonEmpty(ctx, strings.TrimSpace(req.OldPassword), "oldPassword") {
+		return
+	}
+	if !RequireNonEmpty(ctx, strings.TrimSpace(req.NewPassword), "newPassword") {
+		return
+	}
+
+	if h.userUseCase == nil {
+		SuccessNoData(ctx)
+		return
+	}
+
+	if err := h.userUseCase.UpdateCurrentPassword(ctx.Request.Context(), usecase.UpdateCurrentPasswordCommand{
+		Actor:       actorFromContext(ctx),
+		OldPassword: req.OldPassword,
+		NewPassword: req.NewPassword,
+	}); err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	SuccessNoData(ctx)
+}
+
+// UploadCurrentUserAvatar 上传并更新当前登录用户头像。
+func (h *UserHandler) UploadCurrentUserAvatar(ctx *gin.Context) {
+	fileHeader, err := ctx.FormFile("file")
+	if err != nil {
+		BadRequest(ctx, "file is required")
+		return
+	}
+
+	if h.userUseCase == nil {
+		SuccessNoData(ctx)
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		InternalError(ctx, "open upload file failed")
+		return
+	}
+	defer file.Close()
+
+	updated, err := h.userUseCase.UploadCurrentAvatar(ctx.Request.Context(), usecase.UploadCurrentUserAvatarCommand{
+		Actor:       actorFromContext(ctx),
+		FileName:    fileHeader.Filename,
+		FileSize:    fileHeader.Size,
+		ContentType: fileHeader.Header.Get("Content-Type"),
+		Content:     file,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

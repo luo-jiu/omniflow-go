@@ -16,17 +16,13 @@ func NewDirectoryHandler(directoryUseCase *usecase.DirectoryUseCase) *DirectoryH
 	return &DirectoryHandler{directoryUseCase: directoryUseCase}
 }
 
-func (h *DirectoryHandler) Register(group *gin.RouterGroup) {
-	group.POST("/upload", h.UploadFile)
-	group.GET("/link", h.GetFileLink)
-}
-
 type fileLinkQuery struct {
 	NodeID    uint64 `form:"node_id"`
 	LibraryID uint64 `form:"library_id"`
 	Expiry    int    `form:"expiry"`
 }
 
+// UploadFile 上传文件并在目录下创建对应文件节点。
 func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	fileHeader, err := ctx.FormFile("file")
 	if err != nil {
@@ -77,6 +73,7 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	Success(ctx, node)
 }
 
+// GetFileLink 获取目录文件节点的预签名链接。
 func (h *DirectoryHandler) GetFileLink(ctx *gin.Context) {
 	var query fileLinkQuery
 	if !BindQuery(ctx, &query) {

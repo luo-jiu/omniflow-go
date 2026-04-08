@@ -198,21 +198,42 @@ func (u *AuthUseCase) ResolveActor(ctx context.Context, username, token string) 
 }
 
 func (u *AuthUseCase) Logout(ctx context.Context, username, token string) error {
-	ok, err := u.Check(ctx, username, token)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return ErrUnauthorized
+	username = strings.TrimSpace(username)
+	token = strings.TrimSpace(token)
+	if username == "" || token == "" {
+		return fmt.Errorf("%w: username and token are required", ErrInvalidArgument)
 	}
 
 	client := u.redisClient()
-	if err := client.Del(ctx, loginRedisPrefix+strings.TrimSpace(username)).Err(); err != nil {
+	if client == nil {
+		return fmt.Errorf("%w: redis client not configured", ErrInvalidArgument)
+	}
+
+	loginKey := loginRedisPrefix + username
+	removed, err := client.HDel(ctx, loginKey, token).Result()
+	if err != nil {
+		return err
+	}
+	if removed == 0 {
+		return ErrUnauthorized
+	}
+
+	remainCount, err := client.HLen(ctx, loginKey).Result()
+	if err != nil {
+		return err
+	}
+	if remainCount == 0 {
+		if err := client.Del(ctx, loginKey).Err(); err != nil {
+			return err
+		}
+	}
+
+	if err := client.Expire(ctx, loginKey, loginTTL).Err(); err != nil {
 		return err
 	}
 
 	_ = u.writeAudit(ctx, actor.Actor{ID: username, Kind: actor.KindUser}, "auth.logout", true, map[string]any{
-		"username": strings.TrimSpace(username),
+		"username": username,
 	})
 	return nil
 }

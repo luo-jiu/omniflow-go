@@ -49,7 +49,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 
 	healthUseCase := usecase.NewHealthUseCase(cfg)
 	authUseCase := usecase.NewAuthUseCase(userRepository, logSink, redisClient)
-	userUseCase := usecase.NewUserUseCase(userRepository, redisClient, logSink)
+	userUseCase := usecase.NewUserUseCase(userRepository, redisClient, minioStore, logSink)
 	libraryUseCase := usecase.NewLibraryUseCase(libraryRepository, allowAll, logSink)
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, allowAll, logSink)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, minioStore, allowAll, logSink)

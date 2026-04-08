@@ -19,12 +19,6 @@ func NewAuthHandler(authUseCase *usecase.AuthUseCase) *AuthHandler {
 	return &AuthHandler{authUseCase: authUseCase}
 }
 
-func (h *AuthHandler) Register(group *gin.RouterGroup) {
-	group.POST("/login", h.Login)
-	group.GET("/status", h.Status)
-	group.DELETE("/logout", h.Logout)
-}
-
 type loginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
@@ -41,6 +35,7 @@ type loginResponse struct {
 	UserInfo map[string]any `json:"userInfo"`
 }
 
+// Login 使用用户名密码登录，并返回 token 与用户信息。
 func (h *AuthHandler) Login(ctx *gin.Context) {
 	var req loginRequest
 	if !BindJSON(ctx, &req) {
@@ -77,6 +72,7 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 	})
 }
 
+// Status 校验 username/token 是否仍处于登录态。
 func (h *AuthHandler) Status(ctx *gin.Context) {
 	var query authStatusQuery
 	if !BindQuery(ctx, &query) {
@@ -96,6 +92,7 @@ func (h *AuthHandler) Status(ctx *gin.Context) {
 	Success(ctx, ok)
 }
 
+// Logout 注销当前登录 token。
 func (h *AuthHandler) Logout(ctx *gin.Context) {
 	var query authStatusQuery
 	if !BindQuery(ctx, &query) {
@@ -114,6 +111,7 @@ func (h *AuthHandler) Logout(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
+// AuthenticateActor 根据请求头和 bearer token 解析当前操作者。
 func (h *AuthHandler) AuthenticateActor(ctx context.Context, username, token string) (actor.Actor, error) {
 	if h == nil || h.authUseCase == nil || !h.authUseCase.CanAuthenticate() {
 		name := strings.TrimSpace(username)

@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CreateNode handles node creation (directory or file metadata node).
+// CreateNode 创建节点（目录或文件元数据节点）。
 func (h *NodeHandler) CreateNode(ctx *gin.Context) {
 	var req createNodeRequest
 	if !BindJSON(ctx, &req) {

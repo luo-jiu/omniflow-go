@@ -14,11 +14,7 @@ func NewFileHandler(fileUseCase *usecase.FileUseCase) *FileHandler {
 	return &FileHandler{fileUseCase: fileUseCase}
 }
 
-func (h *FileHandler) Register(group *gin.RouterGroup) {
-	group.POST("/upload", h.UploadFile)
-	group.GET("/link", h.GetFileLink)
-}
-
+// UploadFile 上传对象文件并返回访问链接。
 func (h *FileHandler) UploadFile(ctx *gin.Context) {
 	fileHeader, err := ctx.FormFile("file")
 	if err != nil {
@@ -51,6 +47,7 @@ func (h *FileHandler) UploadFile(ctx *gin.Context) {
 	Success(ctx, url)
 }
 
+// GetFileLink 按路径和文件名获取对象访问链接。
 func (h *FileHandler) GetFileLink(ctx *gin.Context) {
 	if h.fileUseCase == nil {
 		InternalError(ctx, "file service not configured")

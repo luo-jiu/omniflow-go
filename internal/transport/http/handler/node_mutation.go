@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UpdateNode updates node metadata flags.
+// UpdateNode 更新节点元数据标记。
 func (h *NodeHandler) UpdateNode(ctx *gin.Context) {
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
@@ -43,7 +43,7 @@ func (h *NodeHandler) UpdateNode(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
-// Rename updates node display name under the same parent.
+// Rename 在同级目录下重命名节点。
 func (h *NodeHandler) Rename(ctx *gin.Context) {
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
@@ -74,7 +74,7 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
-// ReorderNode reorders/moves node based on request payload.
+// ReorderNode 根据请求参数执行节点重排或移动。
 func (h *NodeHandler) ReorderNode(ctx *gin.Context) {
 	var req moveNodeRequest
 	if !BindJSON(ctx, &req) {
@@ -103,7 +103,7 @@ func (h *NodeHandler) ReorderNode(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
-// MoveNode handles move with explicit node id in path.
+// MoveNode 按路径中的节点 ID 执行移动。
 func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
@@ -137,7 +137,7 @@ func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
-// DeleteNodeAndChildren removes a node subtree by ancestor id.
+// DeleteNodeAndChildren 删除指定祖先节点及其子树。
 func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
 	var uri deleteNodeURI
 	if !BindURI(ctx, &uri) {

@@ -141,11 +141,18 @@ func (userRecord) TableName() string {
 }
 
 func (r userRecord) toDomain() domainuser.User {
+	nickname := strings.TrimSpace(r.Nickname)
+	if nickname == "" {
+		nickname = r.Username
+	}
+
 	return domainuser.User{
 		ID:       r.ID,
 		Username: r.Username,
+		Nickname: nickname,
 		Phone:    r.Phone,
 		Email:    r.Email,
+		Ext:      r.ExtJSON,
 		Status:   userStatusFromCode(r.Status),
 	}
 }

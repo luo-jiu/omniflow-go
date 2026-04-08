@@ -2,7 +2,7 @@ package handler
 
 import "github.com/gin-gonic/gin"
 
-// GetAllDescendants returns current node and full subtree.
+// GetAllDescendants 获取当前节点及其完整子树。
 func (h *NodeHandler) GetAllDescendants(ctx *gin.Context) {
 	nodeID, libraryID, ok := h.parseNodeScope(ctx)
 	if !ok {
@@ -22,7 +22,7 @@ func (h *NodeHandler) GetAllDescendants(ctx *gin.Context) {
 	Success(ctx, nodes)
 }
 
-// GetDirectChildren returns direct child nodes only.
+// GetDirectChildren 获取当前节点的直接子节点。
 func (h *NodeHandler) GetDirectChildren(ctx *gin.Context) {
 	nodeID, libraryID, ok := h.parseNodeScope(ctx)
 	if !ok {
@@ -42,7 +42,7 @@ func (h *NodeHandler) GetDirectChildren(ctx *gin.Context) {
 	Success(ctx, nodes)
 }
 
-// GetAncestors returns ancestor chain from root to current node.
+// GetAncestors 获取从根到当前节点的祖先链。
 func (h *NodeHandler) GetAncestors(ctx *gin.Context) {
 	nodeID, libraryID, ok := h.parseNodeScope(ctx)
 	if !ok {
@@ -62,7 +62,7 @@ func (h *NodeHandler) GetAncestors(ctx *gin.Context) {
 	Success(ctx, nodes)
 }
 
-// GetFullPath returns slash-joined full path for a node.
+// GetFullPath 获取节点的完整路径字符串。
 func (h *NodeHandler) GetFullPath(ctx *gin.Context) {
 	nodeID, libraryID, ok := h.parseNodeScope(ctx)
 	if !ok {

@@ -57,7 +57,7 @@ type moveNodeRequest struct {
 	LibraryID    uint64 `json:"libraryId" binding:"required"`
 }
 
-// parseNodeScope reads node id from URI and library id from query.
+// parseNodeScope 从 URI 解析节点 ID，并从查询参数解析资料库 ID。
 func (h *NodeHandler) parseNodeScope(ctx *gin.Context) (uint64, uint64, bool) {
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {

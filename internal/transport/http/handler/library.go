@@ -16,13 +16,6 @@ func NewLibraryHandler(libraryUseCase *usecase.LibraryUseCase) *LibraryHandler {
 	return &LibraryHandler{libraryUseCase: libraryUseCase}
 }
 
-func (h *LibraryHandler) Register(group *gin.RouterGroup) {
-	group.GET("/scroll", h.Scroll)
-	group.POST("", h.Create)
-	group.PUT("/:id", h.Update)
-	group.DELETE("/:id", h.Delete)
-}
-
 type scrollLibrariesQuery struct {
 	LastID uint64 `form:"lastId"`
 	Size   int    `form:"size"`
@@ -40,6 +33,7 @@ type updateLibraryRequest struct {
 	Name string `json:"name" binding:"required"`
 }
 
+// Scroll 分页查询当前用户的资料库列表。
 func (h *LibraryHandler) Scroll(ctx *gin.Context) {
 	var query scrollLibrariesQuery
 	if !BindQuery(ctx, &query) {
@@ -66,6 +60,7 @@ func (h *LibraryHandler) Scroll(ctx *gin.Context) {
 	Success(ctx, result)
 }
 
+// Create 创建资料库。
 func (h *LibraryHandler) Create(ctx *gin.Context) {
 	var req createLibraryRequest
 	if !BindJSON(ctx, &req) {
@@ -91,6 +86,7 @@ func (h *LibraryHandler) Create(ctx *gin.Context) {
 	Success(ctx, created)
 }
 
+// Update 按 ID 更新资料库信息。
 func (h *LibraryHandler) Update(ctx *gin.Context) {
 	var uri libraryIDURI
 	if !BindURI(ctx, &uri) {
@@ -117,6 +113,7 @@ func (h *LibraryHandler) Update(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
+// Delete 按 ID 软删除资料库。
 func (h *LibraryHandler) Delete(ctx *gin.Context) {
 	var uri libraryIDURI
 	if !BindURI(ctx, &uri) {
