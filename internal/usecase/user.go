@@ -40,16 +40,16 @@ var allowedAvatarExtensions = map[string]struct{}{
 type RegisterUserCommand struct {
 	Actor    actor.Actor
 	Username string
+	Nickname string
 	Password string
 	Phone    string
 	Email    string
+	Ext      string
 }
 
 type UpdateUserCommand struct {
 	Actor    actor.Actor
 	ID       uint64
-	Username *string
-	Password *string
 	Nickname *string
 	Phone    *string
 	Email    *string
@@ -151,12 +151,18 @@ func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (do
 		return domainuser.User{}, err
 	}
 
+	nickname := strings.TrimSpace(cmd.Nickname)
+	if nickname == "" {
+		nickname = username
+	}
+
 	created, err := u.users.Create(ctx, repository.CreateUserInput{
 		Username:     username,
-		Nickname:     username,
+		Nickname:     nickname,
 		PasswordHash: string(hashed),
 		Phone:        strings.TrimSpace(cmd.Phone),
 		Email:        strings.TrimSpace(cmd.Email),
+		Ext:          strings.TrimSpace(cmd.Ext),
 	})
 	if err != nil {
 		return domainuser.User{}, err
@@ -189,9 +195,6 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 	}
 
 	updates := map[string]any{}
-	if cmd.Username != nil {
-		updates["username"] = strings.TrimSpace(*cmd.Username)
-	}
 	if cmd.Nickname != nil {
 		nickname := strings.TrimSpace(*cmd.Nickname)
 		if nickname == "" {
@@ -208,18 +211,6 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 	if cmd.Ext != nil {
 		updates["ext"] = strings.TrimSpace(*cmd.Ext)
 	}
-	if cmd.Password != nil {
-		pwd := strings.TrimSpace(*cmd.Password)
-		if pwd == "" {
-			return domainuser.User{}, fmt.Errorf("%w: password cannot be empty", ErrInvalidArgument)
-		}
-		hashed, err := bcrypt.GenerateFromPassword([]byte(pwd), 10)
-		if err != nil {
-			return domainuser.User{}, err
-		}
-		updates["password_hash"] = string(hashed)
-	}
-
 	if len(updates) == 0 {
 		return u.enrichUser(ctx, existing), nil
 	}

@@ -30,14 +30,14 @@ type usernameExistsQuery struct {
 
 type registerUserRequest struct {
 	Username string `json:"username" binding:"required"`
+	Nickname string `json:"nickname"`
 	Password string `json:"password" binding:"required"`
 	Phone    string `json:"phone"`
 	Email    string `json:"email"`
+	Ext      string `json:"ext"`
 }
 
 type updateUserRequest struct {
-	Username *string `json:"username"`
-	Password *string `json:"password"`
 	Nickname *string `json:"nickname"`
 	Phone    *string `json:"phone"`
 	Email    *string `json:"email"`
@@ -107,18 +107,20 @@ func (h *UserHandler) RegisterUser(ctx *gin.Context) {
 		return
 	}
 
-	created, err := h.userUseCase.Register(ctx.Request.Context(), usecase.RegisterUserCommand{
+	_, err := h.userUseCase.Register(ctx.Request.Context(), usecase.RegisterUserCommand{
 		Actor:    actorFromContext(ctx),
 		Username: req.Username,
+		Nickname: req.Nickname,
 		Password: req.Password,
 		Phone:    req.Phone,
 		Email:    req.Email,
+		Ext:      req.Ext,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	Success(ctx, created)
+	SuccessNoData(ctx)
 }
 
 // UpdateUser 按用户 ID 更新用户资料。
@@ -138,11 +140,9 @@ func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 		return
 	}
 
-	updated, err := h.userUseCase.Update(ctx.Request.Context(), usecase.UpdateUserCommand{
+	_, err := h.userUseCase.Update(ctx.Request.Context(), usecase.UpdateUserCommand{
 		Actor:    actorFromContext(ctx),
 		ID:       uri.ID,
-		Username: req.Username,
-		Password: req.Password,
 		Nickname: req.Nickname,
 		Phone:    req.Phone,
 		Email:    req.Email,
@@ -152,7 +152,7 @@ func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	Success(ctx, updated)
+	SuccessNoData(ctx)
 }
 
 // GetCurrentUser 获取当前登录用户资料。
@@ -184,8 +184,6 @@ func (h *UserHandler) UpdateCurrentUser(ctx *gin.Context) {
 
 	updated, err := h.userUseCase.Update(ctx.Request.Context(), usecase.UpdateUserCommand{
 		Actor:    actorFromContext(ctx),
-		Username: req.Username,
-		Password: req.Password,
 		Nickname: req.Nickname,
 		Phone:    req.Phone,
 		Email:    req.Email,
