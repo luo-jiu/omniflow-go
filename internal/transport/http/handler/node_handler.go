@@ -42,6 +42,14 @@ type createNodeRequest struct {
 	LibraryID  uint64 `json:"libraryId" binding:"required"`
 }
 
+type searchNodesRequest struct {
+	LibraryID    uint64   `json:"libraryId" binding:"required"`
+	Keyword      string   `json:"keyword"`
+	TagIDs       []uint64 `json:"tagIds"`
+	TagMatchMode string   `json:"tagMatchMode"`
+	Limit        int      `json:"limit"`
+}
+
 type updateNodeRequest struct {
 	BuiltInType *string `json:"builtInType"`
 	ArchiveMode *int    `json:"archiveMode"`

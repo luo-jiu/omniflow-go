@@ -22,6 +22,15 @@ type ListChildrenQuery struct {
 	NodeID    uint64
 }
 
+type SearchNodesQuery struct {
+	Actor        actor.Actor
+	LibraryID    uint64
+	Keyword      string
+	TagIDs       []uint64
+	TagMatchMode string
+	Limit        int
+}
+
 type NodePath struct {
 	ID    uint64 `json:"id"`
 	Name  string `json:"name"`
@@ -190,6 +199,31 @@ func (u *NodeUseCase) GetDirectChildren(ctx context.Context, nodeID, libraryID u
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrNotFound
 		}
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (u *NodeUseCase) SearchNodes(ctx context.Context, query SearchNodesQuery) ([]domainnode.Node, error) {
+	if query.LibraryID == 0 {
+		return nil, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeRead(ctx, query.Actor, query.LibraryID); err != nil {
+		return nil, err
+	}
+
+	tagIDs := normalizePositiveUint64List(query.TagIDs)
+	tagMatchMode := normalizeTagMatchMode(query.TagMatchMode)
+	limit := normalizeSearchLimit(query.Limit)
+
+	rows, err := u.nodes.SearchNodes(ctx, repository.SearchNodesInput{
+		LibraryID:    query.LibraryID,
+		Keyword:      strings.TrimSpace(query.Keyword),
+		TagIDs:       tagIDs,
+		TagMatchMode: tagMatchMode,
+		Limit:        limit,
+	})
+	if err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -649,6 +683,17 @@ func (u *NodeUseCase) AuthorizeMutation(ctx context.Context, principal actor.Act
 	}, authz.ActionWrite)
 }
 
+func (u *NodeUseCase) AuthorizeRead(ctx context.Context, principal actor.Actor, libraryID uint64) error {
+	if u.authorizer == nil {
+		return nil
+	}
+
+	return u.authorizer.Authorize(ctx, principal, authz.Resource{
+		Kind: "library",
+		ID:   fmt.Sprintf("%d", libraryID),
+	}, authz.ActionRead)
+}
+
 func (u *NodeUseCase) RecordMoveIntent(ctx context.Context, cmd MoveNodeCommand) error {
 	if u.auditLog == nil {
 		return nil
@@ -703,4 +748,42 @@ func countDeletedSubtree(childrenByParent map[uint64][]uint64, rootID uint64) in
 		}
 	}
 	return count
+}
+
+func normalizeTagMatchMode(rawMode string) string {
+	mode := strings.ToUpper(strings.TrimSpace(rawMode))
+	if mode == "ALL" {
+		return "ALL"
+	}
+	return "ANY"
+}
+
+func normalizeSearchLimit(rawLimit int) int {
+	if rawLimit <= 0 {
+		return 200
+	}
+	if rawLimit > 500 {
+		return 500
+	}
+	return rawLimit
+}
+
+func normalizePositiveUint64List(values []uint64) []uint64 {
+	if len(values) == 0 {
+		return []uint64{}
+	}
+
+	unique := make(map[uint64]struct{}, len(values))
+	result := make([]uint64, 0, len(values))
+	for _, value := range values {
+		if value == 0 {
+			continue
+		}
+		if _, exists := unique[value]; exists {
+			continue
+		}
+		unique[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }

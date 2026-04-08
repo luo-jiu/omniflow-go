@@ -9,6 +9,7 @@ import (
 func registerNodeRoutes(api *gin.RouterGroup, nodeHandler *handler.NodeHandler) {
 	// 节点资源
 	api.POST("/nodes", nodeHandler.CreateNode)
+	api.POST("/nodes/search", nodeHandler.SearchNodes)
 	api.GET("/nodes/library/:libraryId/root", nodeHandler.GetLibraryRootNodeID)
 	api.GET("/nodes/:nodeId", nodeHandler.GetNodeDetail)
 	api.GET("/nodes/:nodeId/descendants", nodeHandler.GetAllDescendants)
