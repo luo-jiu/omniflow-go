@@ -12,9 +12,9 @@
 | 指标 | 数量 |
 |---|---:|
 | Java 接口总数 | 41 |
-| 已实现并已校对 | 18 |
+| 已实现并已校对 | 22 |
 | 已实现待校对 | 19 |
-| 未实现 | 4 |
+| 未实现 | 0 |
 
 ## 全量清单
 
@@ -57,13 +57,13 @@
 | Directory | POST | /api/v1/directory/upload | 已实现待校对 | 已有实现，待确认上传细节。 |
 | Directory | GET | /api/v1/directory/link | 已实现待校对 | 已有实现，待确认参数兼容。 |
 | Tag | GET | /api/v1/tags/search-types | 已实现待校对 | 已有实现，待确认返回值与 Java 一致。 |
-| Tag | GET | /api/v1/tags | 未实现 | 需补标签列表。 |
-| Tag | POST | /api/v1/tags | 未实现 | 需补标签创建。 |
-| Tag | PUT | /api/v1/tags/{tagId} | 未实现 | 需补标签更新。 |
-| Tag | DELETE | /api/v1/tags/{tagId} | 未实现 | 需补标签删除。 |
+| Tag | GET | /api/v1/tags | 已实现并已校对 | 已按 Java 逻辑支持 owner+global 查询与 type 过滤。 |
+| Tag | POST | /api/v1/tags | 已实现并已校对 | 已补齐 type/targetKey/color/enabled 等参数校验与唯一性检查。 |
+| Tag | PUT | /api/v1/tags/{tagId} | 已实现并已校对 | 已补齐 owner 约束更新、冲突检查与字段归一化。 |
+| Tag | DELETE | /api/v1/tags/{tagId} | 已实现并已校对 | 已补齐 owner 约束软删除语义。 |
 
 ## 下一步建议（按优先级）
 
-1. 先补齐 `tags` 四个 CRUD 接口（目前是最明显缺口）。
-2. 对 `已实现待校对` 的 `node create/move/reorder` 做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
-3. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
+1. 对 `已实现待校对` 的 `node create/move/reorder` 做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
+2. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
+3. 跟前端联调 `tags`，重点确认错误码与消息文案是否需要完全贴合 Java。

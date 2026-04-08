@@ -45,6 +45,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	userRepository := repository.NewUserRepository(database)
 	libraryRepository := repository.NewLibraryRepository(database)
 	nodeRepository := repository.NewNodeRepository(database)
+	tagRepository := repository.NewTagRepository(database)
 	sessionRepository := repository.NewSessionRepository(redisClient)
 	transactor := repository.NewTransactor(database)
 
@@ -55,7 +56,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, objectStorage, allowAll, logSink)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
-	tagUseCase := usecase.NewTagUseCase()
+	tagUseCase := usecase.NewTagUseCase(tagRepository)
 
 	healthHandler := httpHandler.NewHealthHandler(healthUseCase)
 	authHandler := httpHandler.NewAuthHandler(authUseCase)

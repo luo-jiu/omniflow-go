@@ -33,6 +33,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 		repository.NewUserRepository,
 		repository.NewLibraryRepository,
 		repository.NewNodeRepository,
+		repository.NewTagRepository,
 		usecase.NewHealthUseCase,
 		usecase.NewAuthUseCase,
 		usecase.NewUserUseCase,
