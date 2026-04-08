@@ -179,9 +179,12 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 	return created, nil
 }
 
-func (u *NodeUseCase) GetAllDescendants(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
+func (u *NodeUseCase) GetAllDescendants(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) ([]domainnode.Node, error) {
 	if libraryID == 0 || nodeID == 0 {
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeRead(ctx, principal, libraryID); err != nil {
+		return nil, err
 	}
 
 	rows, err := u.nodes.ListAllDescendants(ctx, nodeID, libraryID)
@@ -194,9 +197,12 @@ func (u *NodeUseCase) GetAllDescendants(ctx context.Context, nodeID, libraryID u
 	return rows, nil
 }
 
-func (u *NodeUseCase) GetDirectChildren(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
+func (u *NodeUseCase) GetDirectChildren(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) ([]domainnode.Node, error) {
 	if libraryID == 0 || nodeID == 0 {
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeRead(ctx, principal, libraryID); err != nil {
+		return nil, err
 	}
 
 	rows, err := u.nodes.ListDirectChildren(ctx, nodeID, libraryID)
@@ -234,9 +240,12 @@ func (u *NodeUseCase) SearchNodes(ctx context.Context, query SearchNodesQuery) (
 	return rows, nil
 }
 
-func (u *NodeUseCase) GetAncestors(ctx context.Context, nodeID, libraryID uint64) ([]NodePath, error) {
+func (u *NodeUseCase) GetAncestors(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) ([]NodePath, error) {
 	if libraryID == 0 || nodeID == 0 {
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeRead(ctx, principal, libraryID); err != nil {
+		return nil, err
 	}
 
 	rows, err := u.nodes.ListAncestors(ctx, nodeID, libraryID)
@@ -258,8 +267,8 @@ func (u *NodeUseCase) GetAncestors(ctx context.Context, nodeID, libraryID uint64
 	return result, nil
 }
 
-func (u *NodeUseCase) GetFullPath(ctx context.Context, nodeID, libraryID uint64) (string, error) {
-	ancestors, err := u.GetAncestors(ctx, nodeID, libraryID)
+func (u *NodeUseCase) GetFullPath(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) (string, error) {
+	ancestors, err := u.GetAncestors(ctx, principal, nodeID, libraryID)
 	if err != nil {
 		return "", err
 	}
@@ -275,9 +284,12 @@ func (u *NodeUseCase) GetFullPath(ctx context.Context, nodeID, libraryID uint64)
 	return b.String(), nil
 }
 
-func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, libraryID uint64) (uint64, error) {
+func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, principal actor.Actor, libraryID uint64) (uint64, error) {
 	if libraryID == 0 {
 		return 0, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeRead(ctx, principal, libraryID); err != nil {
+		return 0, err
 	}
 
 	rootNodeID, err := u.nodes.EnsureLibraryRootNodeID(ctx, libraryID)

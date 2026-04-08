@@ -14,7 +14,7 @@ func (h *NodeHandler) GetLibraryRootNodeID(ctx *gin.Context) {
 		return
 	}
 
-	rootNodeID, err := h.nodeUseCase.GetLibraryRootNodeID(ctx.Request.Context(), uri.LibraryID)
+	rootNodeID, err := h.nodeUseCase.GetLibraryRootNodeID(ctx.Request.Context(), actorFromContext(ctx), uri.LibraryID)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -34,7 +34,7 @@ func (h *NodeHandler) GetAllDescendants(ctx *gin.Context) {
 		return
 	}
 
-	nodes, err := h.nodeUseCase.GetAllDescendants(ctx.Request.Context(), nodeID, libraryID)
+	nodes, err := h.nodeUseCase.GetAllDescendants(ctx.Request.Context(), actorFromContext(ctx), nodeID, libraryID)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -54,7 +54,7 @@ func (h *NodeHandler) GetDirectChildren(ctx *gin.Context) {
 		return
 	}
 
-	nodes, err := h.nodeUseCase.GetDirectChildren(ctx.Request.Context(), nodeID, libraryID)
+	nodes, err := h.nodeUseCase.GetDirectChildren(ctx.Request.Context(), actorFromContext(ctx), nodeID, libraryID)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -74,7 +74,7 @@ func (h *NodeHandler) GetAncestors(ctx *gin.Context) {
 		return
 	}
 
-	nodes, err := h.nodeUseCase.GetAncestors(ctx.Request.Context(), nodeID, libraryID)
+	nodes, err := h.nodeUseCase.GetAncestors(ctx.Request.Context(), actorFromContext(ctx), nodeID, libraryID)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -94,7 +94,7 @@ func (h *NodeHandler) GetFullPath(ctx *gin.Context) {
 		return
 	}
 
-	path, err := h.nodeUseCase.GetFullPath(ctx.Request.Context(), nodeID, libraryID)
+	path, err := h.nodeUseCase.GetFullPath(ctx.Request.Context(), actorFromContext(ctx), nodeID, libraryID)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return

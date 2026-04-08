@@ -12,8 +12,8 @@
 | 指标 | 数量 |
 |---|---:|
 | Java 接口总数 | 41 |
-| 已实现并已校对 | 25 |
-| 已实现待校对 | 16 |
+| 已实现并已校对 | 30 |
+| 已实现待校对 | 11 |
 | 未实现 | 0 |
 
 ## 全量清单
@@ -37,12 +37,12 @@
 | Library | DELETE | /api/v1/libraries/{id} | 已实现并已校对 | 删除流程已对齐。 |
 | Node | POST | /api/v1/nodes | 已实现并已校对 | 已对齐 parent 缺失/失效回退 root 的 Java 语义。 |
 | Node | GET | /api/v1/nodes/{nodeId} | 已实现并已校对 | 节点详情链路已补齐并对齐。 |
-| Node | GET | /api/v1/nodes/{nodeId}/descendants | 已实现待校对 | 已有实现，待确认排序/字段细节。 |
-| Node | GET | /api/v1/nodes/{nodeId}/children | 已实现待校对 | 已有实现，待确认排序/字段细节。 |
-| Node | GET | /api/v1/nodes/library/{libraryId}/root | 已实现待校对 | 已有实现，待确认修复策略一致性。 |
+| Node | GET | /api/v1/nodes/{nodeId}/descendants | 已实现并已校对 | 已补读权限校验并保持子树返回语义。 |
+| Node | GET | /api/v1/nodes/{nodeId}/children | 已实现并已校对 | 已补读权限校验并保持 sortOrder/id 顺序。 |
+| Node | GET | /api/v1/nodes/library/{libraryId}/root | 已实现并已校对 | 已补 root 自修复（坏父引用归根）与读权限校验。 |
 | Node | POST | /api/v1/nodes/search | 已实现并已校对 | 已按 keyword/tagIds/tagMatchMode/limit 语义补齐。 |
-| Node | GET | /api/v1/nodes/{nodeId}/ancestors | 已实现待校对 | 已有实现，待确认路径深度语义。 |
-| Node | GET | /api/v1/nodes/{nodeId}/path | 已实现待校对 | 已有实现，待确认路径字符串规则。 |
+| Node | GET | /api/v1/nodes/{nodeId}/ancestors | 已实现并已校对 | 已补读权限校验并保持 root->self 深度链语义。 |
+| Node | GET | /api/v1/nodes/{nodeId}/path | 已实现并已校对 | 已补读权限校验并保持完整路径拼接语义。 |
 | Node | PUT | /api/v1/nodes/{nodeId} | 已实现并已校对 | builtInType/archiveMode/viewMeta 已对齐。 |
 | Node | PATCH | /api/v1/nodes/{nodeId}/rename | 已实现并已校对 | 已支持 rename + 文件 ext 处理。 |
 | Node | PATCH | /api/v1/nodes | 已实现并已校对 | 已对齐为兼容保留空实现（与 Java 一致）。 |
@@ -64,6 +64,6 @@
 
 ## 下一步建议（按优先级）
 
-1. 对 `已实现待校对` 的 `node descendants/children/path/root` 做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
+1. 对 `已实现待校对` 的 `user me/password/avatar` 与 `file/directory` 接口做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
 2. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
 3. 跟前端联调 `tags`，重点确认错误码与消息文案是否需要完全贴合 Java。
