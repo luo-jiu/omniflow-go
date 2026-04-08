@@ -5,7 +5,7 @@ app:
 
 server:
   host: 0.0.0.0
-  port: 8848
+  port: 8850
   mode: debug
   read_timeout: 10s
   write_timeout: 15s
@@ -28,7 +28,7 @@ storage:
   provider: minio
 
 minio:
-  endpoint: 127.0.0.1:9000
+  endpoint: localhost:9000
   access_key: admin
   secret_key: admin123
   use_ssl: false

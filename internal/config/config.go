@@ -99,7 +99,7 @@ func defaultConfig() *Config {
 		},
 		Server: Server{
 			Host:            "0.0.0.0",
-			Port:            8848,
+			Port:            8850,
 			Mode:            "debug",
 			ReadTimeout:     10 * time.Second,
 			WriteTimeout:    15 * time.Second,
@@ -121,7 +121,7 @@ func defaultConfig() *Config {
 			Provider: "minio",
 		},
 		MinIO: MinIO{
-			Endpoint:  "127.0.0.1:9000",
+			Endpoint:  "localhost:9000",
 			AccessKey: "admin",
 			SecretKey: "admin123",
 			UseSSL:    false,
@@ -145,7 +145,7 @@ func (c *Config) applyDefaults() {
 		c.Server.Host = "0.0.0.0"
 	}
 	if c.Server.Port == 0 {
-		c.Server.Port = 8848
+		c.Server.Port = 8850
 	}
 	if c.Server.Mode == "" {
 		c.Server.Mode = "debug"

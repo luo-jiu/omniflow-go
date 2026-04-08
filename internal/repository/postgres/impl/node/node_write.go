@@ -47,8 +47,8 @@ const (
 
 // CreateNode 创建节点并在文件类型时补齐对象存储关联。
 func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) (domainnode.Node, error) {
-	name := strings.TrimSpace(input.Name)
-	if name == "" {
+	name := input.Name
+	if strings.TrimSpace(name) == "" {
 		return domainnode.Node{}, fmt.Errorf("%w: node name is required", ErrInvalidState)
 	}
 
@@ -228,8 +228,8 @@ func (r *NodeRepository) MoveNode(ctx context.Context, input MoveNodeInput) erro
 		}
 	}
 
-	name := strings.TrimSpace(input.Name)
-	if name == "" {
+	name := input.Name
+	if strings.TrimSpace(name) == "" {
 		name = node.Name
 	}
 	duplicate, err := r.hasDuplicateName(ctx, name, input.NewParentID, input.LibraryID, input.NodeID)

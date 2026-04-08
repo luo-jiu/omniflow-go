@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 	"time"
 
 	"omniflow-go/internal/config"
@@ -20,9 +22,14 @@ type Store struct {
 }
 
 func NewStore(cfg *config.Config) (storage.ObjectStorage, func(), error) {
-	client, err := minio.New(cfg.MinIO.Endpoint, &minio.Options{
+	endpoint, secure, err := normalizeMinIOEndpoint(cfg.MinIO.Endpoint, cfg.MinIO.UseSSL)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.MinIO.AccessKey, cfg.MinIO.SecretKey, ""),
-		Secure: cfg.MinIO.UseSSL,
+		Secure: secure,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("new minio client: %w", err)
@@ -41,12 +48,23 @@ func (s *Store) Bucket() string {
 func (s *Store) ensureBucket(ctx context.Context) error {
 	exists, err := s.client.BucketExists(ctx, s.bucket)
 	if err != nil {
-		return fmt.Errorf("check bucket exists: %w", err)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("check bucket exists: %w", ctx.Err())
+		case <-time.After(200 * time.Millisecond):
+		}
+		exists, err = s.client.BucketExists(ctx, s.bucket)
+		if err != nil {
+			return fmt.Errorf("check bucket exists: %w", err)
+		}
 	}
 	if exists {
 		return nil
 	}
 	if err := s.client.MakeBucket(ctx, s.bucket, minio.MakeBucketOptions{}); err != nil {
+		if isBucketAlreadyExistsError(err) {
+			return nil
+		}
 		return fmt.Errorf("create bucket: %w", err)
 	}
 	return nil
@@ -94,4 +112,30 @@ func (s *Store) Delete(ctx context.Context, objectName string) error {
 		return fmt.Errorf("delete object: %w", err)
 	}
 	return nil
+}
+
+func normalizeMinIOEndpoint(raw string, useSSL bool) (string, bool, error) {
+	endpoint := strings.TrimSpace(raw)
+	if endpoint == "" {
+		return "", useSSL, fmt.Errorf("minio endpoint is empty")
+	}
+
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		parsed, err := url.Parse(endpoint)
+		if err != nil {
+			return "", useSSL, fmt.Errorf("invalid minio endpoint: %w", err)
+		}
+		if parsed.Host == "" {
+			return "", useSSL, fmt.Errorf("invalid minio endpoint: missing host")
+		}
+		endpoint = parsed.Host
+		useSSL = parsed.Scheme == "https"
+	}
+
+	return endpoint, useSSL, nil
+}
+
+func isBucketAlreadyExistsError(err error) bool {
+	resp := minio.ToErrorResponse(err)
+	return resp.Code == "BucketAlreadyOwnedByYou" || resp.Code == "BucketAlreadyExists"
 }

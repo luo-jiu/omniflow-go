@@ -65,7 +65,7 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 
 	if err := h.nodeUseCase.Rename(ctx.Request.Context(), uri.NodeID, usecase.RenameNodeCommand{
 		Actor: actorFromContext(ctx),
-		Name:  strings.TrimSpace(req.Name),
+		Name:  req.Name,
 		Ext:   req.Ext,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
@@ -105,7 +105,7 @@ func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 		NodeID:       req.NodeID,
 		NewParentID:  req.NewParentID,
 		BeforeNodeID: req.BeforeNodeID,
-		Name:         strings.TrimSpace(req.Name),
+		Name:         req.Name,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return

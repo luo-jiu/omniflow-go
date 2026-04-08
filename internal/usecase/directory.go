@@ -1,11 +1,13 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"mime"
-	"path/filepath"
+	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -42,6 +44,8 @@ type DirectoryUseCase struct {
 	auditLog   audit.Sink
 }
 
+const defaultUploadContentType = "application/octet-stream"
+
 func NewDirectoryUseCase(
 	nodes *NodeUseCase,
 	storage storage.ObjectStorage,
@@ -57,8 +61,8 @@ func NewDirectoryUseCase(
 }
 
 func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFileCommand) (domainnode.Node, error) {
-	fileName := strings.TrimSpace(cmd.FileName)
-	if cmd.LibraryID == 0 || fileName == "" || cmd.Content == nil {
+	fileName := cmd.FileName
+	if cmd.LibraryID == 0 || strings.TrimSpace(fileName) == "" || cmd.Content == nil {
 		return domainnode.Node{}, fmt.Errorf("%w: library id, file name and content are required", ErrInvalidArgument)
 	}
 	if cmd.FileSize < 0 {
@@ -71,24 +75,21 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		return domainnode.Node{}, err
 	}
 
-	base := filepath.Base(fileName)
-	extWithDot := filepath.Ext(base)
+	base := extractUploadBaseName(fileName)
+	extWithDot := path.Ext(base)
 	name := strings.TrimSuffix(base, extWithDot)
 	if name == "" {
 		name = base
 	}
 	ext := strings.TrimPrefix(extWithDot, ".")
 
-	contentType := strings.TrimSpace(cmd.ContentType)
-	if contentType == "" {
-		contentType = mime.TypeByExtension(extWithDot)
-	}
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	contentReader, contentType, err := resolveUploadContentType(cmd.Content, cmd.ContentType, extWithDot)
+	if err != nil {
+		return domainnode.Node{}, fmt.Errorf("%w: resolve upload content type failed", ErrInvalidArgument)
 	}
 
 	storageKey := fmt.Sprintf("libraries/%d/%s%s", cmd.LibraryID, uuid.NewString(), extWithDot)
-	if err := u.storage.Upload(ctx, storageKey, cmd.Content, cmd.FileSize, contentType); err != nil {
+	if err := u.storage.Upload(ctx, storageKey, contentReader, cmd.FileSize, contentType); err != nil {
 		return domainnode.Node{}, err
 	}
 
@@ -119,6 +120,61 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		"mime_type":   contentType,
 	})
 	return node, nil
+}
+
+func extractUploadBaseName(fileName string) string {
+	normalized := strings.ReplaceAll(fileName, "\\", "/")
+	base := path.Base(normalized)
+	if base == "." || base == "/" {
+		return fileName
+	}
+	return base
+}
+
+func resolveUploadContentType(
+	content io.Reader,
+	declaredContentType string,
+	extWithDot string,
+) (io.Reader, string, error) {
+	contentType := strings.TrimSpace(declaredContentType)
+	reader := content
+
+	if contentType == "" || strings.EqualFold(contentType, defaultUploadContentType) {
+		sniffed, replayReader, err := sniffContentType(content)
+		if err != nil {
+			return nil, "", err
+		}
+		reader = replayReader
+		if sniffed != "" && !strings.EqualFold(sniffed, defaultUploadContentType) {
+			contentType = sniffed
+		}
+	}
+
+	if contentType == "" || strings.EqualFold(contentType, defaultUploadContentType) {
+		byExt := strings.TrimSpace(mime.TypeByExtension(extWithDot))
+		if byExt != "" {
+			contentType = byExt
+		}
+	}
+
+	if contentType == "" {
+		contentType = defaultUploadContentType
+	}
+	return reader, contentType, nil
+}
+
+func sniffContentType(content io.Reader) (string, io.Reader, error) {
+	head := make([]byte, 512)
+	n, err := io.ReadFull(content, head)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", nil, err
+	}
+	head = head[:n]
+	replay := io.MultiReader(bytes.NewReader(head), content)
+	if len(head) == 0 {
+		return "", replay, nil
+	}
+	return http.DetectContentType(head), replay, nil
 }
 
 func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLinkQuery) (string, error) {

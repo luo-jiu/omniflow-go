@@ -121,8 +121,8 @@ const (
 )
 
 func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domainnode.Node, error) {
-	name := strings.TrimSpace(cmd.Name)
-	if cmd.LibraryID == 0 || name == "" {
+	name := cmd.Name
+	if cmd.LibraryID == 0 || strings.TrimSpace(name) == "" {
 		return domainnode.Node{}, fmt.Errorf("%w: library id and name are required", ErrInvalidArgument)
 	}
 	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
@@ -380,8 +380,8 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 }
 
 func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeCommand) error {
-	newName := strings.TrimSpace(cmd.Name)
-	if nodeID == 0 || newName == "" {
+	newName := cmd.Name
+	if nodeID == 0 || strings.TrimSpace(newName) == "" {
 		return fmt.Errorf("%w: node id and name are required", ErrInvalidArgument)
 	}
 
@@ -447,7 +447,7 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 			NodeID:       cmd.NodeID,
 			NewParentID:  cmd.NewParentID,
 			BeforeNodeID: cmd.BeforeNodeID,
-			Name:         strings.TrimSpace(cmd.Name),
+			Name:         cmd.Name,
 			UpdatedAt:    time.Now().UTC(),
 		}); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {

@@ -37,7 +37,7 @@ func (h *NodeHandler) CreateNode(ctx *gin.Context) {
 
 	created, err := h.nodeUseCase.Create(ctx.Request.Context(), usecase.CreateNodeCommand{
 		Actor:      actorFromContext(ctx),
-		Name:       strings.TrimSpace(req.Name),
+		Name:       req.Name,
 		Type:       nodeType,
 		ParentID:   req.ParentID,
 		LibraryID:  req.LibraryID,

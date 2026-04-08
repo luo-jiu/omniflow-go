@@ -1,5 +1,9 @@
 # OmniFlow Go 分层与目录规范（v2）
 
+关联文档：
+- `docs/architecture/java-to-go-migration-handoff.md`（给 Java 视角同学/Agent 的迁移交接说明）
+- `docs/progress/java-api-alignment-status.md`（接口对齐进度台账）
+
 ## 1. 目标与共识
 
 本规范用于防止重构期间目录和职责失控，核心原则是：
@@ -216,6 +220,16 @@ internal/
 - 新增代码优先放入 `repository/postgres|redis|object`，不再向 `internal/repository` 根目录继续堆业务实现。
 - 涉及 PG/Redis/MinIO 的实现，必须落在对应仓储类型目录下的业务子目录。
 - 规范先行：结构调整前先更新此文档，再落地代码。
+
+## 11. Java 重构阶段补充约束
+
+为避免“接口已对齐但实现风格再次发散”，补充以下约束：
+
+- 行为优先级：先保证 Java 黑盒契约，再做实现优化。
+- 实现优先级：先补基建阻塞（端口/仓储/事务/配置），再补业务细节。
+- 风格优先级：常规查询统一走 gen/ORM，Raw SQL 仅用于必要复杂场景并集中管理。
+- 代码提交：坚持小步提交；一次提交聚焦一个行为点，便于回滚和追踪。
+- 文档同步：接口行为调整后，必须同步更新进度台账与交接说明。
 
 ---
 
