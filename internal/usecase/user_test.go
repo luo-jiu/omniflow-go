@@ -1,21 +1,51 @@
 package usecase
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestResolveAvatarUploadExt(t *testing.T) {
-	if got := resolveAvatarUploadExt(".png", "image/jpeg"); got != ".png" {
-		t.Fatalf("expected .png, got %s", got)
-	}
-	if got := resolveAvatarUploadExt("", "image/webp"); got != ".webp" {
+func TestResolveAvatarUploadExtByMIME(t *testing.T) {
+	if got := resolveAvatarUploadExtByMIME("image/webp"); got != ".webp" {
 		t.Fatalf("expected .webp, got %s", got)
 	}
-	if got := resolveAvatarUploadExt("", "application/octet-stream"); got != "" {
+	if got := resolveAvatarUploadExtByMIME("image/x-icon"); got != ".ico" {
+		t.Fatalf("expected .ico, got %s", got)
+	}
+	if got := resolveAvatarUploadExtByMIME("application/octet-stream"); got != "" {
 		t.Fatalf("expected empty ext, got %s", got)
+	}
+}
+
+func TestNormalizeAvatarUploadDetectImageMIME(t *testing.T) {
+	pngHeader := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 0, 'I', 'H', 'D', 'R'}
+	reader, ext, contentType, err := normalizeAvatarUpload(bytes.NewReader(pngHeader), "avatar.bin", "application/octet-stream")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ext != ".png" {
+		t.Fatalf("expected .png, got %s", ext)
+	}
+	if contentType != "image/png" {
+		t.Fatalf("expected image/png, got %s", contentType)
+	}
+
+	consumed, err := reader.Read(make([]byte, 8))
+	if err != nil {
+		t.Fatalf("unexpected read error: %v", err)
+	}
+	if consumed == 0 {
+		t.Fatalf("expected readable content, got 0 bytes")
+	}
+}
+
+func TestNormalizeAvatarUploadRejectSVG(t *testing.T) {
+	_, _, _, err := normalizeAvatarUpload(bytes.NewReader([]byte("<svg/>")), "avatar.svg", "image/svg+xml")
+	if err == nil {
+		t.Fatalf("expected error for svg avatar")
 	}
 }
 

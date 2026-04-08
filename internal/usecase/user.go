@@ -1,12 +1,14 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,6 +35,9 @@ var allowedAvatarExtensions = map[string]struct{}{
 	".png":  {},
 	".gif":  {},
 	".bmp":  {},
+	".ico":  {},
+	".tif":  {},
+	".tiff": {},
 	".webp": {},
 	".avif": {},
 	".heic": {},
@@ -318,23 +323,9 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 		return domainuser.User{}, err
 	}
 
-	extWithDot := strings.ToLower(filepath.Ext(strings.TrimSpace(cmd.FileName)))
-	_, extAllowed := allowedAvatarExtensions[extWithDot]
-	contentType := strings.TrimSpace(cmd.ContentType)
-	imageByMIME := strings.HasPrefix(strings.ToLower(contentType), "image/")
-	if !extAllowed && !imageByMIME {
-		return domainuser.User{}, fmt.Errorf("%w: avatar only supports image files", ErrInvalidArgument)
-	}
-
-	resolvedExt := resolveAvatarUploadExt(extWithDot, contentType)
-	if resolvedExt == "" {
-		resolvedExt = ".bin"
-	}
-	if contentType == "" || contentType == "application/octet-stream" {
-		contentType = resolveAvatarContentType(resolvedExt)
-	}
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	uploadContent, resolvedExt, contentType, err := normalizeAvatarUpload(cmd.Content, cmd.FileName, cmd.ContentType)
+	if err != nil {
+		return domainuser.User{}, err
 	}
 
 	existing, err := u.users.FindByID(ctx, userID)
@@ -349,7 +340,7 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 	oldAvatarKey := strings.TrimSpace(stringValue(extJSON[userAvatarExtKey]))
 	newAvatarKey := buildAvatarStorageKey(userID, resolvedExt)
 
-	if err := u.storage.Upload(ctx, newAvatarKey, cmd.Content, cmd.FileSize, contentType); err != nil {
+	if err := u.storage.Upload(ctx, newAvatarKey, uploadContent, cmd.FileSize, contentType); err != nil {
 		return domainuser.User{}, err
 	}
 
@@ -446,13 +437,10 @@ func (u *UserUseCase) resolveAvatarURL(ctx context.Context, extRaw string) strin
 	return strings.TrimSpace(stringValue(extJSON[userAvatarLegacyExtKey]))
 }
 
-func resolveAvatarUploadExt(extWithDot, contentType string) string {
-	if extWithDot != "" {
-		return extWithDot
-	}
-	contentType = strings.ToLower(strings.TrimSpace(contentType))
+func resolveAvatarUploadExtByMIME(contentType string) string {
+	contentType = normalizeMIMEType(contentType)
 	switch contentType {
-	case "image/jpeg":
+	case "image/jpg", "image/jpeg":
 		return ".jpg"
 	case "image/png":
 		return ".png"
@@ -460,6 +448,10 @@ func resolveAvatarUploadExt(extWithDot, contentType string) string {
 		return ".gif"
 	case "image/bmp":
 		return ".bmp"
+	case "image/vnd.microsoft.icon", "image/x-icon":
+		return ".ico"
+	case "image/tiff":
+		return ".tiff"
 	case "image/webp":
 		return ".webp"
 	case "image/avif":
@@ -469,8 +461,105 @@ func resolveAvatarUploadExt(extWithDot, contentType string) string {
 	case "image/heif":
 		return ".heif"
 	default:
+		if !strings.HasPrefix(contentType, "image/") {
+			return ""
+		}
+		subType := strings.TrimPrefix(contentType, "image/")
+		if idx := strings.Index(subType, "+"); idx >= 0 {
+			subType = subType[:idx]
+		}
+		subType = strings.TrimPrefix(subType, "x-")
+		if subType == "" {
+			return ""
+		}
+
+		ext := "." + subType
+		if !isAllowedAvatarExt(ext) {
+			return ""
+		}
+		return ext
+	}
+}
+
+func normalizeAvatarUpload(content io.Reader, fileName, declaredContentType string) (io.Reader, string, string, error) {
+	extWithDot := strings.ToLower(filepath.Ext(strings.TrimSpace(fileName)))
+	extAllowed := isAllowedAvatarExt(extWithDot)
+
+	head := make([]byte, 512)
+	readCount, readErr := io.ReadFull(content, head)
+	if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
+		return nil, "", "", readErr
+	}
+	head = head[:readCount]
+
+	detectedMIME := ""
+	if len(head) > 0 {
+		detectedMIME = normalizeMIMEType(http.DetectContentType(head))
+	}
+	declaredMIME := normalizeMIMEType(declaredContentType)
+	mimeAllowed := isAllowedAvatarMIME(detectedMIME) || isAllowedAvatarMIME(declaredMIME)
+	if !extAllowed && !mimeAllowed {
+		return nil, "", "", fmt.Errorf("%w: avatar only supports image files", ErrInvalidArgument)
+	}
+
+	resolvedExt := extWithDot
+	if !isAllowedAvatarExt(resolvedExt) {
+		resolvedExt = resolveAvatarUploadExtByMIME(detectedMIME)
+	}
+	if !isAllowedAvatarExt(resolvedExt) {
+		resolvedExt = resolveAvatarUploadExtByMIME(declaredMIME)
+	}
+	if !isAllowedAvatarExt(resolvedExt) {
+		return nil, "", "", fmt.Errorf("%w: avatar image format is not supported", ErrInvalidArgument)
+	}
+
+	resolvedContentType := detectedMIME
+	if !isAllowedAvatarMIME(resolvedContentType) {
+		if isAllowedAvatarMIME(declaredMIME) {
+			resolvedContentType = declaredMIME
+		} else {
+			resolvedContentType = resolveAvatarContentType(resolvedExt)
+		}
+	}
+	if resolvedContentType == "" {
+		resolvedContentType = "application/octet-stream"
+	}
+
+	rewindContent := io.MultiReader(bytes.NewReader(head), content)
+	return rewindContent, resolvedExt, resolvedContentType, nil
+}
+
+func normalizeMIMEType(contentType string) string {
+	normalized := strings.ToLower(strings.TrimSpace(contentType))
+	if normalized == "" {
 		return ""
 	}
+	if idx := strings.Index(normalized, ";"); idx >= 0 {
+		normalized = strings.TrimSpace(normalized[:idx])
+	}
+	if normalized == "application/octet-stream" {
+		return ""
+	}
+	return normalized
+}
+
+func isAllowedAvatarExt(extWithDot string) bool {
+	if extWithDot == "" {
+		return false
+	}
+	_, ok := allowedAvatarExtensions[strings.ToLower(strings.TrimSpace(extWithDot))]
+	return ok
+}
+
+func isAllowedAvatarMIME(contentType string) bool {
+	contentType = normalizeMIMEType(contentType)
+	if contentType == "" {
+		return false
+	}
+	if contentType == "image/svg+xml" {
+		return false
+	}
+	return strings.HasPrefix(contentType, "image/")
 }
 
 func resolveAvatarContentType(extWithDot string) string {
