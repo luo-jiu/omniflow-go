@@ -38,6 +38,13 @@ type MoveNodeInput struct {
 	UpdatedAt    time.Time
 }
 
+const (
+	moveSortStep        = 1024
+	moveMinSortGap      = 2
+	moveMaxInt32        = int(^uint32(0) >> 1)
+	moveMaxSafeSortBase = moveMaxInt32 - moveSortStep*4
+)
+
 // CreateNode 创建节点并在文件类型时补齐对象存储关联。
 func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) (domainnode.Node, error) {
 	name := strings.TrimSpace(input.Name)
@@ -262,26 +269,36 @@ func (r *NodeRepository) resolveMoveSortOrder(ctx context.Context, input MoveNod
 			return 0, fmt.Errorf("%w: before node is not under target parent", ErrInvalidState)
 		}
 
-		q := r.query(ctx)
-		shift := q.Node.WithContext(ctx).
-			Where(
-				q.Node.LibraryID.Eq(toPGInt64(input.LibraryID)),
-				q.Node.SortOrder.Gte(beforeNode.SortOrder),
-			)
-		shift = r.applyParentCondition(shift, q, input.NewParentID)
-		if _, err := shift.Updates(map[string]any{
-			"sort_order": gorm.Expr("sort_order + 1"),
-		}); err != nil {
+		left, right, err := r.resolveMoveBeforeRange(ctx, input.NewParentID, input.LibraryID, beforeNode)
+		if err != nil {
 			return 0, err
 		}
-		return int(beforeNode.SortOrder), nil
+		if right-left <= 1 {
+			if err := r.incrementSortOrderAfter(ctx, input.NewParentID, input.LibraryID, right); err != nil {
+				return 0, err
+			}
+			return right, nil
+		}
+		return left + ((right - left) / 2), nil
 	}
 
 	maxSort, err := r.maxSortOrder(ctx, input.LibraryID, input.NewParentID)
 	if err != nil {
 		return 0, err
 	}
-	return maxSort + 15, nil
+	if maxSort >= moveMaxSafeSortBase {
+		if err := r.reindexParent(ctx, input.NewParentID, input.LibraryID, input.UpdatedAt); err != nil {
+			return 0, err
+		}
+		maxSort, err = r.maxSortOrder(ctx, input.LibraryID, input.NewParentID)
+		if err != nil {
+			return 0, err
+		}
+	}
+	if maxSort <= 0 {
+		return moveSortStep, nil
+	}
+	return maxSort + moveSortStep, nil
 }
 
 func (r *NodeRepository) hasDuplicateName(ctx context.Context, name string, parentID, libraryID, excludeID uint64) (bool, error) {
@@ -335,6 +352,134 @@ func nodeTypeCode(t domainnode.Type) int16 {
 		return nodeTypeFile
 	}
 	return nodeTypeDirectory
+}
+
+func (r *NodeRepository) resolveMoveBeforeRange(
+	ctx context.Context,
+	parentID, libraryID uint64,
+	beforeNode *pgmodel.Node,
+) (int, int, error) {
+	leftSort, err := r.prevSortOrderBeforeNode(ctx, parentID, libraryID, beforeNode.SortOrder, toDomainUint64(beforeNode.ID))
+	if err != nil {
+		return 0, 0, err
+	}
+	left := 0
+	if leftSort != nil {
+		left = *leftSort
+	}
+	right := int(beforeNode.SortOrder)
+
+	if right-left <= moveMinSortGap {
+		if err := r.reindexParent(ctx, parentID, libraryID, time.Now().UTC()); err != nil {
+			return 0, 0, err
+		}
+		refreshedBefore, err := r.findNodeModel(ctx, toDomainUint64(beforeNode.ID), libraryID)
+		if err != nil {
+			return 0, 0, err
+		}
+		leftSort, err = r.prevSortOrderBeforeNode(
+			ctx,
+			parentID,
+			libraryID,
+			refreshedBefore.SortOrder,
+			toDomainUint64(refreshedBefore.ID),
+		)
+		if err != nil {
+			return 0, 0, err
+		}
+		left = 0
+		if leftSort != nil {
+			left = *leftSort
+		}
+		right = int(refreshedBefore.SortOrder)
+	}
+	return left, right, nil
+}
+
+func (r *NodeRepository) prevSortOrderBeforeNode(
+	ctx context.Context,
+	parentID, libraryID uint64,
+	beforeSort int32,
+	beforeID uint64,
+) (*int, error) {
+	q := r.query(ctx)
+	query := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.SortOrder.Lt(beforeSort),
+		)
+	query = r.applyParentCondition(query, q, parentID)
+
+	row, err := query.
+		Order(q.Node.SortOrder.Desc(), q.Node.ID.Desc()).
+		Limit(1).
+		First()
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if toDomainUint64(row.ID) == beforeID {
+		return nil, nil
+	}
+	value := int(row.SortOrder)
+	return &value, nil
+}
+
+func (r *NodeRepository) reindexParent(ctx context.Context, parentID, libraryID uint64, updatedAt time.Time) error {
+	q := r.query(ctx)
+	query := q.Node.WithContext(ctx).
+		Where(q.Node.LibraryID.Eq(toPGInt64(libraryID)))
+	query = r.applyParentCondition(query, q, parentID)
+
+	siblings, err := query.
+		Order(q.Node.SortOrder.Asc(), q.Node.ID.Asc()).
+		Find()
+	if err != nil {
+		return err
+	}
+	if len(siblings) == 0 {
+		return nil
+	}
+
+	order := moveSortStep
+	for _, sibling := range siblings {
+		if order > moveMaxInt32-moveSortStep {
+			return fmt.Errorf("%w: sort order range exhausted under parent %d", ErrInvalidState, parentID)
+		}
+		info, err := q.Node.WithContext(ctx).
+			Where(
+				q.Node.ID.Eq(sibling.ID),
+				q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			).
+			Updates(map[string]any{
+				"sort_order": order,
+				"updated_at": updatedAt,
+			})
+		if err != nil {
+			return err
+		}
+		if info.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		order += moveSortStep
+	}
+	return nil
+}
+
+func (r *NodeRepository) incrementSortOrderAfter(ctx context.Context, parentID, libraryID uint64, rightSort int) error {
+	q := r.query(ctx)
+	query := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.SortOrder.Gte(int32(rightSort)),
+		)
+	query = r.applyParentCondition(query, q, parentID)
+	_, err := query.Updates(map[string]any{
+		"sort_order": gorm.Expr("sort_order + 1"),
+	})
+	return err
 }
 
 func (r *NodeRepository) lockMoveScope(ctx context.Context, libraryID, oldParentID, newParentID uint64) error {

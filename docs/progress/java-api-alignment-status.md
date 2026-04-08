@@ -12,8 +12,8 @@
 | 指标 | 数量 |
 |---|---:|
 | Java 接口总数 | 41 |
-| 已实现并已校对 | 24 |
-| 已实现待校对 | 17 |
+| 已实现并已校对 | 25 |
+| 已实现待校对 | 16 |
 | 未实现 | 0 |
 
 ## 全量清单
@@ -46,7 +46,7 @@
 | Node | PUT | /api/v1/nodes/{nodeId} | 已实现并已校对 | builtInType/archiveMode/viewMeta 已对齐。 |
 | Node | PATCH | /api/v1/nodes/{nodeId}/rename | 已实现并已校对 | 已支持 rename + 文件 ext 处理。 |
 | Node | PATCH | /api/v1/nodes | 已实现并已校对 | 已对齐为兼容保留空实现（与 Java 一致）。 |
-| Node | PATCH | /api/v1/nodes/{nodeId}/move | 已实现待校对 | 已补并发锁域和 beforeNode==nodeId 的 no-op，待继续校对排序细节。 |
+| Node | PATCH | /api/v1/nodes/{nodeId}/move | 已实现并已校对 | 已对齐并发锁域、beforeNode 自指 no-op 与间隔排序重排策略。 |
 | Node | PATCH | /api/v1/nodes/{nodeId}/comic/sort-by-name | 已实现并已校对 | 已按 COMIC 目录排序语义补齐。 |
 | Node | DELETE | /api/v1/nodes/{ancestorId}/library/{libraryId} | 已实现并已校对 | Go 路由参数名使用 nodeId，行为等价。 |
 | Node | GET | /api/v1/nodes/recycle/library/{libraryId} | 已实现并已校对 | 回收站顶层列表已补齐。 |
@@ -64,6 +64,6 @@
 
 ## 下一步建议（按优先级）
 
-1. 对 `已实现待校对` 的 `node move` 做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
+1. 对 `已实现待校对` 的 `node descendants/children/path/root` 做逐项黑盒对齐，防止联调阶段出现“看似可用但行为偏差”。
 2. 补一组 `nodes/search` 边界联调用例（空 keyword、ANY/ALL、limit 截断）。
 3. 跟前端联调 `tags`，重点确认错误码与消息文案是否需要完全贴合 Java。
