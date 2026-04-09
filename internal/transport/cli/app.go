@@ -250,7 +250,7 @@ func (a *App) buildCommandTree() *command {
 	fs := &command{
 		Name:     "fs",
 		Summary:  "File system commands",
-		Usage:    "of fs <mkdir|rename|mv|rm|ls|search|recycle|path> [flags]",
+		Usage:    "of fs <mkdir|rename|mv|rm|ls|search|archive|recycle|path> [flags]",
 		Children: map[string]*command{},
 	}
 	fs.Children["mkdir"] = &command{
@@ -371,6 +371,29 @@ func (a *App) buildCommandTree() *command {
 		},
 		Run: a.runFSSearch,
 	}
+	archive := &command{
+		Name:     "archive",
+		Summary:  "Archive directory commands",
+		Usage:    "of fs archive <batch-set-built-in-type> [flags]",
+		Children: map[string]*command{},
+	}
+	archive.Children["batch-set-built-in-type"] = &command{
+		Name:    "batch-set-built-in-type",
+		Summary: "Batch set direct child directory built-in type by archive parent",
+		Usage:   "of fs archive batch-set-built-in-type --node-id <id> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--node-id <id>      archive directory node id (required, >0)",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs archive batch-set-built-in-type --node-id 123",
+			"of fs archive batch-set-built-in-type --node-id 123 --dry-run --json",
+		},
+		Run: a.runFSArchiveBatchSetBuiltInType,
+	}
+	fs.Children["archive"] = archive
 	recycle := &command{
 		Name:     "recycle",
 		Summary:  "Recycle bin commands",

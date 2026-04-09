@@ -139,6 +139,15 @@ type MoveNodeRequest struct {
 	LibraryID    uint64 `json:"libraryId"`
 }
 
+type BatchSetArchiveChildrenBuiltInTypeResult struct {
+	NodeID        uint64 `json:"nodeId"`
+	LibraryID     uint64 `json:"libraryId"`
+	BuiltInType   string `json:"builtInType"`
+	TotalChildren int    `json:"totalChildren"`
+	DirChildren   int    `json:"dirChildren"`
+	UpdatedCount  int    `json:"updatedCount"`
+}
+
 func NewClient(baseURL, username, token string) *Client {
 	return &Client{
 		baseURL:  normalizeBaseURL(baseURL),
@@ -254,6 +263,24 @@ func (c *Client) MoveNode(ctx context.Context, nodeID uint64, req MoveNodeReques
 		true,
 		nil,
 	)
+}
+
+func (c *Client) BatchSetArchiveChildrenBuiltInType(
+	ctx context.Context,
+	nodeID uint64,
+	dryRun bool,
+) (BatchSetArchiveChildrenBuiltInTypeResult, error) {
+	var out BatchSetArchiveChildrenBuiltInTypeResult
+	err := c.doJSON(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/api/v1/nodes/%d/archive/built-in-type/batch-set", nodeID),
+		withDryRunQuery(nil, dryRun),
+		nil,
+		true,
+		&out,
+	)
+	return out, err
 }
 
 func (c *Client) DeleteNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {

@@ -2,6 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -92,6 +95,9 @@ func TestRunHelpFSContainsMkdir(t *testing.T) {
 	if !strings.Contains(stdout.String(), "recycle") {
 		t.Fatalf("expected recycle in fs help, got: %s", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "archive") {
+		t.Fatalf("expected archive in fs help, got: %s", stdout.String())
+	}
 	if !strings.Contains(stdout.String(), "path") {
 		t.Fatalf("expected path in fs help, got: %s", stdout.String())
 	}
@@ -137,6 +143,26 @@ func TestRunHelpFSPathContainsResolve(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "resolve") {
 		t.Fatalf("expected resolve in fs path help, got: %s", out)
+	}
+}
+
+func TestRunHelpFSArchiveContainsSubcommands(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "fs", "archive"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "batch-set-built-in-type") {
+		t.Fatalf("expected batch-set-built-in-type in fs archive help, got: %s", out)
 	}
 }
 
@@ -322,5 +348,100 @@ func TestRunFSRecycleHardRequiresNodeInput(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "`--node-id` is required") {
 		t.Fatalf("expected missing hard node input error, got: %s", stderr.String())
+	}
+}
+
+func TestRunFSArchiveBatchSetBuiltInTypeRequiresNodeID(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"fs", "archive", "batch-set-built-in-type"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--node-id` is required and must be greater than 0") {
+		t.Fatalf("expected missing node id error, got: %s", stderr.String())
+	}
+}
+
+func TestRunFSArchiveBatchSetBuiltInTypeSuccessJSON(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	t.Setenv(envUsername, "tester")
+	t.Setenv(envToken, "token-123")
+
+	originTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes/123/archive/built-in-type/batch-set" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"nodeId":123,"libraryId":1,"builtInType":"COMIC","totalChildren":5,"dirChildren":3,"updatedCount":2},"request_id":"req-1"}`)),
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originTransport
+	}()
+
+	exitCode := app.Run([]string{
+		"fs", "archive", "batch-set-built-in-type",
+		"--base-url", "http://example.test",
+		"--node-id", "123",
+		"--dry-run",
+		"--json",
+	})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got err=%v output=%s", err, stdout.String())
+	}
+	if got["dryRun"] != true {
+		t.Fatalf("expected dryRun=true, got %#v", got["dryRun"])
+	}
+	if got["nodeId"] != float64(123) {
+		t.Fatalf("expected nodeId=123, got %#v", got["nodeId"])
+	}
+	if got["libraryId"] != float64(1) {
+		t.Fatalf("expected libraryId=1, got %#v", got["libraryId"])
+	}
+	if got["builtInType"] != "COMIC" {
+		t.Fatalf("expected builtInType=COMIC, got %#v", got["builtInType"])
+	}
+	if got["totalChildren"] != float64(5) {
+		t.Fatalf("expected totalChildren=5, got %#v", got["totalChildren"])
+	}
+	if got["dirChildren"] != float64(3) {
+		t.Fatalf("expected dirChildren=3, got %#v", got["dirChildren"])
+	}
+	if got["updatedCount"] != float64(2) {
+		t.Fatalf("expected updatedCount=2, got %#v", got["updatedCount"])
 	}
 }

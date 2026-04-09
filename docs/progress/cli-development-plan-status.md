@@ -46,6 +46,7 @@
 - `of fs rm`
 - `of fs ls`
 - `of fs search`
+- `of fs archive batch-set-built-in-type`
 - `of fs recycle ls`
 - `of fs recycle restore`
 - `of fs recycle hard`
@@ -94,6 +95,8 @@
   - 新增 `of fs path resolve`（通过根节点+逐层 children 解析路径到 nodeId）。
 - 完成 M5 第二项（阶段 1）：
   - `fs mkdir/mv/rm` 已支持可选路径参数（兼容既有 id 参数）。
+- 完成 fs 归档批量能力同步：
+  - 新增 `of fs archive batch-set-built-in-type`（调用 `PATCH /api/v1/nodes/{nodeId}/archive/built-in-type/batch-set`，支持 `--dry-run`、`--json`）。
 - M5 约束修正：
   - `fs recycle restore/hard` 暂不支持路径参数，避免与回收站语义冲突（仅支持 `--node-id`）。
 - help 渐进式披露升级：

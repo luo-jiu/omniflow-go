@@ -516,6 +516,72 @@ func (a *App) runFSRecycleHardDelete(args []string) error {
 	return nil
 }
 
+func (a *App) runFSArchiveBatchSetBuiltInType(args []string) error {
+	fs := a.newFlagSet("fs archive batch-set-built-in-type")
+
+	var (
+		baseURL string
+		nodeID  uint64
+		dryRun  bool
+		jsonOut bool
+	)
+	fs.StringVar(&baseURL, "base-url", "", "API base url")
+	fs.Uint64Var(&nodeID, "node-id", 0, "archive directory node id (required, >0)")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
+	fs.BoolVar(&jsonOut, "json", false, "output JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := ensureNoExtraArgs(fs); err != nil {
+		return err
+	}
+	if nodeID == 0 {
+		return errors.New("`--node-id` is required and must be greater than 0")
+	}
+
+	_, client, err := a.resolveClient(baseURL, true)
+	if err != nil {
+		return err
+	}
+
+	result, err := client.BatchSetArchiveChildrenBuiltInType(context.Background(), nodeID, dryRun)
+	if err != nil {
+		return err
+	}
+
+	if jsonOut {
+		return a.printJSON(map[string]any{
+			"dryRun":        dryRun,
+			"nodeId":        result.NodeID,
+			"libraryId":     result.LibraryID,
+			"builtInType":   result.BuiltInType,
+			"totalChildren": result.TotalChildren,
+			"dirChildren":   result.DirChildren,
+			"updatedCount":  result.UpdatedCount,
+		})
+	}
+
+	if dryRun {
+		a.printf(
+			"dry-run: archive batch set validated: nodeId=%d updatedCount=%d dirChildren=%d builtInType=%s\n",
+			result.NodeID,
+			result.UpdatedCount,
+			result.DirChildren,
+			result.BuiltInType,
+		)
+		return nil
+	}
+
+	a.printf(
+		"archive batch set completed: nodeId=%d updatedCount=%d dirChildren=%d builtInType=%s\n",
+		result.NodeID,
+		result.UpdatedCount,
+		result.DirChildren,
+		result.BuiltInType,
+	)
+	return nil
+}
+
 func (a *App) runFSPathResolve(args []string) error {
 	fs := a.newFlagSet("fs path resolve")
 

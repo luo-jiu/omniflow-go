@@ -33,6 +33,8 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of fs rm --library-id <id> (--node-id <id>|--path </a/b>)
 ./bin/of fs ls --library-id <id> --node-id <id>
 ./bin/of fs search --library-id <id> --keyword <kw> --limit 20
+./bin/of help fs archive batch-set-built-in-type --examples
+./bin/of fs archive batch-set-built-in-type --node-id <id> [--dry-run] [--json]
 ./bin/of fs recycle ls --library-id <id>
 ./bin/of fs recycle restore --library-id <id> --node-id <id>
 ./bin/of fs recycle hard --library-id <id> --node-id <id>

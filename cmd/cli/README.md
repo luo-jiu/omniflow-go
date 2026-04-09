@@ -41,8 +41,9 @@
   - `of help <domain>` 看命令域列表。
   - `of help <domain> <command>` 看 usage + flags。
   - `of help <domain> <command> --examples` 看完整示例。
-- 文件系统命令分两层：
+- 文件系统命令分层组织：
   - 节点操作：`mkdir` / `rename` / `mv` / `rm`
+  - 归档操作：`archive batch-set-built-in-type`
   - 回收站操作：`recycle ls|restore|hard`
   - 路径工具：`path resolve`
 - 路径演进策略：写命令保持 `id` 参数兼容，同时逐步增加 `path` 参数入口。
