@@ -109,6 +109,11 @@ func (h *AuthHandler) Status(ctx *gin.Context) {
 
 // Logout 注销当前登录 token。
 func (h *AuthHandler) Logout(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var query authStatusQuery
 	if !BindQuery(ctx, &query) {
 		return
@@ -119,7 +124,7 @@ func (h *AuthHandler) Logout(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.authUseCase.Logout(ctx.Request.Context(), query.Username, query.Token); err != nil {
+	if err := h.authUseCase.Logout(ctx.Request.Context(), query.Username, query.Token, dryRun); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
 	}

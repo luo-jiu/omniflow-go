@@ -17,6 +17,7 @@ func (a *App) runFSMkdir(args []string) error {
 		parentID   uint64
 		parentPath string
 		name       string
+		dryRun     bool
 		jsonOut    bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
@@ -24,6 +25,7 @@ func (a *App) runFSMkdir(args []string) error {
 	fs.Uint64Var(&parentID, "parent-id", 0, "parent node id (optional, default root)")
 	fs.StringVar(&parentPath, "parent-path", "", "parent path from root, e.g. /docs")
 	fs.StringVar(&name, "name", "", "directory name (required)")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -66,13 +68,24 @@ func (a *App) runFSMkdir(args []string) error {
 		Type:      0,
 		ParentID:  parentID,
 		LibraryID: libraryID,
-	})
+	}, dryRun)
 	if err != nil {
 		return err
 	}
 
 	if jsonOut {
-		return a.printJSON(created)
+		if !dryRun {
+			// 兼容既有脚本：非 dry-run 维持历史输出（仅 node 对象）。
+			return a.printJSON(created)
+		}
+		return a.printJSON(map[string]any{
+			"dryRun": dryRun,
+			"node":   created,
+		})
+	}
+	if dryRun {
+		a.printf("dry-run: create directory request validated: name=%s library=%d parent=%d\n", created.Name, created.LibraryID, created.ParentID)
+		return nil
 	}
 	a.printf("created directory: id=%d name=%s library=%d parent=%d\n", created.ID, created.Name, created.LibraryID, created.ParentID)
 	return nil
@@ -85,11 +98,13 @@ func (a *App) runFSRename(args []string) error {
 		baseURL string
 		nodeID  uint64
 		name    string
+		dryRun  bool
 		jsonOut bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&nodeID, "node-id", 0, "target node id (required)")
 	fs.StringVar(&name, "name", "", "new node name (required)")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -111,17 +126,22 @@ func (a *App) runFSRename(args []string) error {
 		return err
 	}
 
-	if err := client.RenameNode(context.Background(), nodeID, RenameNodeRequest{Name: name}); err != nil {
+	if err := client.RenameNode(context.Background(), nodeID, RenameNodeRequest{Name: name}, dryRun); err != nil {
 		return err
 	}
 
 	result := map[string]any{
+		"dryRun": dryRun,
 		"ok":     true,
 		"nodeId": nodeID,
 		"name":   name,
 	}
 	if jsonOut {
 		return a.printJSON(result)
+	}
+	if dryRun {
+		a.printf("dry-run: rename request validated: id=%d name=%s\n", nodeID, name)
+		return nil
 	}
 	a.printf("renamed node: id=%d name=%s\n", nodeID, name)
 	return nil
@@ -139,6 +159,7 @@ func (a *App) runFSMove(args []string) error {
 		newParentPath string
 		beforeNodeID  uint64
 		name          string
+		dryRun        bool
 		jsonOut       bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
@@ -149,6 +170,7 @@ func (a *App) runFSMove(args []string) error {
 	fs.StringVar(&newParentPath, "new-parent-path", "", "target parent path from root, e.g. /docs")
 	fs.Uint64Var(&beforeNodeID, "before-node-id", 0, "optional sibling node id to place before")
 	fs.StringVar(&name, "name", "", "optional rename while moving")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -206,11 +228,12 @@ func (a *App) runFSMove(args []string) error {
 		NewParentID:  newParentID,
 		BeforeNodeID: beforeNodeID,
 		LibraryID:    libraryID,
-	}); err != nil {
+	}, dryRun); err != nil {
 		return err
 	}
 
 	result := map[string]any{
+		"dryRun":       dryRun,
 		"ok":           true,
 		"nodeId":       nodeID,
 		"libraryId":    libraryID,
@@ -222,6 +245,10 @@ func (a *App) runFSMove(args []string) error {
 	}
 	if jsonOut {
 		return a.printJSON(result)
+	}
+	if dryRun {
+		a.printf("dry-run: move request validated: id=%d library=%d new_parent=%d before=%d\n", nodeID, libraryID, newParentID, beforeNodeID)
+		return nil
 	}
 	a.printf("moved node: id=%d library=%d new_parent=%d before=%d\n", nodeID, libraryID, newParentID, beforeNodeID)
 	return nil
@@ -235,12 +262,14 @@ func (a *App) runFSRemove(args []string) error {
 		libraryID uint64
 		nodeID    uint64
 		pathValue string
+		dryRun    bool
 		jsonOut   bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
 	fs.Uint64Var(&nodeID, "node-id", 0, "target node id (required)")
 	fs.StringVar(&pathValue, "path", "", "target node path from root, e.g. /docs/a.txt")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -273,18 +302,27 @@ func (a *App) runFSRemove(args []string) error {
 		nodeID = node.ID
 	}
 
-	ok, err := client.DeleteNodeTree(context.Background(), nodeID, libraryID)
+	ok, err := client.DeleteNodeTree(context.Background(), nodeID, libraryID, dryRun)
 	if err != nil {
 		return err
 	}
 
 	result := map[string]any{
+		"dryRun":    dryRun,
 		"ok":        ok,
 		"nodeId":    nodeID,
 		"libraryId": libraryID,
 	}
 	if jsonOut {
 		return a.printJSON(result)
+	}
+	if dryRun {
+		if ok {
+			a.printf("dry-run: recycle request validated: id=%d library=%d\n", nodeID, libraryID)
+			return nil
+		}
+		a.printf("dry-run: recycle request validated but no change: id=%d library=%d\n", nodeID, libraryID)
+		return nil
 	}
 	if ok {
 		a.printf("moved node tree to recycle bin: id=%d library=%d\n", nodeID, libraryID)
@@ -359,11 +397,13 @@ func (a *App) runFSRecycleRestore(args []string) error {
 		baseURL   string
 		libraryID uint64
 		nodeID    uint64
+		dryRun    bool
 		jsonOut   bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
 	fs.Uint64Var(&nodeID, "node-id", 0, "target node id in recycle bin (required)")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -383,18 +423,27 @@ func (a *App) runFSRecycleRestore(args []string) error {
 		return err
 	}
 
-	ok, err := client.RestoreNodeTree(context.Background(), nodeID, libraryID)
+	ok, err := client.RestoreNodeTree(context.Background(), nodeID, libraryID, dryRun)
 	if err != nil {
 		return err
 	}
 
 	result := map[string]any{
+		"dryRun":    dryRun,
 		"ok":        ok,
 		"nodeId":    nodeID,
 		"libraryId": libraryID,
 	}
 	if jsonOut {
 		return a.printJSON(result)
+	}
+	if dryRun {
+		if ok {
+			a.printf("dry-run: restore request validated: id=%d library=%d\n", nodeID, libraryID)
+			return nil
+		}
+		a.printf("dry-run: restore request validated but no change: id=%d library=%d\n", nodeID, libraryID)
+		return nil
 	}
 	if ok {
 		a.printf("restored node tree from recycle bin: id=%d library=%d\n", nodeID, libraryID)
@@ -411,11 +460,13 @@ func (a *App) runFSRecycleHardDelete(args []string) error {
 		baseURL   string
 		libraryID uint64
 		nodeID    uint64
+		dryRun    bool
 		jsonOut   bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
 	fs.Uint64Var(&nodeID, "node-id", 0, "target node id in recycle bin (required)")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -435,18 +486,27 @@ func (a *App) runFSRecycleHardDelete(args []string) error {
 		return err
 	}
 
-	ok, err := client.HardDeleteNodeTree(context.Background(), nodeID, libraryID)
+	ok, err := client.HardDeleteNodeTree(context.Background(), nodeID, libraryID, dryRun)
 	if err != nil {
 		return err
 	}
 
 	result := map[string]any{
+		"dryRun":    dryRun,
 		"ok":        ok,
 		"nodeId":    nodeID,
 		"libraryId": libraryID,
 	}
 	if jsonOut {
 		return a.printJSON(result)
+	}
+	if dryRun {
+		if ok {
+			a.printf("dry-run: hard-delete request validated: id=%d library=%d\n", nodeID, libraryID)
+			return nil
+		}
+		a.printf("dry-run: hard-delete request validated but no change: id=%d library=%d\n", nodeID, libraryID)
+		return nil
 	}
 	if ok {
 		a.printf("hard deleted node tree from recycle bin: id=%d library=%d\n", nodeID, libraryID)

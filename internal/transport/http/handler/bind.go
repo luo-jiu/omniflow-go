@@ -78,9 +78,10 @@ func PostFormUint64(ctx *gin.Context, required bool, keys ...string) (uint64, bo
 
 func QueryInt(ctx *gin.Context, defaultValue int, required bool, keys ...string) (int, bool) {
 	raw := QueryString(ctx, keys...)
+	fieldName := firstKeyOrDefault(keys, "query")
 	if raw == "" {
 		if required {
-			BadRequest(ctx, fmt.Sprintf("%s is required", keys[0]))
+			BadRequest(ctx, fmt.Sprintf("%s is required", fieldName))
 			return 0, false
 		}
 		return defaultValue, true
@@ -88,16 +89,32 @@ func QueryInt(ctx *gin.Context, defaultValue int, required bool, keys ...string)
 
 	value, err := strconv.Atoi(raw)
 	if err != nil {
-		BadRequest(ctx, fmt.Sprintf("%s must be integer", keys[0]))
+		BadRequest(ctx, fmt.Sprintf("%s must be integer", fieldName))
 		return 0, false
 	}
 	return value, true
 }
 
+func QueryBool(ctx *gin.Context, defaultValue bool, keys ...string) (bool, bool) {
+	raw := QueryString(ctx, keys...)
+	fieldName := firstKeyOrDefault(keys, "query")
+	if raw == "" {
+		return defaultValue, true
+	}
+
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		BadRequest(ctx, fmt.Sprintf("%s must be boolean", fieldName))
+		return false, false
+	}
+	return value, true
+}
+
 func parseUint64(ctx *gin.Context, raw string, keys []string, required bool) (uint64, bool) {
+	fieldName := firstKeyOrDefault(keys, "value")
 	if raw == "" {
 		if required {
-			BadRequest(ctx, fmt.Sprintf("%s is required", keys[0]))
+			BadRequest(ctx, fmt.Sprintf("%s is required", fieldName))
 			return 0, false
 		}
 		return 0, true
@@ -105,8 +122,15 @@ func parseUint64(ctx *gin.Context, raw string, keys []string, required bool) (ui
 
 	value, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
-		BadRequest(ctx, fmt.Sprintf("%s must be positive integer", keys[0]))
+		BadRequest(ctx, fmt.Sprintf("%s must be positive integer", fieldName))
 		return 0, false
 	}
 	return value, true
+}
+
+func firstKeyOrDefault(keys []string, fallback string) string {
+	if len(keys) == 0 || strings.TrimSpace(keys[0]) == "" {
+		return fallback
+	}
+	return keys[0]
 }

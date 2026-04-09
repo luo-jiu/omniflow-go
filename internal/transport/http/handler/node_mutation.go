@@ -45,6 +45,11 @@ func (h *NodeHandler) UpdateNode(ctx *gin.Context) {
 
 // Rename 在同级目录下重命名节点。
 func (h *NodeHandler) Rename(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -64,9 +69,10 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 	}
 
 	if err := h.nodeUseCase.Rename(ctx.Request.Context(), uri.NodeID, usecase.RenameNodeCommand{
-		Actor: actorFromContext(ctx),
-		Name:  req.Name,
-		Ext:   req.Ext,
+		Actor:  actorFromContext(ctx),
+		Name:   req.Name,
+		Ext:    req.Ext,
+		DryRun: dryRun,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -81,6 +87,11 @@ func (h *NodeHandler) ReorderNode(ctx *gin.Context) {
 
 // MoveNode 按路径中的节点 ID 执行移动。
 func (h *NodeHandler) MoveNode(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -106,6 +117,7 @@ func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 		NewParentID:  req.NewParentID,
 		BeforeNodeID: req.BeforeNodeID,
 		Name:         req.Name,
+		DryRun:       dryRun,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -137,6 +149,11 @@ func (h *NodeHandler) SortComicChildrenByName(ctx *gin.Context) {
 
 // DeleteNodeAndChildren 删除指定祖先节点及其子树。
 func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri deleteNodeURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -151,6 +168,7 @@ func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
 		Actor:     actorFromContext(ctx),
 		LibraryID: uri.LibraryID,
 		NodeID:    uri.NodeID,
+		DryRun:    dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

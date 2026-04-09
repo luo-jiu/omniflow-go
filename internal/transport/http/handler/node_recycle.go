@@ -28,6 +28,11 @@ func (h *NodeHandler) GetRecycleBinItems(ctx *gin.Context) {
 
 // RestoreNodeAndChildren 从回收站恢复节点及其后代。
 func (h *NodeHandler) RestoreNodeAndChildren(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri deleteNodeURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -42,6 +47,7 @@ func (h *NodeHandler) RestoreNodeAndChildren(ctx *gin.Context) {
 		Actor:     actorFromContext(ctx),
 		LibraryID: uri.LibraryID,
 		NodeID:    uri.NodeID,
+		DryRun:    dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -52,6 +58,11 @@ func (h *NodeHandler) RestoreNodeAndChildren(ctx *gin.Context) {
 
 // HardDeleteNodeAndChildren 彻底删除回收站中的节点及其后代。
 func (h *NodeHandler) HardDeleteNodeAndChildren(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri deleteNodeURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -66,6 +77,7 @@ func (h *NodeHandler) HardDeleteNodeAndChildren(ctx *gin.Context) {
 		Actor:     actorFromContext(ctx),
 		LibraryID: uri.LibraryID,
 		NodeID:    uri.NodeID,
+		DryRun:    dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

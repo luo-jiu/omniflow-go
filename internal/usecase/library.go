@@ -26,34 +26,40 @@ type ScrollLibrariesResult struct {
 }
 
 type CreateLibraryCommand struct {
-	Actor actor.Actor
-	Name  string
+	Actor  actor.Actor
+	Name   string
+	DryRun bool
 }
 
 type UpdateLibraryCommand struct {
 	Actor   actor.Actor
 	Name    *string
 	Starred *int
+	DryRun  bool
 }
 
 type DeleteLibraryCommand struct {
-	Actor actor.Actor
-	ID    uint64
+	Actor  actor.Actor
+	ID     uint64
+	DryRun bool
 }
 
 type LibraryUseCase struct {
 	libraries  *repository.LibraryRepository
+	tx         repository.Transactor
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
 }
 
 func NewLibraryUseCase(
 	libraries *repository.LibraryRepository,
+	tx repository.Transactor,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
 ) *LibraryUseCase {
 	return &LibraryUseCase{
 		libraries:  libraries,
+		tx:         tx,
 		authorizer: authorizer,
 		auditLog:   auditLog,
 	}
@@ -103,8 +109,15 @@ func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (
 		return domainlibrary.Library{}, err
 	}
 
-	record, err := u.libraries.Create(ctx, userID, name)
-	if err != nil {
+	var record domainlibrary.Library
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		created, err := u.libraries.Create(txCtx, userID, name)
+		if err != nil {
+			return err
+		}
+		record = created
+		return nil
+	}); err != nil {
 		return domainlibrary.Library{}, err
 	}
 
@@ -113,6 +126,8 @@ func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (
 		"library_id": record.ID,
 		"user_id":    userID,
 		"name":       record.Name,
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	return record, nil
 }
@@ -150,18 +165,25 @@ func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibrar
 		updates["starred"] = (*cmd.Starred == 1)
 	}
 
-	updated, err := u.libraries.UpdateFields(ctx, id, userID, updates)
-	if err != nil {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		updated, err := u.libraries.UpdateFields(txCtx, id, userID, updates)
+		if err != nil {
+			return err
+		}
+		if !updated {
+			return ErrNotFound
+		}
+		return nil
+	}); err != nil {
 		return err
-	}
-	if !updated {
-		return ErrNotFound
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "library.update", true, map[string]any{
 		"library_id": id,
 		"name":       updates["name"],
 		"starred":    updates["starred"],
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	return nil
 }
@@ -179,16 +201,23 @@ func (u *LibraryUseCase) Delete(ctx context.Context, cmd DeleteLibraryCommand) e
 		return err
 	}
 
-	deleted, err := u.libraries.SoftDelete(ctx, cmd.ID, userID, time.Now().UTC())
-	if err != nil {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		deleted, err := u.libraries.SoftDelete(txCtx, cmd.ID, userID, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		if !deleted {
+			return ErrNotFound
+		}
+		return nil
+	}); err != nil {
 		return err
-	}
-	if !deleted {
-		return ErrNotFound
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "library.delete", true, map[string]any{
 		"library_id": cmd.ID,
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	return nil
 }
@@ -239,9 +268,34 @@ func (u *LibraryUseCase) RecordCreateIntent(ctx context.Context, cmd CreateLibra
 		Success:    true,
 		OccurredAt: time.Now().UTC(),
 		Metadata: map[string]any{
-			"name": cmd.Name,
+			"name":    cmd.Name,
+			"mode":    resolveMutationMode(cmd.DryRun),
+			"dry_run": cmd.DryRun,
 		},
 	})
+}
+
+func (u *LibraryUseCase) withinMutationTx(ctx context.Context, dryRun bool, fn func(ctx context.Context) error) error {
+	if !dryRun {
+		if u.tx == nil {
+			return fn(ctx)
+		}
+		return u.tx.WithinTx(ctx, fn)
+	}
+	if u.tx == nil {
+		return fmt.Errorf("%w: dry-run requires transaction manager", ErrInvalidArgument)
+	}
+
+	err := u.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		if err := fn(txCtx); err != nil {
+			return err
+		}
+		return errUsecaseDryRunRollback
+	})
+	if err != nil && !errors.Is(err, errUsecaseDryRunRollback) {
+		return err
+	}
+	return nil
 }
 
 func (u *LibraryUseCase) writeAudit(ctx context.Context, principal actor.Actor, action string, success bool, metadata map[string]any) error {

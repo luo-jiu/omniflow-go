@@ -188,6 +188,44 @@ func TestRunHelpLeafShowsExamplesWithFlag(t *testing.T) {
 	}
 }
 
+func TestRunHelpFSMkdirContainsDryRunFlag(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "fs", "mkdir"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "--dry-run") {
+		t.Fatalf("expected --dry-run in mkdir help, got: %s", stdout.String())
+	}
+}
+
+func TestRunHelpAuthLogoutContainsDryRunFlag(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "auth", "logout"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "--dry-run") {
+		t.Fatalf("expected --dry-run in auth logout help, got: %s", stdout.String())
+	}
+}
+
 func TestRunInlineHelpShowsExamplesWithFlag(t *testing.T) {
 	t.Parallel()
 

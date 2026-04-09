@@ -144,8 +144,12 @@ func (a *App) runAuthWhoAmI(args []string) error {
 func (a *App) runAuthLogout(args []string) error {
 	fs := a.newFlagSet("auth logout")
 
-	var baseURL string
+	var (
+		baseURL string
+		dryRun  bool
+	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -158,8 +162,12 @@ func (a *App) runAuthLogout(args []string) error {
 		return err
 	}
 
-	if err := client.Logout(context.Background()); err != nil {
+	if err := client.Logout(context.Background(), dryRun); err != nil {
 		return err
+	}
+	if dryRun {
+		a.println("dry-run: logout request validated")
+		return nil
 	}
 
 	session.Username = ""

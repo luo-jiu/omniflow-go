@@ -169,7 +169,7 @@ func (u *AuthUseCase) ResolveActor(ctx context.Context, username, token string) 
 	}, nil
 }
 
-func (u *AuthUseCase) Logout(ctx context.Context, username, token string) error {
+func (u *AuthUseCase) Logout(ctx context.Context, username, token string, dryRun bool) error {
 	username = strings.TrimSpace(username)
 	token = strings.TrimSpace(token)
 	if username == "" || token == "" {
@@ -178,6 +178,22 @@ func (u *AuthUseCase) Logout(ctx context.Context, username, token string) error 
 
 	if u.sessions == nil {
 		return fmt.Errorf("%w: session store not configured", ErrInvalidArgument)
+	}
+
+	if dryRun {
+		exists, err := u.sessions.Exists(ctx, username, token)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return ErrUnauthorized
+		}
+		_ = u.writeAudit(ctx, actor.Actor{ID: username, Kind: actor.KindUser}, "auth.logout", true, map[string]any{
+			"username": username,
+			"mode":     resolveMutationMode(true),
+			"dry_run":  true,
+		})
+		return nil
 	}
 
 	if err := u.sessions.Delete(ctx, username, token); err != nil {
@@ -189,6 +205,8 @@ func (u *AuthUseCase) Logout(ctx context.Context, username, token string) error 
 
 	_ = u.writeAudit(ctx, actor.Actor{ID: username, Kind: actor.KindUser}, "auth.logout", true, map[string]any{
 		"username": username,
+		"mode":     resolveMutationMode(false),
+		"dry_run":  false,
 	})
 	return nil
 }

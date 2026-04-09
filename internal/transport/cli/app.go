@@ -210,12 +210,14 @@ func (a *App) buildCommandTree() *command {
 	auth.Children["logout"] = &command{
 		Name:    "logout",
 		Summary: "Logout current local session",
-		Usage:   "of auth logout [--base-url <url>]",
+		Usage:   "of auth logout [--base-url <url>] [--dry-run]",
 		Flags: []string{
 			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
 		},
 		Examples: []string{
 			"of auth logout",
+			"of auth logout --dry-run",
 		},
 		Run: a.runAuthLogout,
 	}
@@ -254,18 +256,20 @@ func (a *App) buildCommandTree() *command {
 	fs.Children["mkdir"] = &command{
 		Name:    "mkdir",
 		Summary: "Create a directory node",
-		Usage:   "of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>] [--base-url <url>] [--json]",
+		Usage:   "of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>] [--base-url <url>] [--dry-run] [--json]",
 		Flags: []string{
 			"--library-id <id>   library id (required)",
 			"--name <name>       directory name (required)",
 			"--parent-id <id>    parent node id, defaults to root",
 			"--parent-path <p>   parent path from root",
 			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
 			"--json              output JSON",
 		},
 		Examples: []string{
 			"of fs mkdir --library-id 1 --name docs",
 			"of fs mkdir --library-id 1 --parent-path /docs --name chapter-1",
+			"of fs mkdir --library-id 1 --name docs --dry-run --json",
 			"of fs mkdir --library-id 1 --parent-id 100 --name chapter-1 --json",
 		},
 		Run: a.runFSMkdir,
@@ -273,15 +277,17 @@ func (a *App) buildCommandTree() *command {
 	fs.Children["rename"] = &command{
 		Name:    "rename",
 		Summary: "Rename a node",
-		Usage:   "of fs rename --node-id <id> --name <name> [--base-url <url>] [--json]",
+		Usage:   "of fs rename --node-id <id> --name <name> [--base-url <url>] [--dry-run] [--json]",
 		Flags: []string{
 			"--node-id <id>      target node id (required)",
 			"--name <name>       new node name (required)",
 			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
 			"--json              output JSON",
 		},
 		Examples: []string{
 			"of fs rename --node-id 123 --name notes",
+			"of fs rename --node-id 123 --name notes --dry-run --json",
 			"of fs rename --node-id 123 --name notes-v2 --json",
 		},
 		Run: a.runFSRename,
@@ -289,7 +295,7 @@ func (a *App) buildCommandTree() *command {
 	fs.Children["mv"] = &command{
 		Name:    "mv",
 		Summary: "Move a node to another parent",
-		Usage:   "of fs mv --library-id <id> (--node-id <id>|--node-path </a/b>) (--new-parent-id <id>|--new-parent-path </a/b>) [--before-node-id <id>] [--name <name>] [--base-url <url>] [--json]",
+		Usage:   "of fs mv --library-id <id> (--node-id <id>|--node-path </a/b>) (--new-parent-id <id>|--new-parent-path </a/b>) [--before-node-id <id>] [--name <name>] [--base-url <url>] [--dry-run] [--json]",
 		Flags: []string{
 			"--library-id <id>    library id (required)",
 			"--node-id <id>       target node id",
@@ -299,11 +305,13 @@ func (a *App) buildCommandTree() *command {
 			"--before-node-id <id> optional sibling id to place before",
 			"--name <name>        optional rename while moving",
 			"--base-url <url>     API base URL",
+			"--dry-run            preview only, do not commit changes",
 			"--json               output JSON",
 		},
 		Examples: []string{
 			"of fs mv --library-id 1 --node-id 123 --new-parent-id 200",
 			"of fs mv --library-id 1 --node-path /docs/a.md --new-parent-path /archive",
+			"of fs mv --library-id 1 --node-id 123 --new-parent-id 200 --dry-run --json",
 			"of fs mv --library-id 1 --node-id 123 --new-parent-id 200 --before-node-id 201 --json",
 		},
 		Run: a.runFSMove,
@@ -311,17 +319,19 @@ func (a *App) buildCommandTree() *command {
 	fs.Children["rm"] = &command{
 		Name:    "rm",
 		Summary: "Move a node tree to recycle bin",
-		Usage:   "of fs rm --library-id <id> (--node-id <id>|--path </a/b>) [--base-url <url>] [--json]",
+		Usage:   "of fs rm --library-id <id> (--node-id <id>|--path </a/b>) [--base-url <url>] [--dry-run] [--json]",
 		Flags: []string{
 			"--library-id <id>   library id (required)",
 			"--node-id <id>      target node id",
 			"--path <path>       target node path from root",
 			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
 			"--json              output JSON",
 		},
 		Examples: []string{
 			"of fs rm --library-id 1 --node-id 123",
 			"of fs rm --library-id 1 --path /docs/a.md",
+			"of fs rm --library-id 1 --node-id 123 --dry-run --json",
 			"of fs rm --library-id 1 --node-id 123 --json",
 		},
 		Run: a.runFSRemove,
@@ -385,15 +395,17 @@ func (a *App) buildCommandTree() *command {
 	recycle.Children["restore"] = &command{
 		Name:    "restore",
 		Summary: "Restore a node tree from recycle bin",
-		Usage:   "of fs recycle restore --library-id <id> --node-id <id> [--base-url <url>] [--json]",
+		Usage:   "of fs recycle restore --library-id <id> --node-id <id> [--base-url <url>] [--dry-run] [--json]",
 		Flags: []string{
 			"--library-id <id>   library id (required)",
 			"--node-id <id>      target node id in recycle bin (required)",
 			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
 			"--json              output JSON",
 		},
 		Examples: []string{
 			"of fs recycle restore --library-id 1 --node-id 123",
+			"of fs recycle restore --library-id 1 --node-id 123 --dry-run --json",
 			"of fs recycle restore --library-id 1 --node-id 123 --json",
 		},
 		Run: a.runFSRecycleRestore,
@@ -401,15 +413,17 @@ func (a *App) buildCommandTree() *command {
 	recycle.Children["hard"] = &command{
 		Name:    "hard",
 		Summary: "Permanently delete a node tree from recycle bin",
-		Usage:   "of fs recycle hard --library-id <id> --node-id <id> [--base-url <url>] [--json]",
+		Usage:   "of fs recycle hard --library-id <id> --node-id <id> [--base-url <url>] [--dry-run] [--json]",
 		Flags: []string{
 			"--library-id <id>   library id (required)",
 			"--node-id <id>      target node id in recycle bin (required)",
 			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
 			"--json              output JSON",
 		},
 		Examples: []string{
 			"of fs recycle hard --library-id 1 --node-id 123",
+			"of fs recycle hard --library-id 1 --node-id 123 --dry-run --json",
 			"of fs recycle hard --library-id 1 --node-id 123 --json",
 		},
 		Run: a.runFSRecycleHardDelete,

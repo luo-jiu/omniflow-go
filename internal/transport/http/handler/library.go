@@ -63,6 +63,11 @@ func (h *LibraryHandler) Scroll(ctx *gin.Context) {
 
 // Create 创建资料库。
 func (h *LibraryHandler) Create(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var req createLibraryRequest
 	if !BindJSON(ctx, &req) {
 		return
@@ -77,8 +82,9 @@ func (h *LibraryHandler) Create(ctx *gin.Context) {
 	}
 
 	created, err := h.libraryUseCase.Create(ctx.Request.Context(), usecase.CreateLibraryCommand{
-		Actor: actorFromContext(ctx),
-		Name:  strings.TrimSpace(req.Name),
+		Actor:  actorFromContext(ctx),
+		Name:   strings.TrimSpace(req.Name),
+		DryRun: dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -89,6 +95,11 @@ func (h *LibraryHandler) Create(ctx *gin.Context) {
 
 // Update 按 ID 更新资料库信息。
 func (h *LibraryHandler) Update(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri libraryIDURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -118,6 +129,7 @@ func (h *LibraryHandler) Update(ctx *gin.Context) {
 		Actor:   actorFromContext(ctx),
 		Name:    name,
 		Starred: req.Starred,
+		DryRun:  dryRun,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -127,6 +139,11 @@ func (h *LibraryHandler) Update(ctx *gin.Context) {
 
 // Delete 按 ID 软删除资料库。
 func (h *LibraryHandler) Delete(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri libraryIDURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -138,8 +155,9 @@ func (h *LibraryHandler) Delete(ctx *gin.Context) {
 	}
 
 	if err := h.libraryUseCase.Delete(ctx.Request.Context(), usecase.DeleteLibraryCommand{
-		Actor: actorFromContext(ctx),
-		ID:    uri.ID,
+		Actor:  actorFromContext(ctx),
+		ID:     uri.ID,
+		DryRun: dryRun,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return

@@ -177,10 +177,11 @@ func (c *Client) AuthStatus(ctx context.Context) (bool, error) {
 	return out, err
 }
 
-func (c *Client) Logout(ctx context.Context) error {
+func (c *Client) Logout(ctx context.Context, dryRun bool) error {
 	query := url.Values{}
 	query.Set("username", c.username)
 	query.Set("token", c.token)
+	query = withDryRunQuery(query, dryRun)
 	return c.doJSON(ctx, http.MethodDelete, "/api/v1/auth/logout", query, nil, true, nil)
 }
 
@@ -225,27 +226,43 @@ func (c *Client) SearchNodes(ctx context.Context, req SearchNodesRequest) ([]Nod
 	return out, err
 }
 
-func (c *Client) CreateNode(ctx context.Context, req CreateNodeRequest) (Node, error) {
+func (c *Client) CreateNode(ctx context.Context, req CreateNodeRequest, dryRun bool) (Node, error) {
 	var out Node
-	err := c.doJSON(ctx, http.MethodPost, "/api/v1/nodes", nil, req, true, &out)
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/nodes", withDryRunQuery(nil, dryRun), req, true, &out)
 	return out, err
 }
 
-func (c *Client) RenameNode(ctx context.Context, nodeID uint64, req RenameNodeRequest) error {
-	return c.doJSON(ctx, http.MethodPatch, fmt.Sprintf("/api/v1/nodes/%d/rename", nodeID), nil, req, true, nil)
+func (c *Client) RenameNode(ctx context.Context, nodeID uint64, req RenameNodeRequest, dryRun bool) error {
+	return c.doJSON(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/api/v1/nodes/%d/rename", nodeID),
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		nil,
+	)
 }
 
-func (c *Client) MoveNode(ctx context.Context, nodeID uint64, req MoveNodeRequest) error {
-	return c.doJSON(ctx, http.MethodPatch, fmt.Sprintf("/api/v1/nodes/%d/move", nodeID), nil, req, true, nil)
+func (c *Client) MoveNode(ctx context.Context, nodeID uint64, req MoveNodeRequest, dryRun bool) error {
+	return c.doJSON(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/api/v1/nodes/%d/move", nodeID),
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		nil,
+	)
 }
 
-func (c *Client) DeleteNodeTree(ctx context.Context, nodeID, libraryID uint64) (bool, error) {
+func (c *Client) DeleteNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {
 	var out bool
 	err := c.doJSON(
 		ctx,
 		http.MethodDelete,
 		fmt.Sprintf("/api/v1/nodes/%d/library/%d", nodeID, libraryID),
-		nil,
+		withDryRunQuery(nil, dryRun),
 		nil,
 		true,
 		&out,
@@ -267,13 +284,13 @@ func (c *Client) ListRecycleBin(ctx context.Context, libraryID uint64) ([]Recycl
 	return out, err
 }
 
-func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64) (bool, error) {
+func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {
 	var out bool
 	err := c.doJSON(
 		ctx,
 		http.MethodPatch,
 		fmt.Sprintf("/api/v1/nodes/%d/library/%d/restore", nodeID, libraryID),
-		nil,
+		withDryRunQuery(nil, dryRun),
 		nil,
 		true,
 		&out,
@@ -281,18 +298,29 @@ func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64) 
 	return out, err
 }
 
-func (c *Client) HardDeleteNodeTree(ctx context.Context, nodeID, libraryID uint64) (bool, error) {
+func (c *Client) HardDeleteNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {
 	var out bool
 	err := c.doJSON(
 		ctx,
 		http.MethodDelete,
 		fmt.Sprintf("/api/v1/nodes/%d/library/%d/hard", nodeID, libraryID),
-		nil,
+		withDryRunQuery(nil, dryRun),
 		nil,
 		true,
 		&out,
 	)
 	return out, err
+}
+
+func withDryRunQuery(query url.Values, dryRun bool) url.Values {
+	if !dryRun {
+		return query
+	}
+	if query == nil {
+		query = url.Values{}
+	}
+	query.Set("dryRun", "true")
+	return query
 }
 
 func (c *Client) doJSON(

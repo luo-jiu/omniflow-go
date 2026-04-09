@@ -11,6 +11,11 @@ import (
 
 // CreateNode 创建节点（目录或文件元数据节点）。
 func (h *NodeHandler) CreateNode(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var req createNodeRequest
 	if !BindJSON(ctx, &req) {
 		return
@@ -45,6 +50,7 @@ func (h *NodeHandler) CreateNode(ctx *gin.Context) {
 		MIMEType:   strings.TrimSpace(req.MIMEType),
 		FileSize:   req.FileSize,
 		StorageKey: strings.TrimSpace(req.StorageKey),
+		DryRun:     dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

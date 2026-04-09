@@ -47,6 +47,7 @@ type CreateNodeCommand struct {
 	MIMEType   string
 	FileSize   int64
 	StorageKey string
+	DryRun     bool
 }
 
 type UpdateNodeCommand struct {
@@ -57,9 +58,10 @@ type UpdateNodeCommand struct {
 }
 
 type RenameNodeCommand struct {
-	Actor actor.Actor
-	Name  string
-	Ext   *string
+	Actor  actor.Actor
+	Name   string
+	Ext    *string
+	DryRun bool
 }
 
 type MoveNodeCommand struct {
@@ -69,6 +71,7 @@ type MoveNodeCommand struct {
 	NewParentID  uint64
 	BeforeNodeID uint64
 	Name         string
+	DryRun       bool
 }
 
 type SortComicChildrenCommand struct {
@@ -80,18 +83,21 @@ type DeleteNodeTreeCommand struct {
 	Actor     actor.Actor
 	LibraryID uint64
 	NodeID    uint64
+	DryRun    bool
 }
 
 type RestoreNodeTreeCommand struct {
 	Actor     actor.Actor
 	LibraryID uint64
 	NodeID    uint64
+	DryRun    bool
 }
 
 type HardDeleteNodeTreeCommand struct {
 	Actor     actor.Actor
 	LibraryID uint64
 	NodeID    uint64
+	DryRun    bool
 }
 
 type NodeUseCase struct {
@@ -130,7 +136,7 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 	}
 
 	var created domainnode.Node
-	err := u.withinTx(ctx, func(txCtx context.Context) error {
+	err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		parentID, err := u.resolveCreateParentID(txCtx, cmd.LibraryID, cmd.ParentID)
 		if err != nil {
 			return err
@@ -175,6 +181,8 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		"parent_id":  created.ParentID,
 		"type":       created.Type,
 		"name":       created.Name,
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	return created, nil
 }
@@ -399,7 +407,7 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 		ext = &trimmed
 	}
 
-	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		if err := u.nodes.RenameNode(txCtx, nodeID, node.LibraryID, newName, ext, time.Now().UTC()); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return ErrNotFound
@@ -421,6 +429,8 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 		"node_id":    nodeID,
 		"library_id": node.LibraryID,
 		"name":       newName,
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	return nil
 }
@@ -436,7 +446,7 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 		return err
 	}
 
-	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		if cmd.BeforeNodeID > 0 && cmd.BeforeNodeID == cmd.NodeID {
 			// Java 语义：beforeNode 指向自己时直接视为 no-op。
 			return nil
@@ -472,6 +482,8 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 		"library_id":     cmd.LibraryID,
 		"new_parent_id":  cmd.NewParentID,
 		"before_node_id": cmd.BeforeNodeID,
+		"mode":           resolveMutationMode(cmd.DryRun),
+		"dry_run":        cmd.DryRun,
 	})
 	return nil
 }
@@ -532,7 +544,7 @@ func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeT
 	}
 
 	var deleteResult repository.DeleteNodeTreeResult
-	err := u.withinTx(ctx, func(txCtx context.Context) error {
+	err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		result, err := u.nodes.DeleteTree(txCtx, cmd.NodeID, cmd.LibraryID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -552,6 +564,8 @@ func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeT
 		"library_id":    cmd.LibraryID,
 		"deleted_nodes": deleteResult.DeletedNodeCount,
 		"file_nodes":    deleteResult.FileNodeCount,
+		"mode":          resolveMutationMode(cmd.DryRun),
+		"dry_run":       cmd.DryRun,
 	})
 	return true, nil
 }
@@ -620,7 +634,7 @@ func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNod
 	}
 
 	var ok bool
-	err := u.withinTx(ctx, func(txCtx context.Context) error {
+	err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		result, err := u.nodes.RestoreTree(txCtx, cmd.NodeID, cmd.LibraryID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -644,6 +658,8 @@ func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNod
 	_ = u.writeAudit(ctx, cmd.Actor, "node.restore_tree", true, map[string]any{
 		"node_id":    cmd.NodeID,
 		"library_id": cmd.LibraryID,
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	return ok, nil
 }
@@ -657,7 +673,7 @@ func (u *NodeUseCase) HardDeleteNodeAndChildren(ctx context.Context, cmd HardDel
 	}
 
 	var ok bool
-	err := u.withinTx(ctx, func(txCtx context.Context) error {
+	err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		result, err := u.nodes.HardDeleteTree(txCtx, cmd.NodeID, cmd.LibraryID)
 		if err != nil {
 			if errors.Is(err, repository.ErrInvalidState) {
@@ -675,6 +691,8 @@ func (u *NodeUseCase) HardDeleteNodeAndChildren(ctx context.Context, cmd HardDel
 	_ = u.writeAudit(ctx, cmd.Actor, "node.hard_delete_tree", true, map[string]any{
 		"node_id":    cmd.NodeID,
 		"library_id": cmd.LibraryID,
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	return ok, nil
 }
@@ -695,6 +713,26 @@ func (u *NodeUseCase) withinTx(ctx context.Context, fn func(ctx context.Context)
 		return fn(ctx)
 	}
 	return u.tx.WithinTx(ctx, fn)
+}
+
+func (u *NodeUseCase) withinMutationTx(ctx context.Context, dryRun bool, fn func(ctx context.Context) error) error {
+	if !dryRun {
+		return u.withinTx(ctx, fn)
+	}
+	if u.tx == nil {
+		return fmt.Errorf("%w: dry-run requires transaction manager", ErrInvalidArgument)
+	}
+
+	err := u.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		if err := fn(txCtx); err != nil {
+			return err
+		}
+		return errUsecaseDryRunRollback
+	})
+	if err != nil && !errors.Is(err, errUsecaseDryRunRollback) {
+		return err
+	}
+	return nil
 }
 
 func (u *NodeUseCase) AuthorizeMutation(ctx context.Context, principal actor.Actor, libraryID uint64) error {
@@ -736,6 +774,8 @@ func (u *NodeUseCase) RecordMoveIntent(ctx context.Context, cmd MoveNodeCommand)
 			"new_parent_id":  cmd.NewParentID,
 			"before_node_id": cmd.BeforeNodeID,
 			"name":           cmd.Name,
+			"mode":           resolveMutationMode(cmd.DryRun),
+			"dry_run":        cmd.DryRun,
 		},
 	})
 }
