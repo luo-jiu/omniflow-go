@@ -46,7 +46,7 @@ func SuccessWithDryRun(ctx *gin.Context, dryRun bool, data any) {
 		return
 	}
 
-	ctx.Header(dryRunHeaderKey, "true")
+	MarkDryRunHeader(ctx, true)
 	Success(ctx, map[string]any{
 		"dryRun": true,
 		"result": data,
@@ -60,10 +60,18 @@ func SuccessNoDataWithDryRun(ctx *gin.Context, dryRun bool) {
 		return
 	}
 
-	ctx.Header(dryRunHeaderKey, "true")
+	MarkDryRunHeader(ctx, true)
 	Success(ctx, map[string]any{
 		"dryRun": true,
 	})
+}
+
+// MarkDryRunHeader 在 dry-run 请求中补充统一响应头，便于中间层/调用方识别模拟执行。
+func MarkDryRunHeader(ctx *gin.Context, dryRun bool) {
+	if !dryRun {
+		return
+	}
+	ctx.Header(dryRunHeaderKey, "true")
 }
 
 func BadRequest(ctx *gin.Context, message string) {

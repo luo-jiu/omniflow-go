@@ -15,6 +15,7 @@ func (h *NodeHandler) CreateNode(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var req createNodeRequest
 	if !BindJSON(ctx, &req) {

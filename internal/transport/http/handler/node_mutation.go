@@ -49,6 +49,7 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
@@ -91,6 +92,7 @@ func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
@@ -153,6 +155,7 @@ func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri deleteNodeURI
 	if !BindURI(ctx, &uri) {

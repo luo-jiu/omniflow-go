@@ -67,6 +67,7 @@ func (h *LibraryHandler) Create(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var req createLibraryRequest
 	if !BindJSON(ctx, &req) {
@@ -99,6 +100,7 @@ func (h *LibraryHandler) Update(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri libraryIDURI
 	if !BindURI(ctx, &uri) {
@@ -143,6 +145,7 @@ func (h *LibraryHandler) Delete(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri libraryIDURI
 	if !BindURI(ctx, &uri) {

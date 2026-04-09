@@ -32,6 +32,7 @@ func (h *NodeHandler) RestoreNodeAndChildren(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri deleteNodeURI
 	if !BindURI(ctx, &uri) {
@@ -62,6 +63,7 @@ func (h *NodeHandler) HardDeleteNodeAndChildren(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri deleteNodeURI
 	if !BindURI(ctx, &uri) {

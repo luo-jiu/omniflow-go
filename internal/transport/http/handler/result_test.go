@@ -59,3 +59,21 @@ func TestSuccessNoDataWithDryRun(t *testing.T) {
 		t.Fatalf("expected dryRun=true in response data, got %v", dataMap["dryRun"])
 	}
 }
+
+func TestMarkDryRunHeader(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	MarkDryRunHeader(ctx, false)
+	if got := rec.Header().Get(dryRunHeaderKey); got != "" {
+		t.Fatalf("expected empty header when dryRun=false, got %q", got)
+	}
+
+	MarkDryRunHeader(ctx, true)
+	if got := rec.Header().Get(dryRunHeaderKey); got != "true" {
+		t.Fatalf("expected dry-run header=true, got %q", got)
+	}
+}

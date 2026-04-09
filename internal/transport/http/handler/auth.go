@@ -113,6 +113,7 @@ func (h *AuthHandler) Logout(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var query authStatusQuery
 	if !BindQuery(ctx, &query) {
