@@ -6,6 +6,7 @@
 - 命令实现：`internal/transport/cli/*.go`
 - 网络访问：`internal/transport/cli/client.go`
 - 本地会话：`internal/transport/cli/config.go`
+- Agent 作战手册：`docs/architecture/cli-agent-development-playbook.md`
 
 ## 1. 设计目标
 

@@ -5,6 +5,7 @@
 
 关联文档：
 - `cmd/cli/README.md`（CLI 开发规范）
+- `docs/architecture/cli-agent-development-playbook.md`（Agent 执行手册）
 - `docs/architecture/cli-minimal-quickstart.md`（CLI 快速使用）
 - `docs/architecture/layered-structure-spec.md`（分层约束）
 
