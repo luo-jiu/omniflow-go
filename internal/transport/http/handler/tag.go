@@ -80,6 +80,11 @@ func (h *TagHandler) ListTags(ctx *gin.Context) {
 
 // CreateTag 新建标签。
 func (h *TagHandler) CreateTag(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var req tagCreateRequest
 	if !BindJSON(ctx, &req) {
 		return
@@ -103,6 +108,7 @@ func (h *TagHandler) CreateTag(ctx *gin.Context) {
 		SortOrder:   req.SortOrder,
 		Enabled:     req.Enabled,
 		Description: strings.TrimSpace(req.Description),
+		DryRun:      dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -113,6 +119,11 @@ func (h *TagHandler) CreateTag(ctx *gin.Context) {
 
 // UpdateTag 修改标签。
 func (h *TagHandler) UpdateTag(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri tagIDURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -141,6 +152,7 @@ func (h *TagHandler) UpdateTag(ctx *gin.Context) {
 		SortOrder:   req.SortOrder,
 		Enabled:     req.Enabled,
 		Description: strings.TrimSpace(req.Description),
+		DryRun:      dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -151,6 +163,11 @@ func (h *TagHandler) UpdateTag(ctx *gin.Context) {
 
 // DeleteTag 删除标签（软删除）。
 func (h *TagHandler) DeleteTag(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri tagIDURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -161,7 +178,11 @@ func (h *TagHandler) DeleteTag(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.tagUseCase.Delete(ctx.Request.Context(), actorFromContext(ctx), uri.TagID); err != nil {
+	if err := h.tagUseCase.Delete(ctx.Request.Context(), usecase.DeleteTagCommand{
+		Actor:  actorFromContext(ctx),
+		TagID:  uri.TagID,
+		DryRun: dryRun,
+	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
 	}

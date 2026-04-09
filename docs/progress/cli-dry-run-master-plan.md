@@ -1,13 +1,15 @@
 # OmniFlow CLI `--dry-run` 改造进度报告（终极计划）
 
 更新时间：2026-04-09  
-当前状态：`M3 部分进行中（library 已完成）`  
+当前状态：`M5 联调准备（M1-M4 代码已完成）`  
 适用范围：`omniflow-go` 后端 + `of` CLI
 
 当前落地说明：
 - CLI 已支持 `--dry-run` 并透传 `dryRun=true`。
 - 后端 Node 写链路（P0）已支持 `dryRun=true` 并通过事务回滚避免落库（代码层）。
 - 后端 Library 写链路（Create/Update/Delete）已支持 `dryRun=true` 并通过事务回滚避免落库（代码层）。
+- 后端 User 写链路（Update/UpdatePassword/UploadAvatar）已支持 `dryRun=true`，其中头像 dry-run 仅做校验与模拟返回，不触发对象存储写入（代码层）。
+- 后端 Tag 写链路（Create/Update/Delete）已支持 `dryRun=true` 并通过事务回滚避免落库（代码层）。
 - `auth logout` 已提前支持 dry-run，避免 CLI 误触发真实注销。
 - 需重启后端进程后再做端到端联调验证。
 
@@ -136,8 +138,8 @@
 | M0 | 冻结协议与范围 | 本报告定稿 | 已完成 |
 | M1 | CLI 框架接入 | 写命令支持 `--dry-run`，透传参数 | 已完成 |
 | M2 | 后端 P0 支持 | 节点写链路 dry-run 完整可用 | 已完成（待联调验证） |
-| M3 | 后端 P1 支持 | 库/用户写链路 dry-run 可用 | 进行中（library 已完成） |
-| M4 | 后端 P2 支持 | tag/auth 写链路 dry-run 可用 | 进行中（auth logout 已完成） |
+| M3 | 后端 P1 支持 | 库/用户写链路 dry-run 可用 | 已完成（待联调验证） |
+| M4 | 后端 P2 支持 | tag/auth 写链路 dry-run 可用 | 已完成（待联调验证） |
 | M5 | 联调与回归 | CLI + 后端端到端验收报告 | 未开始 |
 | M6 | 收口与默认策略 | 文档、审计、监控、开关策略完成 | 未开始 |
 
@@ -184,8 +186,8 @@
 | 协议 | `dryRun` 入参与响应结构冻结 | AI + Owner | 已完成 | 本文已冻结基线 |
 | CLI | 写命令统一 `--dry-run` | AI | 已完成 | 已透传 query `dryRun=true` |
 | Node | P0 接口 dry-run | AI | 已完成（待联调） | 已接入 query 解析 + 事务回滚 |
-| Library/User | P1 接口 dry-run | AI | 进行中 | library 已完成，user 待做 |
-| Tag/Auth | P2 接口 dry-run | AI | 进行中 | `auth logout` 已完成，其余待做 |
+| Library/User | P1 接口 dry-run | AI | 已完成（待联调） | library/user 已接入 |
+| Tag/Auth | P2 接口 dry-run | AI | 已完成（待联调） | tag/auth 已接入 |
 | Observability | 审计/日志模式标记 | AI | 未开始 | 必须项 |
 | QA | 端到端回归报告 | AI + Owner | 未开始 | 发布前门禁 |
 

@@ -44,6 +44,7 @@ type CreateTagCommand struct {
 	SortOrder   *int
 	Enabled     *int
 	Description string
+	DryRun      bool
 }
 
 type UpdateTagCommand struct {
@@ -56,6 +57,13 @@ type UpdateTagCommand struct {
 	SortOrder   *int
 	Enabled     *int
 	Description string
+	DryRun      bool
+}
+
+type DeleteTagCommand struct {
+	Actor  actor.Actor
+	TagID  uint64
+	DryRun bool
 }
 
 type TagUseCase struct {
@@ -138,7 +146,7 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 	}
 
 	var created domaintag.Tag
-	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, name, targetKey); err != nil {
 			return err
 		}
@@ -228,7 +236,7 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 	}
 
 	var updated domaintag.Tag
-	if err := u.withinTx(ctx, func(txCtx context.Context) error {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		if _, err := u.tags.FindOwnerByID(txCtx, tagID, ownerUserID); err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return ErrNotFound
@@ -284,25 +292,30 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 	return updated, nil
 }
 
-func (u *TagUseCase) Delete(ctx context.Context, principal actor.Actor, tagID uint64) error {
+func (u *TagUseCase) Delete(ctx context.Context, cmd DeleteTagCommand) error {
 	if u.tags == nil {
 		return errTagRepositoryNotConfigured
 	}
-	if tagID == 0 {
+	if cmd.TagID == 0 {
 		return fmt.Errorf("%w: tagId is required", ErrInvalidArgument)
 	}
 
-	ownerUserID, err := actorIDToUint64(principal)
+	ownerUserID, err := actorIDToUint64(cmd.Actor)
 	if err != nil {
 		return err
 	}
 
-	ok, err := u.tags.SoftDeleteOwnerByID(ctx, tagID, ownerUserID)
-	if err != nil {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		ok, err := u.tags.SoftDeleteOwnerByID(txCtx, cmd.TagID, ownerUserID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		return nil
+	}); err != nil {
 		return err
-	}
-	if !ok {
-		return ErrNotFound
 	}
 	return nil
 }
@@ -406,6 +419,26 @@ func (u *TagUseCase) withinTx(ctx context.Context, fn func(ctx context.Context) 
 		return fn(ctx)
 	}
 	return u.tx.WithinTx(ctx, fn)
+}
+
+func (u *TagUseCase) withinMutationTx(ctx context.Context, dryRun bool, fn func(ctx context.Context) error) error {
+	if !dryRun {
+		return u.withinTx(ctx, fn)
+	}
+	if u.tx == nil {
+		return fmt.Errorf("%w: dry-run requires transaction manager", ErrInvalidArgument)
+	}
+
+	err := u.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		if err := fn(txCtx); err != nil {
+			return err
+		}
+		return errUsecaseDryRunRollback
+	})
+	if err != nil && !errors.Is(err, errUsecaseDryRunRollback) {
+		return err
+	}
+	return nil
 }
 
 func (u *TagUseCase) lockTagUniqScopes(

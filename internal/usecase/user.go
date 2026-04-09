@@ -61,12 +61,14 @@ type UpdateUserCommand struct {
 	Phone    *string
 	Email    *string
 	Ext      *string
+	DryRun   bool
 }
 
 type UpdateCurrentPasswordCommand struct {
 	Actor       actor.Actor
 	OldPassword string
 	NewPassword string
+	DryRun      bool
 }
 
 type UploadCurrentUserAvatarCommand struct {
@@ -75,17 +77,20 @@ type UploadCurrentUserAvatarCommand struct {
 	FileSize    int64
 	ContentType string
 	Content     io.Reader
+	DryRun      bool
 }
 
 type UserUseCase struct {
 	users    *repository.UserRepository
 	storage  storage.ObjectStorage
+	tx       repository.Transactor
 	auditLog audit.Sink
 }
 
 func NewUserUseCase(
 	users *repository.UserRepository,
 	storage storage.ObjectStorage,
+	tx repository.Transactor,
 	auditLog ...audit.Sink,
 ) *UserUseCase {
 	var sink audit.Sink
@@ -96,6 +101,7 @@ func NewUserUseCase(
 	return &UserUseCase{
 		users:    users,
 		storage:  storage,
+		tx:       tx,
 		auditLog: sink,
 	}
 }
@@ -232,25 +238,34 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 	}
 	updates["updated_at"] = time.Now().UTC()
 
-	ok, err := u.users.UpdateByID(ctx, targetID, updates)
-	if err != nil {
-		return domainuser.User{}, err
-	}
-	if !ok {
-		return domainuser.User{}, ErrNotFound
-	}
-
-	updated, err := u.users.FindByID(ctx, targetID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return domainuser.User{}, ErrNotFound
+	var updated domainuser.User
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		ok, err := u.users.UpdateByID(txCtx, targetID, updates)
+		if err != nil {
+			return err
 		}
+		if !ok {
+			return ErrNotFound
+		}
+
+		row, err := u.users.FindByID(txCtx, targetID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		updated = row
+		return nil
+	}); err != nil {
 		return domainuser.User{}, err
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "user.update", true, map[string]any{
 		"user_id": targetID,
 		"fields":  len(updates) - 1, // exclude updated_at
+		"mode":    resolveMutationMode(cmd.DryRun),
+		"dry_run": cmd.DryRun,
 	})
 	return u.enrichUser(ctx, updated), nil
 }
@@ -290,19 +305,26 @@ func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurre
 		return err
 	}
 
-	ok, err := u.users.UpdateByID(ctx, userID, map[string]any{
-		"password_hash": string(hashed),
-		"updated_at":    time.Now().UTC(),
-	})
-	if err != nil {
+	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		ok, err := u.users.UpdateByID(txCtx, userID, map[string]any{
+			"password_hash": string(hashed),
+			"updated_at":    time.Now().UTC(),
+		})
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+		return nil
+	}); err != nil {
 		return err
-	}
-	if !ok {
-		return ErrNotFound
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "user.password.update", true, map[string]any{
 		"user_id": userID,
+		"mode":    resolveMutationMode(cmd.DryRun),
+		"dry_run": cmd.DryRun,
 	})
 	return nil
 }
@@ -339,6 +361,25 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 	extJSON := parseUserExtJSON(existing.Ext)
 	oldAvatarKey := strings.TrimSpace(stringValue(extJSON[userAvatarExtKey]))
 	newAvatarKey := buildAvatarStorageKey(userID, resolvedExt)
+
+	if cmd.DryRun {
+		extJSON[userAvatarExtKey] = newAvatarKey
+		delete(extJSON, userAvatarLegacyExtKey)
+		extRaw, err := json.Marshal(extJSON)
+		if err != nil {
+			return domainuser.User{}, err
+		}
+
+		simulated := existing
+		simulated.Ext = string(extRaw)
+		_ = u.writeAudit(ctx, cmd.Actor, "user.avatar.upload", true, map[string]any{
+			"user_id":    userID,
+			"avatar_key": newAvatarKey,
+			"mode":       resolveMutationMode(true),
+			"dry_run":    true,
+		})
+		return u.enrichUser(ctx, simulated), nil
+	}
 
 	if err := u.storage.Upload(ctx, newAvatarKey, uploadContent, cmd.FileSize, contentType); err != nil {
 		return domainuser.User{}, err
@@ -377,6 +418,8 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 	_ = u.writeAudit(ctx, cmd.Actor, "user.avatar.upload", true, map[string]any{
 		"user_id":    userID,
 		"avatar_key": newAvatarKey,
+		"mode":       resolveMutationMode(false),
+		"dry_run":    false,
 	})
 	return u.enrichUser(ctx, refreshed), nil
 }
@@ -617,6 +660,29 @@ func stringValue(v any) string {
 		return s
 	}
 	return ""
+}
+
+func (u *UserUseCase) withinMutationTx(ctx context.Context, dryRun bool, fn func(ctx context.Context) error) error {
+	if !dryRun {
+		if u.tx == nil {
+			return fn(ctx)
+		}
+		return u.tx.WithinTx(ctx, fn)
+	}
+	if u.tx == nil {
+		return fmt.Errorf("%w: dry-run requires transaction manager", ErrInvalidArgument)
+	}
+
+	err := u.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		if err := fn(txCtx); err != nil {
+			return err
+		}
+		return errUsecaseDryRunRollback
+	})
+	if err != nil && !errors.Is(err, errUsecaseDryRunRollback) {
+		return err
+	}
+	return nil
 }
 
 func (u *UserUseCase) writeAudit(ctx context.Context, principal actor.Actor, action string, success bool, metadata map[string]any) error {

@@ -125,6 +125,11 @@ func (h *UserHandler) RegisterUser(ctx *gin.Context) {
 
 // UpdateUser 按用户 ID 更新用户资料。
 func (h *UserHandler) UpdateUser(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var uri userIDURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -147,6 +152,7 @@ func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 		Phone:    req.Phone,
 		Email:    req.Email,
 		Ext:      req.Ext,
+		DryRun:   dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -172,6 +178,11 @@ func (h *UserHandler) GetCurrentUser(ctx *gin.Context) {
 
 // UpdateCurrentUser 更新当前登录用户资料。
 func (h *UserHandler) UpdateCurrentUser(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var req updateUserRequest
 	if !BindJSON(ctx, &req) {
 		return
@@ -188,6 +199,7 @@ func (h *UserHandler) UpdateCurrentUser(ctx *gin.Context) {
 		Phone:    req.Phone,
 		Email:    req.Email,
 		Ext:      req.Ext,
+		DryRun:   dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -198,6 +210,11 @@ func (h *UserHandler) UpdateCurrentUser(ctx *gin.Context) {
 
 // UpdateCurrentUserPassword 修改当前登录用户密码。
 func (h *UserHandler) UpdateCurrentUserPassword(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	var req updateCurrentPasswordRequest
 	if !BindJSON(ctx, &req) {
 		return
@@ -218,6 +235,7 @@ func (h *UserHandler) UpdateCurrentUserPassword(ctx *gin.Context) {
 		Actor:       actorFromContext(ctx),
 		OldPassword: req.OldPassword,
 		NewPassword: req.NewPassword,
+		DryRun:      dryRun,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
@@ -227,6 +245,11 @@ func (h *UserHandler) UpdateCurrentUserPassword(ctx *gin.Context) {
 
 // UploadCurrentUserAvatar 上传并更新当前登录用户头像。
 func (h *UserHandler) UploadCurrentUserAvatar(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+
 	fileHeader, err := ctx.FormFile("file")
 	if err != nil {
 		BadRequest(ctx, "file is required")
@@ -251,6 +274,7 @@ func (h *UserHandler) UploadCurrentUserAvatar(ctx *gin.Context) {
 		FileSize:    fileHeader.Size,
 		ContentType: fileHeader.Header.Get("Content-Type"),
 		Content:     file,
+		DryRun:      dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
