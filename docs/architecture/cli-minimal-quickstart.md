@@ -6,6 +6,7 @@
 - 支持基础健康检查
 - 支持资料库列表
 - 支持文件树查询（children/search）
+- 支持文件树基础写操作（mkdir/rename/mv/rm）与回收站管理
 
 ## 1. 构建
 
@@ -25,8 +26,16 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of auth whoami
 ./bin/of auth logout
 ./bin/of lib ls --size 20
+./bin/of help fs mkdir --examples
+./bin/of fs mkdir --library-id <id> --name <name> [--parent-id <id>]
+./bin/of fs rename --node-id <id> --name <new_name>
+./bin/of fs mv --library-id <id> --node-id <id> --new-parent-id <id> [--before-node-id <id>] [--name <new_name>]
+./bin/of fs rm --library-id <id> --node-id <id>
 ./bin/of fs ls --library-id <id> --node-id <id>
 ./bin/of fs search --library-id <id> --keyword <kw> --limit 20
+./bin/of fs recycle ls --library-id <id>
+./bin/of fs recycle restore --library-id <id> --node-id <id>
+./bin/of fs recycle hard --library-id <id> --node-id <id>
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。
@@ -48,4 +57,3 @@ CLI 会把登录会话写到：
 - `OMNIFLOW_BASE_URL`
 - `OMNIFLOW_USERNAME`
 - `OMNIFLOW_TOKEN`
-

@@ -11,9 +11,15 @@ type command struct {
 	Name     string
 	Summary  string
 	Usage    string
+	Flags    []string
 	Examples []string
 	Run      func(args []string) error
 	Children map[string]*command
+}
+
+type helpOptions struct {
+	showExamples     bool
+	examplesExplicit bool
 }
 
 type App struct {
@@ -37,7 +43,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 func (a *App) Run(args []string) int {
 	if len(args) == 0 {
-		a.printCommandHelpTo(a.root, a.stderr)
+		a.printCommandHelpTo(a.root, a.stderr, resolvedHelpOptions(a.root, helpOptions{}))
 		return 1
 	}
 
@@ -50,7 +56,7 @@ func (a *App) Run(args []string) int {
 	for {
 		if len(remaining) == 0 {
 			if current.Run == nil {
-				a.printCommandHelpTo(current, a.stderr)
+				a.printCommandHelpTo(current, a.stderr, resolvedHelpOptions(current, helpOptions{}))
 				return 1
 			}
 			if err := current.Run(nil); err != nil {
@@ -60,7 +66,11 @@ func (a *App) Run(args []string) int {
 		}
 
 		if isHelpFlag(remaining[0]) {
-			a.printCommandHelpTo(current, a.stdout)
+			opts, err := parseHelpOptions(remaining[1:])
+			if err != nil {
+				return a.failErr(err)
+			}
+			a.printCommandHelpTo(current, a.stdout, resolvedHelpOptions(current, opts))
 			return 0
 		}
 
@@ -83,7 +93,7 @@ func (a *App) Run(args []string) int {
 			} else {
 				a.failf("unknown %s command: %s", current.Name, remaining[0])
 			}
-			a.printCommandHelpTo(current, a.stderr)
+			a.printCommandHelpTo(current, a.stderr, resolvedHelpOptions(current, helpOptions{}))
 			return 1
 		}
 
@@ -92,21 +102,28 @@ func (a *App) Run(args []string) int {
 	}
 }
 
-func (a *App) runHelp(path []string) int {
+func (a *App) runHelp(tokens []string) int {
+	path, optionTokens, err := splitHelpPathAndOptions(tokens)
+	if err != nil {
+		return a.failErr(err)
+	}
+
 	current := a.root
 	for _, token := range path {
-		if token == "" {
-			continue
-		}
 		next, ok := current.Children[token]
 		if !ok {
 			a.failf("unknown command path: %s", strings.Join(path, " "))
-			a.printCommandHelpTo(a.root, a.stderr)
+			a.printCommandHelpTo(a.root, a.stderr, resolvedHelpOptions(a.root, helpOptions{}))
 			return 1
 		}
 		current = next
 	}
-	a.printCommandHelpTo(current, a.stdout)
+
+	opts, err := parseHelpOptions(optionTokens)
+	if err != nil {
+		return a.failErr(err)
+	}
+	a.printCommandHelpTo(current, a.stdout, resolvedHelpOptions(current, opts))
 	return 0
 }
 
@@ -116,11 +133,11 @@ func (a *App) buildCommandTree() *command {
 		Summary: "OmniFlow CLI",
 		Usage:   "of <command> [subcommand] [flags]",
 		Examples: []string{
+			"of help",
+			"of help fs",
+			"of help fs mkdir --examples",
 			"of health",
 			"of auth login --username demo --password demo",
-			"of auth whoami",
-			"of lib ls --size 20",
-			"of fs search --library-id 1 --keyword contract --limit 20",
 		},
 		Children: map[string]*command{},
 	}
@@ -129,7 +146,15 @@ func (a *App) buildCommandTree() *command {
 		Name:    "health",
 		Summary: "Check service health status",
 		Usage:   "of health [--base-url <url>] [--json]",
-		Run:     a.runHealth,
+		Flags: []string{
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of health",
+			"of health --json",
+		},
+		Run: a.runHealth,
 	}
 
 	auth := &command{
@@ -142,25 +167,57 @@ func (a *App) buildCommandTree() *command {
 		Name:    "login",
 		Summary: "Login with username and password",
 		Usage:   "of auth login --username <name> --password <password> [--base-url <url>] [--json]",
-		Run:     a.runAuthLogin,
+		Flags: []string{
+			"--username <name>   login username (required)",
+			"--password <pwd>    login password (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of auth login --username Loyce --password 123456",
+			"of auth login --username Loyce --password 123456 --json",
+		},
+		Run: a.runAuthLogin,
 	}
 	auth.Children["status"] = &command{
 		Name:    "status",
 		Summary: "Check whether current local session is still valid",
 		Usage:   "of auth status [--base-url <url>] [--json]",
-		Run:     a.runAuthStatus,
+		Flags: []string{
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of auth status",
+			"of auth status --json",
+		},
+		Run: a.runAuthStatus,
 	}
 	auth.Children["whoami"] = &command{
 		Name:    "whoami",
 		Summary: "Get current user information with local session",
 		Usage:   "of auth whoami [--base-url <url>] [--json]",
-		Run:     a.runAuthWhoAmI,
+		Flags: []string{
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of auth whoami",
+			"of auth whoami --json",
+		},
+		Run: a.runAuthWhoAmI,
 	}
 	auth.Children["logout"] = &command{
 		Name:    "logout",
 		Summary: "Logout current local session",
 		Usage:   "of auth logout [--base-url <url>]",
-		Run:     a.runAuthLogout,
+		Flags: []string{
+			"--base-url <url>    API base URL",
+		},
+		Examples: []string{
+			"of auth logout",
+		},
+		Run: a.runAuthLogout,
 	}
 	root.Children["auth"] = auth
 
@@ -174,28 +231,183 @@ func (a *App) buildCommandTree() *command {
 		Name:    "ls",
 		Summary: "List libraries of current user",
 		Usage:   "of lib ls [--last-id <id>] [--size <n>] [--base-url <url>] [--json]",
-		Run:     a.runLibraryList,
+		Flags: []string{
+			"--last-id <id>      pagination cursor",
+			"--size <n>          page size",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of lib ls --size 20",
+			"of lib ls --last-id 100 --size 20 --json",
+		},
+		Run: a.runLibraryList,
 	}
 	root.Children["lib"] = lib
 
 	fs := &command{
 		Name:     "fs",
 		Summary:  "File system commands",
-		Usage:    "of fs <ls|search> [flags]",
+		Usage:    "of fs <mkdir|rename|mv|rm|ls|search|recycle> [flags]",
 		Children: map[string]*command{},
+	}
+	fs.Children["mkdir"] = &command{
+		Name:    "mkdir",
+		Summary: "Create a directory node",
+		Usage:   "of fs mkdir --library-id <id> --name <name> [--parent-id <id>] [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--name <name>       directory name (required)",
+			"--parent-id <id>    parent node id, defaults to root",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs mkdir --library-id 1 --name docs",
+			"of fs mkdir --library-id 1 --parent-id 100 --name chapter-1 --json",
+		},
+		Run: a.runFSMkdir,
+	}
+	fs.Children["rename"] = &command{
+		Name:    "rename",
+		Summary: "Rename a node",
+		Usage:   "of fs rename --node-id <id> --name <name> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--node-id <id>      target node id (required)",
+			"--name <name>       new node name (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs rename --node-id 123 --name notes",
+			"of fs rename --node-id 123 --name notes-v2 --json",
+		},
+		Run: a.runFSRename,
+	}
+	fs.Children["mv"] = &command{
+		Name:    "mv",
+		Summary: "Move a node to another parent",
+		Usage:   "of fs mv --library-id <id> --node-id <id> --new-parent-id <id> [--before-node-id <id>] [--name <name>] [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>    library id (required)",
+			"--node-id <id>       target node id (required)",
+			"--new-parent-id <id> target parent node id (required)",
+			"--before-node-id <id> optional sibling id to place before",
+			"--name <name>        optional rename while moving",
+			"--base-url <url>     API base URL",
+			"--json               output JSON",
+		},
+		Examples: []string{
+			"of fs mv --library-id 1 --node-id 123 --new-parent-id 200",
+			"of fs mv --library-id 1 --node-id 123 --new-parent-id 200 --before-node-id 201 --json",
+		},
+		Run: a.runFSMove,
+	}
+	fs.Children["rm"] = &command{
+		Name:    "rm",
+		Summary: "Move a node tree to recycle bin",
+		Usage:   "of fs rm --library-id <id> --node-id <id> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--node-id <id>      target node id (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs rm --library-id 1 --node-id 123",
+			"of fs rm --library-id 1 --node-id 123 --json",
+		},
+		Run: a.runFSRemove,
 	}
 	fs.Children["ls"] = &command{
 		Name:    "ls",
 		Summary: "List direct children under a node",
 		Usage:   "of fs ls --library-id <id> --node-id <id> [--base-url <url>] [--json]",
-		Run:     a.runFSList,
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--node-id <id>      node id (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs ls --library-id 1 --node-id 10",
+			"of fs ls --library-id 1 --node-id 10 --json",
+		},
+		Run: a.runFSList,
 	}
 	fs.Children["search"] = &command{
 		Name:    "search",
 		Summary: "Search nodes by keyword/tag constraints",
 		Usage:   "of fs search --library-id <id> [--keyword <kw>] [--tag-ids 1,2] [--tag-match-mode ANY|ALL] [--limit <n>] [--base-url <url>] [--json]",
-		Run:     a.runFSSearch,
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--keyword <kw>      node name keyword",
+			"--tag-ids <list>    comma-separated tag ids",
+			"--tag-match-mode    ANY or ALL",
+			"--limit <n>         max result size",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs search --library-id 1 --keyword contract",
+			"of fs search --library-id 1 --tag-ids 1,2 --tag-match-mode ALL --json",
+		},
+		Run: a.runFSSearch,
 	}
+	recycle := &command{
+		Name:     "recycle",
+		Summary:  "Recycle bin commands",
+		Usage:    "of fs recycle <ls|restore|hard> [flags]",
+		Children: map[string]*command{},
+	}
+	recycle.Children["ls"] = &command{
+		Name:    "ls",
+		Summary: "List top-level nodes in recycle bin",
+		Usage:   "of fs recycle ls --library-id <id> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs recycle ls --library-id 1",
+			"of fs recycle ls --library-id 1 --json",
+		},
+		Run: a.runFSRecycleList,
+	}
+	recycle.Children["restore"] = &command{
+		Name:    "restore",
+		Summary: "Restore a node tree from recycle bin",
+		Usage:   "of fs recycle restore --library-id <id> --node-id <id> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--node-id <id>      target node id in recycle bin (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs recycle restore --library-id 1 --node-id 123",
+			"of fs recycle restore --library-id 1 --node-id 123 --json",
+		},
+		Run: a.runFSRecycleRestore,
+	}
+	recycle.Children["hard"] = &command{
+		Name:    "hard",
+		Summary: "Permanently delete a node tree from recycle bin",
+		Usage:   "of fs recycle hard --library-id <id> --node-id <id> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--node-id <id>      target node id in recycle bin (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs recycle hard --library-id 1 --node-id 123",
+			"of fs recycle hard --library-id 1 --node-id 123 --json",
+		},
+		Run: a.runFSRecycleHardDelete,
+	}
+	fs.Children["recycle"] = recycle
 	root.Children["fs"] = fs
 
 	config := &command{
@@ -208,14 +420,21 @@ func (a *App) buildCommandTree() *command {
 		Name:    "show",
 		Summary: "Show merged config/session snapshot",
 		Usage:   "of config show [--json]",
-		Run:     a.runConfigShow,
+		Flags: []string{
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of config show",
+			"of config show --json",
+		},
+		Run: a.runConfigShow,
 	}
 	root.Children["config"] = config
 
 	return root
 }
 
-func (a *App) printCommandHelpTo(cmd *command, out io.Writer) {
+func (a *App) printCommandHelpTo(cmd *command, out io.Writer, options helpOptions) {
 	if cmd == nil {
 		return
 	}
@@ -248,7 +467,17 @@ func (a *App) printCommandHelpTo(cmd *command, out io.Writer) {
 		}
 	}
 
-	if len(cmd.Examples) > 0 {
+	if len(cmd.Flags) > 0 {
+		fmt.Fprintln(out, "\nFlags:")
+		for _, line := range cmd.Flags {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			fmt.Fprintf(out, "  %s\n", line)
+		}
+	}
+
+	if len(cmd.Examples) > 0 && options.showExamples {
 		fmt.Fprintln(out, "\nExamples:")
 		for _, example := range cmd.Examples {
 			if strings.TrimSpace(example) == "" {
@@ -256,7 +485,62 @@ func (a *App) printCommandHelpTo(cmd *command, out io.Writer) {
 			}
 			fmt.Fprintf(out, "  %s\n", example)
 		}
+	} else if len(cmd.Examples) > 0 && len(cmd.Children) == 0 {
+		fmt.Fprintln(out, "\nTip:")
+		fmt.Fprintln(out, "  Append `--examples` to show command examples.")
 	}
+}
+
+func resolvedHelpOptions(cmd *command, raw helpOptions) helpOptions {
+	resolved := helpOptions{
+		showExamples: len(cmd.Children) > 0,
+	}
+	if raw.examplesExplicit {
+		resolved.showExamples = raw.showExamples
+	}
+	return resolved
+}
+
+func splitHelpPathAndOptions(tokens []string) ([]string, []string, error) {
+	path := make([]string, 0, len(tokens))
+	optionTokens := make([]string, 0, 2)
+	optionsStarted := false
+
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+
+		if strings.HasPrefix(token, "-") {
+			optionsStarted = true
+			optionTokens = append(optionTokens, token)
+			continue
+		}
+
+		if optionsStarted {
+			return nil, nil, fmt.Errorf("unexpected help path token after options: %s", token)
+		}
+		path = append(path, token)
+	}
+
+	return path, optionTokens, nil
+}
+
+func parseHelpOptions(tokens []string) (helpOptions, error) {
+	opts := helpOptions{}
+	for _, token := range tokens {
+		switch strings.TrimSpace(token) {
+		case "", "-h", "--help":
+			continue
+		case "--examples", "-x", "--verbose", "-v":
+			opts.showExamples = true
+			opts.examplesExplicit = true
+		default:
+			return helpOptions{}, fmt.Errorf("unknown help option: %s", token)
+		}
+	}
+	return opts, nil
 }
 
 func isHelpFlag(token string) bool {

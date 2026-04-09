@@ -36,6 +36,13 @@
   - 人类可读模式：简洁单行文本。
   - 机器可读模式：`--json` 输出结构化 JSON。
 - 鉴权命令必须复用本地会话逻辑，不重复读写 token 文件。
+- 帮助信息采用渐进式披露：
+  - `of help <domain>` 看命令域列表。
+  - `of help <domain> <command>` 看 usage + flags。
+  - `of help <domain> <command> --examples` 看完整示例。
+- 文件系统命令分两层：
+  - 节点操作：`mkdir` / `rename` / `mv` / `rm`
+  - 回收站操作：`recycle ls|restore|hard`
 
 ## 4. 错误与退出码约定
 

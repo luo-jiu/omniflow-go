@@ -99,12 +99,44 @@ type Node struct {
 	ViewMeta    string `json:"viewMeta,omitempty"`
 }
 
+type RecycleItem struct {
+	ID                     uint64    `json:"id"`
+	Name                   string    `json:"name"`
+	Ext                    string    `json:"ext,omitempty"`
+	MIMEType               string    `json:"mimeType,omitempty"`
+	FileSize               int64     `json:"fileSize,omitempty"`
+	Type                   string    `json:"type"`
+	ParentID               uint64    `json:"parentId"`
+	LibraryID              uint64    `json:"libraryId"`
+	DeletedAt              time.Time `json:"deletedAt"`
+	DeletedDescendantCount int       `json:"deletedDescendantCount,omitempty"`
+}
+
 type SearchNodesRequest struct {
 	LibraryID    uint64   `json:"libraryId"`
 	Keyword      string   `json:"keyword,omitempty"`
 	TagIDs       []uint64 `json:"tagIds,omitempty"`
 	TagMatchMode string   `json:"tagMatchMode,omitempty"`
 	Limit        int      `json:"limit,omitempty"`
+}
+
+type CreateNodeRequest struct {
+	Name      string `json:"name"`
+	Type      int    `json:"type"`
+	ParentID  uint64 `json:"parentId,omitempty"`
+	LibraryID uint64 `json:"libraryId"`
+}
+
+type RenameNodeRequest struct {
+	Name string `json:"name"`
+}
+
+type MoveNodeRequest struct {
+	Name         string `json:"name,omitempty"`
+	NodeID       uint64 `json:"nodeId"`
+	NewParentID  uint64 `json:"newParentId"`
+	BeforeNodeID uint64 `json:"beforeNodeId,omitempty"`
+	LibraryID    uint64 `json:"libraryId"`
 }
 
 func NewClient(baseURL, username, token string) *Client {
@@ -184,6 +216,76 @@ func (c *Client) ListChildren(ctx context.Context, nodeID, libraryID uint64) ([]
 func (c *Client) SearchNodes(ctx context.Context, req SearchNodesRequest) ([]Node, error) {
 	var out []Node
 	err := c.doJSON(ctx, http.MethodPost, "/api/v1/nodes/search", nil, req, true, &out)
+	return out, err
+}
+
+func (c *Client) CreateNode(ctx context.Context, req CreateNodeRequest) (Node, error) {
+	var out Node
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/nodes", nil, req, true, &out)
+	return out, err
+}
+
+func (c *Client) RenameNode(ctx context.Context, nodeID uint64, req RenameNodeRequest) error {
+	return c.doJSON(ctx, http.MethodPatch, fmt.Sprintf("/api/v1/nodes/%d/rename", nodeID), nil, req, true, nil)
+}
+
+func (c *Client) MoveNode(ctx context.Context, nodeID uint64, req MoveNodeRequest) error {
+	return c.doJSON(ctx, http.MethodPatch, fmt.Sprintf("/api/v1/nodes/%d/move", nodeID), nil, req, true, nil)
+}
+
+func (c *Client) DeleteNodeTree(ctx context.Context, nodeID, libraryID uint64) (bool, error) {
+	var out bool
+	err := c.doJSON(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/api/v1/nodes/%d/library/%d", nodeID, libraryID),
+		nil,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) ListRecycleBin(ctx context.Context, libraryID uint64) ([]RecycleItem, error) {
+	var out []RecycleItem
+	err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/api/v1/nodes/recycle/library/%d", libraryID),
+		nil,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64) (bool, error) {
+	var out bool
+	err := c.doJSON(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/api/v1/nodes/%d/library/%d/restore", nodeID, libraryID),
+		nil,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) HardDeleteNodeTree(ctx context.Context, nodeID, libraryID uint64) (bool, error) {
+	var out bool
+	err := c.doJSON(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/api/v1/nodes/%d/library/%d/hard", nodeID, libraryID),
+		nil,
+		nil,
+		true,
+		&out,
+	)
 	return out, err
 }
 
