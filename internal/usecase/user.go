@@ -370,7 +370,8 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 			return domainuser.User{}, err
 		}
 
-		simulated := existing
+		// dry-run 只返回“将会写入的 ext”，头像 URL 仍保持当前可用值，避免误导调用方访问不存在对象。
+		simulated := u.enrichUser(ctx, existing)
 		simulated.Ext = string(extRaw)
 		_ = u.writeAudit(ctx, cmd.Actor, "user.avatar.upload", true, map[string]any{
 			"user_id":    userID,

@@ -114,7 +114,7 @@ func (h *TagHandler) CreateTag(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	Success(ctx, tag)
+	SuccessWithDryRun(ctx, dryRun, tag)
 }
 
 // UpdateTag 修改标签。
@@ -158,7 +158,7 @@ func (h *TagHandler) UpdateTag(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	Success(ctx, tag)
+	SuccessWithDryRun(ctx, dryRun, tag)
 }
 
 // DeleteTag 删除标签（软删除）。
@@ -186,5 +186,5 @@ func (h *TagHandler) DeleteTag(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	SuccessNoData(ctx)
+	SuccessNoDataWithDryRun(ctx, dryRun)
 }

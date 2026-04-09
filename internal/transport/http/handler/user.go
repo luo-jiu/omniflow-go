@@ -158,7 +158,7 @@ func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	SuccessNoData(ctx)
+	SuccessNoDataWithDryRun(ctx, dryRun)
 }
 
 // GetCurrentUser 获取当前登录用户资料。
@@ -205,7 +205,7 @@ func (h *UserHandler) UpdateCurrentUser(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	Success(ctx, updated)
+	SuccessWithDryRun(ctx, dryRun, updated)
 }
 
 // UpdateCurrentUserPassword 修改当前登录用户密码。
@@ -240,7 +240,7 @@ func (h *UserHandler) UpdateCurrentUserPassword(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	SuccessNoData(ctx)
+	SuccessNoDataWithDryRun(ctx, dryRun)
 }
 
 // UploadCurrentUserAvatar 上传并更新当前登录用户头像。
@@ -280,5 +280,5 @@ func (h *UserHandler) UploadCurrentUserAvatar(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	Success(ctx, updated)
+	SuccessWithDryRun(ctx, dryRun, updated)
 }

@@ -17,6 +17,7 @@ const (
 	UnauthorizedCode    = "A00200"
 	PermissionDenied    = "A000403"
 	ServiceErrorCode    = "B000001"
+	dryRunHeaderKey     = "X-Omniflow-Dry-Run"
 	defaultSuccessMsg   = "success"
 	defaultInternalMsg  = "internal server error"
 	defaultBadRequest   = "invalid request parameters"
@@ -36,6 +37,33 @@ func Success(ctx *gin.Context, data any) {
 
 func SuccessNoData(ctx *gin.Context) {
 	Success(ctx, nil)
+}
+
+// SuccessWithDryRun 在 dry-run 模式下返回统一包装，便于调用方识别“模拟结果”。
+func SuccessWithDryRun(ctx *gin.Context, dryRun bool, data any) {
+	if !dryRun {
+		Success(ctx, data)
+		return
+	}
+
+	ctx.Header(dryRunHeaderKey, "true")
+	Success(ctx, map[string]any{
+		"dryRun": true,
+		"result": data,
+	})
+}
+
+// SuccessNoDataWithDryRun 在 dry-run 模式下返回明确标记，避免与真实执行混淆。
+func SuccessNoDataWithDryRun(ctx *gin.Context, dryRun bool) {
+	if !dryRun {
+		SuccessNoData(ctx)
+		return
+	}
+
+	ctx.Header(dryRunHeaderKey, "true")
+	Success(ctx, map[string]any{
+		"dryRun": true,
+	})
 }
 
 func BadRequest(ctx *gin.Context, message string) {
