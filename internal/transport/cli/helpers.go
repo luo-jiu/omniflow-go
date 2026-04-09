@@ -91,3 +91,47 @@ func parseUint64CSV(raw string) ([]uint64, error) {
 	}
 	return result, nil
 }
+
+func normalizeNodePath(raw string) (string, []string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil, errors.New("`--path` is required")
+	}
+
+	normalized := strings.ReplaceAll(trimmed, "\\", "/")
+	if !strings.HasPrefix(normalized, "/") {
+		normalized = "/" + normalized
+	}
+	for strings.Contains(normalized, "//") {
+		normalized = strings.ReplaceAll(normalized, "//", "/")
+	}
+	if normalized != "/" {
+		normalized = strings.TrimRight(normalized, "/")
+		if normalized == "" {
+			normalized = "/"
+		}
+	}
+
+	rawSegments := strings.Split(normalized, "/")
+	segments := make([]string, 0, len(rawSegments))
+	for i, segment := range rawSegments {
+		// First segment is empty because normalized path always starts with "/".
+		if i == 0 {
+			continue
+		}
+		segment = strings.TrimSpace(segment)
+		if segment == "" || segment == "." {
+			continue
+		}
+		if segment == ".." {
+			return "", nil, errors.New("path cannot contain `..`")
+		}
+		segments = append(segments, segment)
+	}
+
+	canonical := "/"
+	if len(segments) > 0 {
+		canonical = "/" + strings.Join(segments, "/")
+	}
+	return canonical, segments, nil
+}

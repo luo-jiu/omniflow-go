@@ -248,22 +248,24 @@ func (a *App) buildCommandTree() *command {
 	fs := &command{
 		Name:     "fs",
 		Summary:  "File system commands",
-		Usage:    "of fs <mkdir|rename|mv|rm|ls|search|recycle> [flags]",
+		Usage:    "of fs <mkdir|rename|mv|rm|ls|search|recycle|path> [flags]",
 		Children: map[string]*command{},
 	}
 	fs.Children["mkdir"] = &command{
 		Name:    "mkdir",
 		Summary: "Create a directory node",
-		Usage:   "of fs mkdir --library-id <id> --name <name> [--parent-id <id>] [--base-url <url>] [--json]",
+		Usage:   "of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>] [--base-url <url>] [--json]",
 		Flags: []string{
 			"--library-id <id>   library id (required)",
 			"--name <name>       directory name (required)",
 			"--parent-id <id>    parent node id, defaults to root",
+			"--parent-path <p>   parent path from root",
 			"--base-url <url>    API base URL",
 			"--json              output JSON",
 		},
 		Examples: []string{
 			"of fs mkdir --library-id 1 --name docs",
+			"of fs mkdir --library-id 1 --parent-path /docs --name chapter-1",
 			"of fs mkdir --library-id 1 --parent-id 100 --name chapter-1 --json",
 		},
 		Run: a.runFSMkdir,
@@ -287,11 +289,13 @@ func (a *App) buildCommandTree() *command {
 	fs.Children["mv"] = &command{
 		Name:    "mv",
 		Summary: "Move a node to another parent",
-		Usage:   "of fs mv --library-id <id> --node-id <id> --new-parent-id <id> [--before-node-id <id>] [--name <name>] [--base-url <url>] [--json]",
+		Usage:   "of fs mv --library-id <id> (--node-id <id>|--node-path </a/b>) (--new-parent-id <id>|--new-parent-path </a/b>) [--before-node-id <id>] [--name <name>] [--base-url <url>] [--json]",
 		Flags: []string{
 			"--library-id <id>    library id (required)",
-			"--node-id <id>       target node id (required)",
-			"--new-parent-id <id> target parent node id (required)",
+			"--node-id <id>       target node id",
+			"--node-path <p>      target node path from root",
+			"--new-parent-id <id> target parent node id",
+			"--new-parent-path <p> target parent path from root",
 			"--before-node-id <id> optional sibling id to place before",
 			"--name <name>        optional rename while moving",
 			"--base-url <url>     API base URL",
@@ -299,6 +303,7 @@ func (a *App) buildCommandTree() *command {
 		},
 		Examples: []string{
 			"of fs mv --library-id 1 --node-id 123 --new-parent-id 200",
+			"of fs mv --library-id 1 --node-path /docs/a.md --new-parent-path /archive",
 			"of fs mv --library-id 1 --node-id 123 --new-parent-id 200 --before-node-id 201 --json",
 		},
 		Run: a.runFSMove,
@@ -306,15 +311,17 @@ func (a *App) buildCommandTree() *command {
 	fs.Children["rm"] = &command{
 		Name:    "rm",
 		Summary: "Move a node tree to recycle bin",
-		Usage:   "of fs rm --library-id <id> --node-id <id> [--base-url <url>] [--json]",
+		Usage:   "of fs rm --library-id <id> (--node-id <id>|--path </a/b>) [--base-url <url>] [--json]",
 		Flags: []string{
 			"--library-id <id>   library id (required)",
-			"--node-id <id>      target node id (required)",
+			"--node-id <id>      target node id",
+			"--path <path>       target node path from root",
 			"--base-url <url>    API base URL",
 			"--json              output JSON",
 		},
 		Examples: []string{
 			"of fs rm --library-id 1 --node-id 123",
+			"of fs rm --library-id 1 --path /docs/a.md",
 			"of fs rm --library-id 1 --node-id 123 --json",
 		},
 		Run: a.runFSRemove,
@@ -408,6 +415,29 @@ func (a *App) buildCommandTree() *command {
 		Run: a.runFSRecycleHardDelete,
 	}
 	fs.Children["recycle"] = recycle
+	pathCmd := &command{
+		Name:     "path",
+		Summary:  "Path helper commands",
+		Usage:    "of fs path <resolve> [flags]",
+		Children: map[string]*command{},
+	}
+	pathCmd.Children["resolve"] = &command{
+		Name:    "resolve",
+		Summary: "Resolve a node path to node id",
+		Usage:   "of fs path resolve --library-id <id> --path </a/b> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--path <path>       path from root, e.g. /docs/ch1 (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs path resolve --library-id 1 --path /docs/ch1",
+			"of fs path resolve --library-id 1 --path docs/ch1 --json",
+		},
+		Run: a.runFSPathResolve,
+	}
+	fs.Children["path"] = pathCmd
 	root.Children["fs"] = fs
 
 	config := &command{

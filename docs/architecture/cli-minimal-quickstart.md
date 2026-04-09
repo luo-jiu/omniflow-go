@@ -27,15 +27,16 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of auth logout
 ./bin/of lib ls --size 20
 ./bin/of help fs mkdir --examples
-./bin/of fs mkdir --library-id <id> --name <name> [--parent-id <id>]
+./bin/of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>]
 ./bin/of fs rename --node-id <id> --name <new_name>
-./bin/of fs mv --library-id <id> --node-id <id> --new-parent-id <id> [--before-node-id <id>] [--name <new_name>]
-./bin/of fs rm --library-id <id> --node-id <id>
+./bin/of fs mv --library-id <id> (--node-id <id>|--node-path </a/b>) (--new-parent-id <id>|--new-parent-path </a/b>) [--before-node-id <id>] [--name <new_name>]
+./bin/of fs rm --library-id <id> (--node-id <id>|--path </a/b>)
 ./bin/of fs ls --library-id <id> --node-id <id>
 ./bin/of fs search --library-id <id> --keyword <kw> --limit 20
 ./bin/of fs recycle ls --library-id <id>
 ./bin/of fs recycle restore --library-id <id> --node-id <id>
 ./bin/of fs recycle hard --library-id <id> --node-id <id>
+./bin/of fs path resolve --library-id <id> --path </docs/ch1>
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。

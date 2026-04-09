@@ -204,6 +204,12 @@ func (c *Client) ScrollLibraries(ctx context.Context, lastID uint64, size int) (
 	return out, err
 }
 
+func (c *Client) GetLibraryRootNodeID(ctx context.Context, libraryID uint64) (uint64, error) {
+	var out uint64
+	err := c.doJSON(ctx, http.MethodGet, fmt.Sprintf("/api/v1/nodes/library/%d/root", libraryID), nil, nil, true, &out)
+	return out, err
+}
+
 func (c *Client) ListChildren(ctx context.Context, nodeID, libraryID uint64) ([]Node, error) {
 	query := url.Values{}
 	query.Set("libraryId", strconv.FormatUint(libraryID, 10))

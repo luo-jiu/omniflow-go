@@ -43,6 +43,8 @@
 - 文件系统命令分两层：
   - 节点操作：`mkdir` / `rename` / `mv` / `rm`
   - 回收站操作：`recycle ls|restore|hard`
+  - 路径工具：`path resolve`
+- 路径演进策略：写命令保持 `id` 参数兼容，同时逐步增加 `path` 参数入口。
 
 ## 4. 错误与退出码约定
 

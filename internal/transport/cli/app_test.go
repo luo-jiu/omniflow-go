@@ -92,6 +92,9 @@ func TestRunHelpFSContainsMkdir(t *testing.T) {
 	if !strings.Contains(stdout.String(), "recycle") {
 		t.Fatalf("expected recycle in fs help, got: %s", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "path") {
+		t.Fatalf("expected path in fs help, got: %s", stdout.String())
+	}
 }
 
 func TestRunHelpFSRecycleContainsSubcommands(t *testing.T) {
@@ -114,6 +117,26 @@ func TestRunHelpFSRecycleContainsSubcommands(t *testing.T) {
 	}
 	if !strings.Contains(out, "hard") {
 		t.Fatalf("expected hard in recycle help, got: %s", out)
+	}
+}
+
+func TestRunHelpFSPathContainsResolve(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "fs", "path"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "resolve") {
+		t.Fatalf("expected resolve in fs path help, got: %s", out)
 	}
 }
 
@@ -181,5 +204,85 @@ func TestRunInlineHelpShowsExamplesWithFlag(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Examples:") {
 		t.Fatalf("expected examples section, got: %s", stdout.String())
+	}
+}
+
+func TestRunFSMkdirRejectsMixedParentInputs(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"fs", "mkdir", "--library-id", "1", "--name", "docs", "--parent-id", "10", "--parent-path", "/docs"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--parent-id` and `--parent-path` cannot be used together") {
+		t.Fatalf("expected mixed parent input error, got: %s", stderr.String())
+	}
+}
+
+func TestRunFSMvRequiresNodeInput(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"fs", "mv", "--library-id", "1", "--new-parent-id", "2"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "one of `--node-id` or `--node-path` is required") {
+		t.Fatalf("expected missing node input error, got: %s", stderr.String())
+	}
+}
+
+func TestRunFSRmRequiresNodeInput(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"fs", "rm", "--library-id", "1"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "one of `--node-id` or `--path` is required") {
+		t.Fatalf("expected missing rm node input error, got: %s", stderr.String())
+	}
+}
+
+func TestRunFSRecycleRestoreRequiresNodeInput(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"fs", "recycle", "restore", "--library-id", "1"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--node-id` is required") {
+		t.Fatalf("expected missing restore node input error, got: %s", stderr.String())
+	}
+}
+
+func TestRunFSRecycleHardRequiresNodeInput(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"fs", "recycle", "hard", "--library-id", "1"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--node-id` is required") {
+		t.Fatalf("expected missing hard node input error, got: %s", stderr.String())
 	}
 }

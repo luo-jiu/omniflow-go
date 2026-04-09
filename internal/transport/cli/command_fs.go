@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -11,15 +12,17 @@ func (a *App) runFSMkdir(args []string) error {
 	fs := a.newFlagSet("fs mkdir")
 
 	var (
-		baseURL   string
-		libraryID uint64
-		parentID  uint64
-		name      string
-		jsonOut   bool
+		baseURL    string
+		libraryID  uint64
+		parentID   uint64
+		parentPath string
+		name       string
+		jsonOut    bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
 	fs.Uint64Var(&parentID, "parent-id", 0, "parent node id (optional, default root)")
+	fs.StringVar(&parentPath, "parent-path", "", "parent path from root, e.g. /docs")
 	fs.StringVar(&name, "name", "", "directory name (required)")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
@@ -37,9 +40,25 @@ func (a *App) runFSMkdir(args []string) error {
 		return errors.New("`--name` is required")
 	}
 
+	parentPath = strings.TrimSpace(parentPath)
+	if parentID > 0 && parentPath != "" {
+		return errors.New("`--parent-id` and `--parent-path` cannot be used together")
+	}
+
 	_, client, err := a.resolveClient(baseURL, true)
 	if err != nil {
 		return err
+	}
+
+	if parentPath != "" {
+		_, parentNode, err := resolveNodeByPath(context.Background(), client, libraryID, parentPath)
+		if err != nil {
+			return err
+		}
+		if parentNode.Type != "dir" {
+			return fmt.Errorf("`--parent-path` must resolve to a directory, got type=%s", parentNode.Type)
+		}
+		parentID = parentNode.ID
 	}
 
 	created, err := client.CreateNode(context.Background(), CreateNodeRequest{
@@ -112,18 +131,22 @@ func (a *App) runFSMove(args []string) error {
 	fs := a.newFlagSet("fs mv")
 
 	var (
-		baseURL      string
-		libraryID    uint64
-		nodeID       uint64
-		newParentID  uint64
-		beforeNodeID uint64
-		name         string
-		jsonOut      bool
+		baseURL       string
+		libraryID     uint64
+		nodeID        uint64
+		nodePath      string
+		newParentID   uint64
+		newParentPath string
+		beforeNodeID  uint64
+		name          string
+		jsonOut       bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
 	fs.Uint64Var(&nodeID, "node-id", 0, "target node id (required)")
+	fs.StringVar(&nodePath, "node-path", "", "target node path from root, e.g. /docs/a.txt")
 	fs.Uint64Var(&newParentID, "new-parent-id", 0, "target parent node id (required)")
+	fs.StringVar(&newParentPath, "new-parent-path", "", "target parent path from root, e.g. /docs")
 	fs.Uint64Var(&beforeNodeID, "before-node-id", 0, "optional sibling node id to place before")
 	fs.StringVar(&name, "name", "", "optional rename while moving")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
@@ -136,16 +159,45 @@ func (a *App) runFSMove(args []string) error {
 	if libraryID == 0 {
 		return errors.New("`--library-id` is required")
 	}
-	if nodeID == 0 {
-		return errors.New("`--node-id` is required")
+
+	nodePath = strings.TrimSpace(nodePath)
+	if nodeID > 0 && nodePath != "" {
+		return errors.New("`--node-id` and `--node-path` cannot be used together")
 	}
-	if newParentID == 0 {
-		return errors.New("`--new-parent-id` is required")
+	if nodeID == 0 && nodePath == "" {
+		return errors.New("one of `--node-id` or `--node-path` is required")
+	}
+
+	newParentPath = strings.TrimSpace(newParentPath)
+	if newParentID > 0 && newParentPath != "" {
+		return errors.New("`--new-parent-id` and `--new-parent-path` cannot be used together")
+	}
+	if newParentID == 0 && newParentPath == "" {
+		return errors.New("one of `--new-parent-id` or `--new-parent-path` is required")
 	}
 
 	_, client, err := a.resolveClient(baseURL, true)
 	if err != nil {
 		return err
+	}
+
+	if nodePath != "" {
+		_, node, err := resolveNodeByPath(context.Background(), client, libraryID, nodePath)
+		if err != nil {
+			return err
+		}
+		nodeID = node.ID
+	}
+
+	if newParentPath != "" {
+		_, parentNode, err := resolveNodeByPath(context.Background(), client, libraryID, newParentPath)
+		if err != nil {
+			return err
+		}
+		if parentNode.Type != "dir" {
+			return fmt.Errorf("`--new-parent-path` must resolve to a directory, got type=%s", parentNode.Type)
+		}
+		newParentID = parentNode.ID
 	}
 
 	if err := client.MoveNode(context.Background(), nodeID, MoveNodeRequest{
@@ -182,11 +234,13 @@ func (a *App) runFSRemove(args []string) error {
 		baseURL   string
 		libraryID uint64
 		nodeID    uint64
+		pathValue string
 		jsonOut   bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
 	fs.Uint64Var(&nodeID, "node-id", 0, "target node id (required)")
+	fs.StringVar(&pathValue, "path", "", "target node path from root, e.g. /docs/a.txt")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -197,13 +251,26 @@ func (a *App) runFSRemove(args []string) error {
 	if libraryID == 0 {
 		return errors.New("`--library-id` is required")
 	}
-	if nodeID == 0 {
-		return errors.New("`--node-id` is required")
+
+	pathValue = strings.TrimSpace(pathValue)
+	if nodeID > 0 && pathValue != "" {
+		return errors.New("`--node-id` and `--path` cannot be used together")
+	}
+	if nodeID == 0 && pathValue == "" {
+		return errors.New("one of `--node-id` or `--path` is required")
 	}
 
 	_, client, err := a.resolveClient(baseURL, true)
 	if err != nil {
 		return err
+	}
+
+	if pathValue != "" {
+		_, node, err := resolveNodeByPath(context.Background(), client, libraryID, pathValue)
+		if err != nil {
+			return err
+		}
+		nodeID = node.ID
 	}
 
 	ok, err := client.DeleteNodeTree(context.Background(), nodeID, libraryID)
@@ -387,6 +454,119 @@ func (a *App) runFSRecycleHardDelete(args []string) error {
 	}
 	a.printf("node tree was not hard deleted: id=%d library=%d\n", nodeID, libraryID)
 	return nil
+}
+
+func (a *App) runFSPathResolve(args []string) error {
+	fs := a.newFlagSet("fs path resolve")
+
+	var (
+		baseURL   string
+		libraryID uint64
+		pathValue string
+		jsonOut   bool
+	)
+	fs.StringVar(&baseURL, "base-url", "", "API base url")
+	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
+	fs.StringVar(&pathValue, "path", "", "node path, e.g. /docs/ch1 (required)")
+	fs.BoolVar(&jsonOut, "json", false, "output JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := ensureNoExtraArgs(fs); err != nil {
+		return err
+	}
+	if libraryID == 0 {
+		return errors.New("`--library-id` is required")
+	}
+
+	_, client, err := a.resolveClient(baseURL, true)
+	if err != nil {
+		return err
+	}
+
+	canonicalPath, resolvedNode, err := resolveNodeByPath(context.Background(), client, libraryID, pathValue)
+	if err != nil {
+		return err
+	}
+
+	result := map[string]any{
+		"libraryId": libraryID,
+		"path":      canonicalPath,
+		"nodeId":    resolvedNode.ID,
+		"node":      resolvedNode,
+	}
+	if jsonOut {
+		return a.printJSON(result)
+	}
+
+	a.printf(
+		"resolved path: path=%s node_id=%d type=%s name=%s parent=%d library=%d\n",
+		canonicalPath,
+		resolvedNode.ID,
+		resolvedNode.Type,
+		resolvedNode.Name,
+		resolvedNode.ParentID,
+		resolvedNode.LibraryID,
+	)
+	return nil
+}
+
+func findChildNodeByName(children []Node, name string) (Node, error) {
+	var matched []Node
+	for _, child := range children {
+		if child.Name == name {
+			matched = append(matched, child)
+		}
+	}
+
+	if len(matched) == 0 {
+		return Node{}, errors.New("node not found")
+	}
+	if len(matched) > 1 {
+		return Node{}, fmt.Errorf("ambiguous node name %q (%d matches)", name, len(matched))
+	}
+	return matched[0], nil
+}
+
+func resolveNodeByPath(ctx context.Context, client *Client, libraryID uint64, pathValue string) (string, Node, error) {
+	canonicalPath, segments, err := normalizeNodePath(pathValue)
+	if err != nil {
+		return "", Node{}, err
+	}
+
+	rootID, err := client.GetLibraryRootNodeID(ctx, libraryID)
+	if err != nil {
+		return "", Node{}, err
+	}
+
+	currentID := rootID
+	resolvedNode := Node{
+		ID:        rootID,
+		Type:      "dir",
+		ParentID:  0,
+		LibraryID: libraryID,
+		Name:      "/",
+	}
+
+	for idx, segment := range segments {
+		children, err := client.ListChildren(ctx, currentID, libraryID)
+		if err != nil {
+			return "", Node{}, err
+		}
+
+		nextNode, err := findChildNodeByName(children, segment)
+		if err != nil {
+			return "", Node{}, fmt.Errorf("resolve %q failed at segment %q: %w", canonicalPath, segment, err)
+		}
+		if idx < len(segments)-1 && nextNode.Type != "dir" {
+			return "", Node{}, fmt.Errorf("resolve %q failed at segment %q: segment is not a directory", canonicalPath, segment)
+		}
+
+		currentID = nextNode.ID
+		resolvedNode = nextNode
+	}
+
+	return canonicalPath, resolvedNode, nil
 }
 
 func (a *App) runFSList(args []string) error {
