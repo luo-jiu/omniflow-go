@@ -79,6 +79,20 @@ type SortComicChildrenCommand struct {
 	NodeID uint64
 }
 
+type BatchSetArchiveChildrenBuiltInTypeCommand struct {
+	Actor  actor.Actor
+	NodeID uint64
+}
+
+type BatchSetArchiveChildrenBuiltInTypeResult struct {
+	NodeID        uint64 `json:"nodeId"`
+	LibraryID     uint64 `json:"libraryId"`
+	BuiltInType   string `json:"builtInType"`
+	TotalChildren int    `json:"totalChildren"`
+	DirChildren   int    `json:"dirChildren"`
+	UpdatedCount  int    `json:"updatedCount"`
+}
+
 type DeleteNodeTreeCommand struct {
 	Actor     actor.Actor
 	LibraryID uint64
@@ -533,6 +547,96 @@ func (u *NodeUseCase) SortComicChildrenByName(ctx context.Context, cmd SortComic
 		"library_id": node.LibraryID,
 	})
 	return nil
+}
+
+func (u *NodeUseCase) BatchSetArchiveChildrenBuiltInType(
+	ctx context.Context,
+	cmd BatchSetArchiveChildrenBuiltInTypeCommand,
+) (BatchSetArchiveChildrenBuiltInTypeResult, error) {
+	if cmd.NodeID == 0 {
+		return BatchSetArchiveChildrenBuiltInTypeResult{}, fmt.Errorf("%w: node id is required", ErrInvalidArgument)
+	}
+
+	node, err := u.GetNodeDetail(ctx, cmd.NodeID)
+	if err != nil {
+		return BatchSetArchiveChildrenBuiltInTypeResult{}, err
+	}
+	if node.Type != domainnode.TypeDirectory {
+		return BatchSetArchiveChildrenBuiltInTypeResult{}, fmt.Errorf("%w: target node must be a directory", ErrInvalidArgument)
+	}
+	if node.ArchiveMode != 1 {
+		return BatchSetArchiveChildrenBuiltInTypeResult{}, fmt.Errorf("%w: target directory must enable archive mode", ErrInvalidArgument)
+	}
+
+	builtInType := strings.ToUpper(strings.TrimSpace(node.BuiltInType))
+	if builtInType == "" {
+		builtInType = "DEF"
+	}
+	if builtInType == "DEF" {
+		return BatchSetArchiveChildrenBuiltInTypeResult{}, fmt.Errorf("%w: target directory must set non-DEF built-in type", ErrInvalidArgument)
+	}
+
+	if err := u.AuthorizeMutation(ctx, cmd.Actor, node.LibraryID); err != nil {
+		return BatchSetArchiveChildrenBuiltInTypeResult{}, err
+	}
+
+	children, err := u.nodes.ListDirectChildren(ctx, cmd.NodeID, node.LibraryID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return BatchSetArchiveChildrenBuiltInTypeResult{}, ErrNotFound
+		}
+		return BatchSetArchiveChildrenBuiltInTypeResult{}, err
+	}
+
+	totalChildren := len(children)
+	dirChildren := 0
+	for _, child := range children {
+		if child.Type == domainnode.TypeDirectory {
+			dirChildren++
+		}
+	}
+
+	var updatedCount int64
+	if dirChildren > 0 {
+		if err := u.withinTx(ctx, func(txCtx context.Context) error {
+			rows, updateErr := u.nodes.BatchSetDirectChildDirectoriesBuiltInType(
+				txCtx,
+				cmd.NodeID,
+				node.LibraryID,
+				builtInType,
+				time.Now().UTC(),
+			)
+			if updateErr != nil {
+				if errors.Is(updateErr, repository.ErrInvalidState) {
+					return fmt.Errorf("%w: invalid archive batch set request", ErrInvalidArgument)
+				}
+				return updateErr
+			}
+			updatedCount = rows
+			return nil
+		}); err != nil {
+			return BatchSetArchiveChildrenBuiltInTypeResult{}, err
+		}
+	}
+
+	result := BatchSetArchiveChildrenBuiltInTypeResult{
+		NodeID:        cmd.NodeID,
+		LibraryID:     node.LibraryID,
+		BuiltInType:   builtInType,
+		TotalChildren: totalChildren,
+		DirChildren:   dirChildren,
+		UpdatedCount:  int(updatedCount),
+	}
+
+	_ = u.writeAudit(ctx, cmd.Actor, "node.batch_set_archive_children_built_in_type", true, map[string]any{
+		"node_id":        cmd.NodeID,
+		"library_id":     node.LibraryID,
+		"built_in_type":  builtInType,
+		"total_children": totalChildren,
+		"dir_children":   dirChildren,
+		"updated_count":  updatedCount,
+	})
+	return result, nil
 }
 
 func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeTreeCommand) (bool, error) {

@@ -154,6 +154,32 @@ func (r *NodeRepository) UpdateNodeFields(ctx context.Context, nodeID, libraryID
 	return info.RowsAffected > 0, nil
 }
 
+// BatchSetDirectChildDirectoriesBuiltInType 批量设置直属子目录的内置类型。
+func (r *NodeRepository) BatchSetDirectChildDirectoriesBuiltInType(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+	builtInType string,
+	updatedAt time.Time,
+) (int64, error) {
+	q := r.query(ctx)
+	info, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
+			q.Node.NodeType.Eq(nodeTypeDirectory),
+			q.Node.BuiltInType.Neq(builtInType),
+		).
+		Updates(map[string]any{
+			"built_in_type": builtInType,
+			"updated_at":    updatedAt,
+		})
+	if err != nil {
+		return 0, err
+	}
+	return info.RowsAffected, nil
+}
+
 // RenameNode 在同级目录内重命名节点，并在文件节点时支持扩展名修改。
 func (r *NodeRepository) RenameNode(ctx context.Context, nodeID, libraryID uint64, name string, ext *string, updatedAt time.Time) error {
 	current, err := r.findNodeModel(ctx, nodeID, libraryID)

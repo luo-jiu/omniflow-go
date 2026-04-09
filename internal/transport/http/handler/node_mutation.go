@@ -149,6 +149,32 @@ func (h *NodeHandler) SortComicChildrenByName(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
+// BatchSetArchiveChildrenBuiltInType 将归档目录的第一代子目录批量设置为父目录内置类型。
+func (h *NodeHandler) BatchSetArchiveChildrenBuiltInType(ctx *gin.Context) {
+	var uri nodeURI
+	if !BindURI(ctx, &uri) {
+		return
+	}
+
+	if h.nodeUseCase == nil {
+		SuccessNoData(ctx)
+		return
+	}
+
+	result, err := h.nodeUseCase.BatchSetArchiveChildrenBuiltInType(
+		ctx.Request.Context(),
+		usecase.BatchSetArchiveChildrenBuiltInTypeCommand{
+			Actor:  actorFromContext(ctx),
+			NodeID: uri.NodeID,
+		},
+	)
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, result)
+}
+
 // DeleteNodeAndChildren 删除指定祖先节点及其子树。
 func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
 	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
