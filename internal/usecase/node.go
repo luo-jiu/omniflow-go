@@ -14,6 +14,8 @@ import (
 	"omniflow-go/internal/authz"
 	domainnode "omniflow-go/internal/domain/node"
 	"omniflow-go/internal/repository"
+
+	"github.com/samber/lo"
 )
 
 type ListChildrenQuery struct {
@@ -140,7 +142,13 @@ const (
 	defaultStorageBucket   = "my-bucket"
 )
 
+var errNodeRepositoryNotConfigured = errors.New("node repository is not configured")
+
 func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domainnode.Node, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return domainnode.Node{}, err
+	}
+
 	name := cmd.Name
 	if cmd.LibraryID == 0 || strings.TrimSpace(name) == "" {
 		return domainnode.Node{}, fmt.Errorf("%w: library id and name are required", ErrInvalidArgument)
@@ -202,6 +210,10 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 }
 
 func (u *NodeUseCase) GetAllDescendants(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) ([]domainnode.Node, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return nil, err
+	}
+
 	if libraryID == 0 || nodeID == 0 {
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
 	}
@@ -220,6 +232,10 @@ func (u *NodeUseCase) GetAllDescendants(ctx context.Context, principal actor.Act
 }
 
 func (u *NodeUseCase) GetDirectChildren(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) ([]domainnode.Node, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return nil, err
+	}
+
 	if libraryID == 0 || nodeID == 0 {
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
 	}
@@ -238,6 +254,10 @@ func (u *NodeUseCase) GetDirectChildren(ctx context.Context, principal actor.Act
 }
 
 func (u *NodeUseCase) SearchNodes(ctx context.Context, query SearchNodesQuery) ([]domainnode.Node, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return nil, err
+	}
+
 	if query.LibraryID == 0 {
 		return nil, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
@@ -263,6 +283,10 @@ func (u *NodeUseCase) SearchNodes(ctx context.Context, query SearchNodesQuery) (
 }
 
 func (u *NodeUseCase) GetAncestors(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) ([]NodePath, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return nil, err
+	}
+
 	if libraryID == 0 || nodeID == 0 {
 		return nil, fmt.Errorf("%w: node id and library id are required", ErrInvalidArgument)
 	}
@@ -278,18 +302,20 @@ func (u *NodeUseCase) GetAncestors(ctx context.Context, principal actor.Actor, n
 		return nil, err
 	}
 
-	result := make([]NodePath, 0, len(rows))
-	for _, item := range rows {
-		result = append(result, NodePath{
+	return lo.Map(rows, func(item repository.NodePathItem, _ int) NodePath {
+		return NodePath{
 			ID:    item.ID,
 			Name:  item.Name,
 			Depth: item.Depth,
-		})
-	}
-	return result, nil
+		}
+	}), nil
 }
 
 func (u *NodeUseCase) GetFullPath(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) (string, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return "", err
+	}
+
 	ancestors, err := u.GetAncestors(ctx, principal, nodeID, libraryID)
 	if err != nil {
 		return "", err
@@ -298,15 +324,17 @@ func (u *NodeUseCase) GetFullPath(ctx context.Context, principal actor.Actor, no
 		return "", ErrNotFound
 	}
 
-	var b strings.Builder
-	for _, item := range ancestors {
-		b.WriteString("/")
-		b.WriteString(item.Name)
-	}
-	return b.String(), nil
+	segments := lo.Map(ancestors, func(item NodePath, _ int) string {
+		return item.Name
+	})
+	return "/" + strings.Join(segments, "/"), nil
 }
 
 func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, principal actor.Actor, libraryID uint64) (uint64, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return 0, err
+	}
+
 	if libraryID == 0 {
 		return 0, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
@@ -322,6 +350,10 @@ func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, principal actor.
 }
 
 func (u *NodeUseCase) GetNodeDetail(ctx context.Context, principal actor.Actor, nodeID uint64) (domainnode.Node, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return domainnode.Node{}, err
+	}
+
 	if nodeID == 0 {
 		return domainnode.Node{}, fmt.Errorf("%w: node id is required", ErrInvalidArgument)
 	}
@@ -340,6 +372,10 @@ func (u *NodeUseCase) GetNodeDetail(ctx context.Context, principal actor.Actor, 
 }
 
 func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeCommand) error {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return err
+	}
+
 	if nodeID == 0 {
 		return fmt.Errorf("%w: node id is required", ErrInvalidArgument)
 	}
@@ -433,6 +469,10 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 }
 
 func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeCommand) error {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return err
+	}
+
 	newName := cmd.Name
 	if nodeID == 0 || strings.TrimSpace(newName) == "" {
 		return fmt.Errorf("%w: node id and name are required", ErrInvalidArgument)
@@ -481,6 +521,10 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 }
 
 func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return err
+	}
+
 	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
 		return fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}
@@ -620,12 +664,10 @@ func (u *NodeUseCase) BatchSetArchiveChildrenBuiltInType(
 	}
 
 	totalChildren := len(children)
-	dirChildren := 0
-	for _, child := range children {
-		if child.Type == domainnode.TypeDirectory {
-			dirChildren++
-		}
-	}
+	directories := lo.Filter(children, func(child domainnode.Node, _ int) bool {
+		return child.Type == domainnode.TypeDirectory
+	})
+	dirChildren := len(directories)
 
 	var updatedCount int64
 	if dirChildren > 0 {
@@ -650,16 +692,12 @@ func (u *NodeUseCase) BatchSetArchiveChildrenBuiltInType(
 		}
 
 		if normalizedBuiltIn := normalizeArchiveCardBuiltInType(builtInType); normalizedBuiltIn != "" {
-			archiveItems := make([]ArchiveCardItem, 0, dirChildren)
-			for _, child := range children {
-				if child.Type != domainnode.TypeDirectory {
-					continue
-				}
-				archiveItems = append(archiveItems, ArchiveCardItem{
+			archiveItems := lo.Map(directories, func(child domainnode.Node, _ int) ArchiveCardItem {
+				return ArchiveCardItem{
 					ID:       child.ID,
 					ViewMeta: child.ViewMeta,
-				})
-			}
+				}
+			})
 			_ = u.warmupArchiveCoverMetaForNodes(ctx, node.LibraryID, normalizedBuiltIn, archiveItems)
 		}
 	}
@@ -685,6 +723,10 @@ func (u *NodeUseCase) BatchSetArchiveChildrenBuiltInType(
 }
 
 func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeTreeCommand) (bool, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return false, err
+	}
+
 	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
 		return false, fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}
@@ -720,6 +762,10 @@ func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeT
 }
 
 func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) ([]domainnode.RecycleItem, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return nil, err
+	}
+
 	if libraryID == 0 {
 		return nil, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
@@ -732,11 +778,10 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 		return []domainnode.RecycleItem{}, nil
 	}
 
-	deletedSet := make(map[uint64]struct{}, len(rows))
+	deletedSet := lo.SliceToMap(rows, func(item domainnode.RecycleItem) (uint64, struct{}) {
+		return item.ID, struct{}{}
+	})
 	childrenByParent := make(map[uint64][]uint64, len(rows))
-	for _, item := range rows {
-		deletedSet[item.ID] = struct{}{}
-	}
 	for _, item := range rows {
 		if item.ParentID == 0 {
 			continue
@@ -747,16 +792,13 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 		childrenByParent[item.ParentID] = append(childrenByParent[item.ParentID], item.ID)
 	}
 
-	topLevel := make([]domainnode.RecycleItem, 0, len(rows))
-	for _, item := range rows {
+	topLevel := lo.Filter(rows, func(item domainnode.RecycleItem, _ int) bool {
 		if item.ParentID == 0 {
-			topLevel = append(topLevel, item)
-			continue
+			return true
 		}
-		if _, ok := deletedSet[item.ParentID]; !ok {
-			topLevel = append(topLevel, item)
-		}
-	}
+		_, ok := deletedSet[item.ParentID]
+		return !ok
+	})
 
 	for i := range topLevel {
 		subtreeCount := countDeletedSubtree(childrenByParent, topLevel[i].ID)
@@ -775,6 +817,10 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 }
 
 func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNodeTreeCommand) (bool, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return false, err
+	}
+
 	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
 		return false, fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}
@@ -814,6 +860,10 @@ func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNod
 }
 
 func (u *NodeUseCase) HardDeleteNodeAndChildren(ctx context.Context, cmd HardDeleteNodeTreeCommand) (bool, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return false, err
+	}
+
 	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
 		return false, fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}
@@ -943,6 +993,13 @@ func (u *NodeUseCase) writeAudit(ctx context.Context, principal actor.Actor, act
 	})
 }
 
+func (u *NodeUseCase) ensureNodesConfigured() error {
+	if u == nil || u.nodes == nil {
+		return errNodeRepositoryNotConfigured
+	}
+	return nil
+}
+
 func countDeletedSubtree(childrenByParent map[uint64][]uint64, rootID uint64) int {
 	if rootID == 0 {
 		return 0
@@ -1020,17 +1077,7 @@ func normalizePositiveUint64List(values []uint64) []uint64 {
 		return []uint64{}
 	}
 
-	unique := make(map[uint64]struct{}, len(values))
-	result := make([]uint64, 0, len(values))
-	for _, value := range values {
-		if value == 0 {
-			continue
-		}
-		if _, exists := unique[value]; exists {
-			continue
-		}
-		unique[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
+	return lo.Uniq(lo.Filter(values, func(value uint64, _ int) bool {
+		return value > 0
+	}))
 }

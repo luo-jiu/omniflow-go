@@ -87,8 +87,8 @@ func (u *TagUseCase) SearchType() string {
 }
 
 func (u *TagUseCase) List(ctx context.Context, query ListTagsQuery) ([]domaintag.Tag, error) {
-	if u.tags == nil {
-		return []domaintag.Tag{}, nil
+	if err := u.ensureTagsConfigured(); err != nil {
+		return nil, err
 	}
 
 	ownerUserID, err := actorIDToUint64(query.Actor)
@@ -105,8 +105,8 @@ func (u *TagUseCase) List(ctx context.Context, query ListTagsQuery) ([]domaintag
 }
 
 func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domaintag.Tag, error) {
-	if u.tags == nil {
-		return domaintag.Tag{}, errTagRepositoryNotConfigured
+	if err := u.ensureTagsConfigured(); err != nil {
+		return domaintag.Tag{}, err
 	}
 
 	ownerUserID, err := actorIDToUint64(cmd.Actor)
@@ -193,8 +193,8 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 }
 
 func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagCommand) (domaintag.Tag, error) {
-	if u.tags == nil {
-		return domaintag.Tag{}, errTagRepositoryNotConfigured
+	if err := u.ensureTagsConfigured(); err != nil {
+		return domaintag.Tag{}, err
 	}
 	if tagID == 0 {
 		return domaintag.Tag{}, fmt.Errorf("%w: tagId is required", ErrInvalidArgument)
@@ -292,8 +292,8 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 }
 
 func (u *TagUseCase) Delete(ctx context.Context, cmd DeleteTagCommand) error {
-	if u.tags == nil {
-		return errTagRepositoryNotConfigured
+	if err := u.ensureTagsConfigured(); err != nil {
+		return err
 	}
 	if cmd.TagID == 0 {
 		return fmt.Errorf("%w: tagId is required", ErrInvalidArgument)
@@ -328,6 +328,13 @@ func normalizeTagName(raw string) (string, error) {
 		return "", fmt.Errorf("%w: tag name length must be <= 64", ErrInvalidArgument)
 	}
 	return name, nil
+}
+
+func (u *TagUseCase) ensureTagsConfigured() error {
+	if u == nil || u.tags == nil {
+		return errTagRepositoryNotConfigured
+	}
+	return nil
 }
 
 func normalizeTagType(raw string, required bool) (*string, error) {

@@ -57,7 +57,7 @@ func (h *UserHandler) GetActualUserByUsername(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		Success(ctx, map[string]any{"username": uri.Username})
+		InternalError(ctx, "user service not configured")
 		return
 	}
 
@@ -77,7 +77,7 @@ func (h *UserHandler) HasUsername(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		Success(ctx, true)
+		InternalError(ctx, "user service not configured")
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *UserHandler) RegisterUser(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "user service not configured")
 		return
 	}
 
@@ -141,7 +141,7 @@ func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "user service not configured")
 		return
 	}
 

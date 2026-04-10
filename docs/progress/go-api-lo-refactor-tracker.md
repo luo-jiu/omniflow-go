@@ -38,43 +38,43 @@
 | 模块 | 方法 | 接口 | `lo` 适配优先级 | 推荐改造点（调研结论） | 当前状态 | 批次 |
 |---|---|---|---|---|---|---|
 | Auth | POST | /api/v1/auth/login | 低 | 登录链路共享鉴权白名单集合构建，适合统一做 trim/去空/去重/set 化 | 已完成 | B01 |
-| Auth | GET | /api/v1/auth/status | 低 | 状态读取为主，集合处理少 | 待开始 | - |
-| Auth | DELETE | /api/v1/auth/logout | 低 | 清理流程为主，集合处理少 | 待开始 | - |
-| User | GET | /api/v1/user/{username} | 低 | 单对象查询与返回 | 待开始 | - |
+| Auth | GET | /api/v1/auth/status | 低 | 依赖缺失语义收口（显式错误），会话一致性校验保持黑盒行为 | 已完成 | B07 |
+| Auth | DELETE | /api/v1/auth/logout | 低 | 依赖缺失语义收口（显式错误），dry-run 语义保持不变 | 已完成 | B07 |
+| User | GET | /api/v1/user/{username} | 低 | 依赖缺失语义收口（显式错误） | 已完成 | B06 |
 | User | GET | /api/v1/user/me | 低 | 以规范收口为主（依赖缺失统一错误语义） | 已完成 | B02 |
-| User | GET | /api/v1/user/exists | 低 | 校验逻辑为主 | 待开始 | - |
-| User | POST | /api/v1/user | 低 | 注册流程为主 | 待开始 | - |
-| User | PUT | /api/v1/user/{id} | 低 | 单对象更新为主 | 待开始 | - |
+| User | GET | /api/v1/user/exists | 低 | 依赖缺失语义收口（显式错误） | 已完成 | B06 |
+| User | POST | /api/v1/user | 低 | 注册链路昵称 fallback 改为 `lo.Ternary`；依赖缺失语义收口 | 已完成 | B06 |
+| User | PUT | /api/v1/user/{id} | 低 | 依赖缺失语义收口（显式错误） | 已完成 | B06 |
 | User | PUT | /api/v1/user/me | 低 | 以规范收口为主（依赖缺失统一错误语义） | 已完成 | B02 |
 | User | PUT | /api/v1/user/me/password | 低 | 以规范收口为主（依赖缺失统一错误语义） | 已完成 | B02 |
 | User | POST | /api/v1/user/me/avatar | 中 | 头像上传归一化引入 lo 候选查找，减少分支样板 | 已完成 | B02 |
-| Library | GET | /api/v1/libraries/scroll | 中 | 列表过滤、映射与分页边界处理 | 待开始 | - |
-| Library | POST | /api/v1/libraries | 低 | 创建流程为主 | 待开始 | - |
-| Library | PUT | /api/v1/libraries/{id} | 低 | 更新流程为主 | 待开始 | - |
-| Library | DELETE | /api/v1/libraries/{id} | 低 | 删除流程为主 | 待开始 | - |
-| Node | POST | /api/v1/nodes | 高 | 请求归一化、ID 过滤去重、批量关联处理 | 待开始 | - |
-| Node | GET | /api/v1/nodes/{nodeId} | 低 | 单节点查询为主 | 待开始 | - |
-| Node | GET | /api/v1/nodes/{nodeId}/descendants | 高 | 子树结果聚合与映射处理 | 待开始 | - |
-| Node | GET | /api/v1/nodes/{nodeId}/children | 中 | 子节点结果映射与过滤 | 待开始 | - |
-| Node | GET | /api/v1/nodes/library/{libraryId}/root | 低 | 单节点定位与自修复为主 | 待开始 | - |
-| Node | POST | /api/v1/nodes/search | 高 | 条件过滤、结果去重、标签匹配聚合 | 待开始 | - |
-| Node | GET | /api/v1/nodes/{nodeId}/ancestors | 中 | 路径链条转换与排序 | 待开始 | - |
-| Node | GET | /api/v1/nodes/{nodeId}/path | 中 | 路径结果拼接与映射 | 待开始 | - |
-| Node | PUT | /api/v1/nodes/{nodeId} | 中 | viewMeta/builtInType 归一化可用集合工具增强可读性 | 待开始 | - |
-| Node | PATCH | /api/v1/nodes/{nodeId}/rename | 低 | 单节点改名为主 | 待开始 | - |
-| Node | PATCH | /api/v1/nodes | 中 | 批量重排入参处理与归一化 | 待开始 | - |
-| Node | PATCH | /api/v1/nodes/{nodeId}/move | 高 | 同级/跨级移动时列表重排和去重映射 | 待开始 | - |
-| Node | PATCH | /api/v1/nodes/{nodeId}/comic/sort-by-name | 高 | 排序前后集合处理与稳定性处理 | 待开始 | - |
-| Node | DELETE | /api/v1/nodes/{ancestorId}/library/{libraryId} | 中 | 子树收集与删除候选集处理 | 待开始 | - |
-| Node | GET | /api/v1/nodes/recycle/library/{libraryId} | 高 | 回收站聚合结果映射与去重处理 | 待开始 | - |
-| Node | PATCH | /api/v1/nodes/{ancestorId}/library/{libraryId}/restore | 高 | 恢复链路中的批量节点收集与关联处理 | 待开始 | - |
-| Node | DELETE | /api/v1/nodes/{ancestorId}/library/{libraryId}/hard | 高 | 彻底删除前的子集推导与去重 | 待开始 | - |
-| File | POST | /api/v1/files/upload | 中 | 批量参数归一化与白名单处理可优化 | 待开始 | - |
-| File | GET | /api/v1/files/link | 低 | 单链接生成为主 | 待开始 | - |
+| Library | GET | /api/v1/libraries/scroll | 中 | 列表映射与依赖缺失语义收口；映射样板改为 lo.Map | 已完成 | B05 |
+| Library | POST | /api/v1/libraries | 低 | 依赖缺失语义收口（显式错误） | 已完成 | B05 |
+| Library | PUT | /api/v1/libraries/{id} | 低 | 小集合校验改为 lo.Contains；依赖缺失语义收口 | 已完成 | B05 |
+| Library | DELETE | /api/v1/libraries/{id} | 低 | 依赖缺失语义收口（显式错误） | 已完成 | B05 |
+| Node | POST | /api/v1/nodes | 高 | 依赖缺失语义收口（显式错误），创建参数归一化保持最小语义变更 | 已完成 | B12 |
+| Node | GET | /api/v1/nodes/{nodeId} | 低 | 依赖缺失语义收口（显式错误） | 已完成 | B08 |
+| Node | GET | /api/v1/nodes/{nodeId}/descendants | 高 | 依赖缺失语义收口（显式错误），子树查询职责保持在 usecase/repository | 已完成 | B08 |
+| Node | GET | /api/v1/nodes/{nodeId}/children | 中 | 依赖缺失语义收口（显式错误），子节点查询职责保持在 usecase/repository | 已完成 | B08 |
+| Node | GET | /api/v1/nodes/library/{libraryId}/root | 低 | 依赖缺失语义收口（显式错误），根节点自修复行为保持不变 | 已完成 | B09 |
+| Node | POST | /api/v1/nodes/search | 高 | 依赖缺失语义收口（显式错误），tagIDs 归一化改为 lo.Filter+Uniq | 已完成 | B09 |
+| Node | GET | /api/v1/nodes/{nodeId}/ancestors | 中 | 祖先链转换改为 lo.Map，依赖缺失语义收口（显式错误） | 已完成 | B08 |
+| Node | GET | /api/v1/nodes/{nodeId}/path | 中 | 路径拼接改为 lo.Map + Join，依赖缺失语义收口（显式错误） | 已完成 | B08 |
+| Node | PUT | /api/v1/nodes/{nodeId} | 中 | 依赖缺失语义收口（显式错误），archiveMode 校验改为 lo.Contains | 已完成 | B11 |
+| Node | PATCH | /api/v1/nodes/{nodeId}/rename | 低 | 依赖缺失语义收口（显式错误），最小改造保持重命名语义 | 已完成 | B11 |
+| Node | PATCH | /api/v1/nodes | 中 | 当前为 Java 兼容 no-op 占位接口，无实际集合处理逻辑 | 不建议改造 | B14 |
+| Node | PATCH | /api/v1/nodes/{nodeId}/move | 高 | 依赖缺失语义收口（显式错误），移动语义与 dry-run 保持不变 | 已完成 | B11 |
+| Node | PATCH | /api/v1/nodes/{nodeId}/comic/sort-by-name | 高 | 依赖缺失语义收口（显式错误），排序语义保持不变 | 已完成 | B12 |
+| Node | DELETE | /api/v1/nodes/{ancestorId}/library/{libraryId} | 中 | 依赖缺失语义收口（显式错误），子树删除语义保持不变 | 已完成 | B12 |
+| Node | GET | /api/v1/nodes/recycle/library/{libraryId} | 高 | 回收站顶层筛选改为 lo.Filter，依赖缺失语义收口（显式错误） | 已完成 | B13 |
+| Node | PATCH | /api/v1/nodes/{ancestorId}/library/{libraryId}/restore | 高 | 依赖缺失语义收口（显式错误），恢复语义与 dry-run 保持不变 | 已完成 | B13 |
+| Node | DELETE | /api/v1/nodes/{ancestorId}/library/{libraryId}/hard | 高 | 依赖缺失语义收口（显式错误），彻底删除语义与 dry-run 保持不变 | 已完成 | B13 |
+| File | POST | /api/v1/files/upload | 中 | 存储依赖配置检查收口，默认值归一化保持朴素 if 语义 | 已完成 | B10 |
+| File | GET | /api/v1/files/link | 低 | 存储依赖配置检查收口，过期时间默认值保持朴素 if 语义 | 已完成 | B10 |
 | Directory | POST | /api/v1/directory/upload | 中 | 接口降级行为收口，依赖缺失统一显式报错 | 已完成 | B04 |
 | Directory | GET | /api/v1/directory/link | 中 | 接口降级行为收口，依赖缺失统一显式报错 | 已完成 | B04 |
-| Tag | GET | /api/v1/tags/search-types | 中 | 固定类型列表转换/去重 | 待开始 | - |
-| Tag | GET | /api/v1/tags | 中 | 结果过滤与映射 | 待开始 | - |
+| Tag | GET | /api/v1/tags/search-types | 中 | 依赖缺失语义收口（显式错误），返回契约保持不变 | 已完成 | B07 |
+| Tag | GET | /api/v1/tags | 中 | 依赖缺失语义收口（显式错误），列表查询职责留在 usecase/repository | 已完成 | B07 |
 | Tag | POST | /api/v1/tags | 中 | 类型集合与唯一键 scope 处理改为 lo 工具，减少手写去重样板 | 已完成 | B03 |
 | Tag | PUT | /api/v1/tags/{tagId} | 中 | 类型集合与唯一键 scope 处理改为 lo 工具，减少手写去重样板 | 已完成 | B03 |
 | Tag | DELETE | /api/v1/tags/{tagId} | 低 | 写接口 dry-run 头与其他模块保持一致 | 已完成 | B03 |
@@ -83,10 +83,10 @@
 
 | 模块 | 方法 | 接口 | 与 Java 关系 | `lo` 适配优先级 | 推荐改造点（调研结论） | 当前状态 | 批次 |
 |---|---|---|---|---|---|---|---|
-| Health | GET | /api/v1/health | Go 新增 | 低 | 健康检查，无集合逻辑 | 待开始 | - |
+| Health | GET | /api/v1/health | Go 新增 | 低 | 依赖缺失语义收口（显式错误） | 已完成 | B10 |
 | Directory | POST | /api/v1/directory/links/batch | Go 新增 | 高 | 批量 nodeID 去重、过滤、结果映射改为 lo 写法 | 已完成 | B04 |
-| Node | GET | /api/v1/nodes/{nodeId}/archive/cards | Go 新增 | 高 | 档案卡片聚合、父子关系映射、缺失项补齐 | 待开始 | - |
-| Node | PATCH | /api/v1/nodes/{nodeId}/archive/built-in-type/batch-set | Go 新增 | 高 | 批量子节点筛选、分组与写入前归一化 | 待开始 | - |
+| Node | GET | /api/v1/nodes/{nodeId}/archive/cards | Go 新增 | 高 | 依赖缺失语义收口（显式错误），档案卡片聚合逻辑保持不变 | 已完成 | B09 |
+| Node | PATCH | /api/v1/nodes/{nodeId}/archive/built-in-type/batch-set | Go 新增 | 高 | 子目录筛选与映射改为 lo.Filter/Map，依赖缺失语义收口（显式错误） | 已完成 | B12 |
 
 ## 批次推进规则
 
@@ -115,3 +115,13 @@
 | B02 | /api/v1/user/me, /api/v1/user/me(password/avatar) | `user/me` 相关 4 接口做全链路规范收口；头像上传归一化引入 `lo.SomeBy + lo.Find` 处理 MIME/扩展候选。 | 已完成 |
 | B03 | /api/v1/tags (POST/PUT/DELETE) | `Tag` 写接口链路引入 `lo`（类型集合、锁 scope 去重过滤、列表映射），并统一 dry-run 响应头行为。 | 已完成 |
 | B04 | /api/v1/directory/upload, /api/v1/directory/link, /api/v1/directory/links/batch | Directory 三接口全链路收口：handler 依赖缺失统一显式错误；批量 nodeID 与存储键映射改为 `lo` 去重/过滤/映射。 | 已完成 |
+| B05 | /api/v1/libraries/scroll, /api/v1/libraries (POST/PUT/DELETE) | Library 四接口全链路收口：handler/usecase 依赖缺失统一显式错误；列表映射和小集合校验替换为 `lo`。 | 已完成 |
+| B06 | /api/v1/user/{username}, /api/v1/user/exists, /api/v1/user, /api/v1/user/{id} | 公开用户接口四项收口：handler/usecase 依赖缺失统一显式错误；注册昵称回退替换为 `lo.Ternary`。 | 已完成 |
+| B07 | /api/v1/auth/status, /api/v1/auth/logout, /api/v1/tags/search-types, /api/v1/tags | Auth/Tag 读接口四项收口：去除“依赖缺失时假成功”降级，统一显式错误；TagUseCase 增加配置校验函数，保持层次边界清晰。 | 已完成 |
+| B08 | /api/v1/nodes/{nodeId}, /api/v1/nodes/{nodeId}/descendants, /api/v1/nodes/{nodeId}/children, /api/v1/nodes/{nodeId}/ancestors, /api/v1/nodes/{nodeId}/path | Node 读接口五项收口：去除“依赖缺失时假成功”降级并统一显式错误；usecase 增加 `nodes` 配置检查；祖先/路径组装替换为 `lo`。 | 已完成 |
+| B09 | /api/v1/nodes/library/{libraryId}/root, /api/v1/nodes/search, /api/v1/nodes/{nodeId}/archive/cards | Node 查询接口三项收口：去除“依赖缺失时假成功”降级并统一显式错误；usecase 增加 `nodes` 配置检查；搜索 tagIDs 归一化替换为 `lo`。 | 已完成 |
+| B10 | /api/v1/files/upload, /api/v1/files/link, /api/v1/health | File/Health 三接口收口：补齐依赖缺失显式错误；FileUseCase 统一存储依赖检查；默认值归一化保持朴素 `if`。 | 已完成 |
+| B11 | /api/v1/nodes/{nodeId} (PUT), /api/v1/nodes/{nodeId}/rename, /api/v1/nodes/{nodeId}/move | Node 变更接口三项收口：去除“依赖缺失时假成功”降级并统一显式错误；usecase 增加 `nodes` 配置检查；archiveMode 校验改为 `lo.Contains`。 | 已完成 |
+| B12 | /api/v1/nodes (POST), /api/v1/nodes/{nodeId}/comic/sort-by-name, /api/v1/nodes/{nodeId}/archive/built-in-type/batch-set, /api/v1/nodes/{nodeId}/library/{libraryId} (DELETE) | Node 变更接口四项收口：去除“依赖缺失时假成功”降级并统一显式错误；usecase 增加 `nodes` 配置检查；子目录筛选与映射替换为 `lo.Filter/Map`。 | 已完成 |
+| B13 | /api/v1/nodes/recycle/library/{libraryId}, /api/v1/nodes/{nodeId}/library/{libraryId}/restore, /api/v1/nodes/{nodeId}/library/{libraryId}/hard | Node 回收站三接口收口：去除“依赖缺失时假成功”降级并统一显式错误；usecase 增加 `nodes` 配置检查；回收站顶层筛选替换为 `lo.Filter`。 | 已完成 |
+| B14 | /api/v1/nodes (PATCH) | 该接口当前为兼容保留 no-op，占位语义明确，无集合处理逻辑，标记为 `不建议改造` 以避免过度设计。 | 已完成 |

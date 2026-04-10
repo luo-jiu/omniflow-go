@@ -14,7 +14,7 @@ func (h *NodeHandler) GetRecycleBinItems(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, []any{})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -40,7 +40,7 @@ func (h *NodeHandler) RestoreNodeAndChildren(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, true)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *NodeHandler) HardDeleteNodeAndChildren(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, true)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 

@@ -262,6 +262,10 @@ func (u *NodeUseCase) ListArchiveCards(
 	ctx context.Context,
 	query ListArchiveCardsQuery,
 ) (ListArchiveCardsResult, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return ListArchiveCardsResult{}, err
+	}
+
 	if query.LibraryID == 0 || query.NodeID == 0 {
 		return ListArchiveCardsResult{}, fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}

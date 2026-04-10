@@ -9,6 +9,7 @@ import (
 	pgmodel "omniflow-go/internal/repository/postgres/model"
 	pgquery "omniflow-go/internal/repository/postgres/query"
 
+	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
 
@@ -54,10 +55,9 @@ func (r *LibraryRepository) ScrollByUser(ctx context.Context, userID, lastID uin
 		return nil, err
 	}
 
-	result := make([]domainlibrary.Library, 0, len(rows))
-	for _, item := range rows {
-		result = append(result, toDomainLibraryModel(item))
-	}
+	result := lo.Map(rows, func(item *pgmodel.Library, _ int) domainlibrary.Library {
+		return toDomainLibraryModel(item)
+	})
 	return result, nil
 }
 

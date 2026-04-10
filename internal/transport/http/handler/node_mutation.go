@@ -21,7 +21,7 @@ func (h *NodeHandler) UpdateNode(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -65,7 +65,7 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -108,7 +108,7 @@ func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -135,7 +135,7 @@ func (h *NodeHandler) SortComicChildrenByName(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *NodeHandler) BatchSetArchiveChildrenBuiltInType(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -189,7 +189,7 @@ func (h *NodeHandler) DeleteNodeAndChildren(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, true)
+		InternalError(ctx, "node service not configured")
 		return
 	}
 

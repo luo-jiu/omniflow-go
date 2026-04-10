@@ -23,16 +23,7 @@ func (h *NodeHandler) CreateNode(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, map[string]any{
-			"id":        0,
-			"name":      req.Name,
-			"type":      req.Type,
-			"parentId":  req.ParentID,
-			"libraryId": req.LibraryID,
-			"ext":       req.Ext,
-			"mimeType":  req.MIMEType,
-			"fileSize":  req.FileSize,
-		})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 

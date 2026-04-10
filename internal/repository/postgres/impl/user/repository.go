@@ -122,9 +122,10 @@ func (r *UserRepository) ExistsByUsername(ctx context.Context, username string) 
 }
 
 func (r *UserRepository) Create(ctx context.Context, input CreateUserInput) (domainuser.User, error) {
-	nickname := strings.TrimSpace(input.Nickname)
-	if nickname == "" {
-		nickname = input.Username
+	nicknameInput := strings.TrimSpace(input.Nickname)
+	nickname := input.Username
+	if nicknameInput != "" {
+		nickname = nicknameInput
 	}
 
 	ext := strings.TrimSpace(input.Ext)

@@ -12,7 +12,7 @@ func (h *NodeHandler) GetLibraryRootNodeID(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, uint64(0))
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -32,7 +32,7 @@ func (h *NodeHandler) GetAllDescendants(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, []any{})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -52,7 +52,7 @@ func (h *NodeHandler) GetDirectChildren(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, []any{})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -84,13 +84,7 @@ func (h *NodeHandler) GetArchiveCards(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, usecase.ListArchiveCardsResult{
-			Items:   []usecase.ArchiveCardItem{},
-			Total:   0,
-			Offset:  query.Offset,
-			Limit:   query.Limit,
-			HasMore: false,
-		})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -117,7 +111,7 @@ func (h *NodeHandler) GetAncestors(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, []any{})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 
@@ -137,7 +131,7 @@ func (h *NodeHandler) GetFullPath(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, "")
+		InternalError(ctx, "node service not configured")
 		return
 	}
 

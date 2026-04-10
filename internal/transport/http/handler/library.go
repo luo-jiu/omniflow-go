@@ -45,7 +45,7 @@ func (h *LibraryHandler) Scroll(ctx *gin.Context) {
 	}
 
 	if h.libraryUseCase == nil {
-		Success(ctx, []any{})
+		InternalError(ctx, "library service not configured")
 		return
 	}
 
@@ -78,7 +78,7 @@ func (h *LibraryHandler) Create(ctx *gin.Context) {
 	}
 
 	if h.libraryUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "library service not configured")
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *LibraryHandler) Update(ctx *gin.Context) {
 	}
 
 	if h.libraryUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "library service not configured")
 		return
 	}
 
@@ -153,7 +153,7 @@ func (h *LibraryHandler) Delete(ctx *gin.Context) {
 	}
 
 	if h.libraryUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "library service not configured")
 		return
 	}
 

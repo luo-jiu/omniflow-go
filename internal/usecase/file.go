@@ -34,8 +34,8 @@ func NewFileUseCase(store storage.ObjectStorage) *FileUseCase {
 }
 
 func (u *FileUseCase) UploadAndGetLink(ctx context.Context, cmd UploadObjectCommand) (string, error) {
-	if u.store == nil {
-		return "", fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
+	if err := u.ensureStoreConfigured(); err != nil {
+		return "", err
 	}
 	if cmd.Content == nil {
 		return "", fmt.Errorf("%w: file content is required", ErrInvalidArgument)
@@ -61,8 +61,8 @@ func (u *FileUseCase) UploadAndGetLink(ctx context.Context, cmd UploadObjectComm
 }
 
 func (u *FileUseCase) GetFileLink(ctx context.Context, query GetObjectLinkQuery) (string, error) {
-	if u.store == nil {
-		return "", fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
+	if err := u.ensureStoreConfigured(); err != nil {
+		return "", err
 	}
 
 	objectName, err := buildObjectName(query.Path, query.FileName)
@@ -84,13 +84,16 @@ func buildObjectName(pathValue, fileName string) (string, error) {
 	}
 
 	name = filepath.Base(name)
-	pathValue = strings.TrimSpace(pathValue)
-	if pathValue == "" {
-		pathValue = "default"
-	}
-	pathValue = strings.Trim(pathValue, "/")
+	pathValue = strings.Trim(strings.TrimSpace(pathValue), "/")
 	if pathValue == "" {
 		pathValue = "default"
 	}
 	return pathValue + "/" + name, nil
+}
+
+func (u *FileUseCase) ensureStoreConfigured() error {
+	if u == nil || u.store == nil {
+		return fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
+	}
+	return nil
 }

@@ -10,7 +10,7 @@ func (h *NodeHandler) GetNodeDetail(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, map[string]any{"id": uri.NodeID})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 

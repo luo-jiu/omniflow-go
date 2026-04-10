@@ -110,6 +110,10 @@ func NewUserUseCase(
 }
 
 func (u *UserUseCase) GetByUsername(ctx context.Context, username string) (domainuser.User, error) {
+	if err := u.ensureUsersConfigured(); err != nil {
+		return domainuser.User{}, err
+	}
+
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return domainuser.User{}, fmt.Errorf("%w: username is required", ErrInvalidArgument)
@@ -143,6 +147,10 @@ func (u *UserUseCase) GetCurrent(ctx context.Context, principal actor.Actor) (do
 }
 
 func (u *UserUseCase) Exists(ctx context.Context, username string) (bool, error) {
+	if err := u.ensureUsersConfigured(); err != nil {
+		return false, err
+	}
+
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return false, fmt.Errorf("%w: username is required", ErrInvalidArgument)
@@ -161,6 +169,10 @@ func (u *UserUseCase) HasUsername(ctx context.Context, username string) (bool, e
 }
 
 func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (domainuser.User, error) {
+	if err := u.ensureUsersConfigured(); err != nil {
+		return domainuser.User{}, err
+	}
+
 	username := strings.TrimSpace(cmd.Username)
 	password := strings.TrimSpace(cmd.Password)
 	if username == "" || password == "" {
@@ -180,9 +192,10 @@ func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (do
 		return domainuser.User{}, err
 	}
 
-	nickname := strings.TrimSpace(cmd.Nickname)
-	if nickname == "" {
-		nickname = username
+	nicknameInput := strings.TrimSpace(cmd.Nickname)
+	nickname := username
+	if nicknameInput != "" {
+		nickname = nicknameInput
 	}
 
 	created, err := u.users.Create(ctx, repository.CreateUserInput{

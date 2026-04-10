@@ -21,5 +21,9 @@ func (h *HealthHandler) Register(routes gin.IRouter) {
 
 // Check 返回服务健康状态。
 func (h *HealthHandler) Check(ctx *gin.Context) {
+	if h.healthUseCase == nil {
+		InternalError(ctx, "health service not configured")
+		return
+	}
 	Success(ctx, h.healthUseCase.Status(ctx.Request.Context()))
 }

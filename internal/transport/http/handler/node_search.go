@@ -16,7 +16,7 @@ func (h *NodeHandler) SearchNodes(ctx *gin.Context) {
 	}
 
 	if h.nodeUseCase == nil {
-		Success(ctx, []any{})
+		InternalError(ctx, "node service not configured")
 		return
 	}
 

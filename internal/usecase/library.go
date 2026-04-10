@@ -66,6 +66,10 @@ func NewLibraryUseCase(
 }
 
 func (u *LibraryUseCase) Scroll(ctx context.Context, query ListLibrariesQuery) (ScrollLibrariesResult, error) {
+	if err := u.ensureLibrariesConfigured(); err != nil {
+		return ScrollLibrariesResult{}, err
+	}
+
 	userID, err := actorIDToUint64(query.Actor)
 	if err != nil {
 		return ScrollLibrariesResult{}, err
@@ -99,6 +103,10 @@ func (u *LibraryUseCase) Scroll(ctx context.Context, query ListLibrariesQuery) (
 }
 
 func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (domainlibrary.Library, error) {
+	if err := u.ensureLibrariesConfigured(); err != nil {
+		return domainlibrary.Library{}, err
+	}
+
 	name := strings.TrimSpace(cmd.Name)
 	if name == "" {
 		return domainlibrary.Library{}, fmt.Errorf("%w: library name is required", ErrInvalidArgument)
@@ -133,6 +141,10 @@ func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (
 }
 
 func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibraryCommand) error {
+	if err := u.ensureLibrariesConfigured(); err != nil {
+		return err
+	}
+
 	if id == 0 {
 		return fmt.Errorf("%w: id is required", ErrInvalidArgument)
 	}
@@ -189,6 +201,10 @@ func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibrar
 }
 
 func (u *LibraryUseCase) Delete(ctx context.Context, cmd DeleteLibraryCommand) error {
+	if err := u.ensureLibrariesConfigured(); err != nil {
+		return err
+	}
+
 	if cmd.ID == 0 {
 		return fmt.Errorf("%w: id is required", ErrInvalidArgument)
 	}
@@ -223,6 +239,10 @@ func (u *LibraryUseCase) Delete(ctx context.Context, cmd DeleteLibraryCommand) e
 }
 
 func (u *LibraryUseCase) HasPermission(ctx context.Context, principal actor.Actor, libraryID uint64) (bool, error) {
+	if err := u.ensureLibrariesConfigured(); err != nil {
+		return false, err
+	}
+
 	if libraryID == 0 {
 		return false, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
@@ -310,4 +330,11 @@ func (u *LibraryUseCase) writeAudit(ctx context.Context, principal actor.Actor, 
 		OccurredAt: time.Now().UTC(),
 		Metadata:   metadata,
 	})
+}
+
+func (u *LibraryUseCase) ensureLibrariesConfigured() error {
+	if u.libraries != nil {
+		return nil
+	}
+	return fmt.Errorf("%w: library repository not configured", ErrInvalidArgument)
 }
