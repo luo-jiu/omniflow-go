@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -300,6 +301,16 @@ func (u *NodeUseCase) ListArchiveCards(
 		return ListArchiveCardsResult{}, err
 	}
 	if len(units) == 0 {
+		slog.DebugContext(ctx, "node.archive.cards.listed",
+			"node_id", query.NodeID,
+			"library_id", query.LibraryID,
+			"built_in_type", builtInType,
+			"offset", offset,
+			"limit", limit,
+			"result_count", 0,
+			"total", total,
+			"has_more", false,
+		)
 		return ListArchiveCardsResult{
 			Items:   []ArchiveCardItem{},
 			Total:   total,
@@ -345,12 +356,24 @@ func (u *NodeUseCase) ListArchiveCards(
 	// Best-effort warmup to avoid next-round cover scans for comic/asmr archive cards.
 	_ = u.warmupArchiveCoverMetaForNodes(ctx, query.LibraryID, builtInType, items)
 
+	hasMore := (offset + len(items)) < total
+	slog.DebugContext(ctx, "node.archive.cards.listed",
+		"node_id", query.NodeID,
+		"library_id", query.LibraryID,
+		"built_in_type", builtInType,
+		"offset", offset,
+		"limit", limit,
+		"result_count", len(items),
+		"total", total,
+		"has_more", hasMore,
+	)
+
 	return ListArchiveCardsResult{
 		Items:   items,
 		Total:   total,
 		Offset:  offset,
 		Limit:   limit,
-		HasMore: (offset + len(items)) < total,
+		HasMore: hasMore,
 	}, nil
 }
 

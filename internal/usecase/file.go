@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -38,9 +39,11 @@ func (u *FileUseCase) UploadAndGetLink(ctx context.Context, cmd UploadObjectComm
 		return "", err
 	}
 	if cmd.Content == nil {
+		slog.WarnContext(ctx, "file.upload.invalid_argument", "reason", "content_missing")
 		return "", fmt.Errorf("%w: file content is required", ErrInvalidArgument)
 	}
 	if cmd.FileSize < 0 {
+		slog.WarnContext(ctx, "file.upload.invalid_argument", "reason", "file_size_lt_zero", "file_size", cmd.FileSize)
 		return "", fmt.Errorf("%w: file size must be >= 0", ErrInvalidArgument)
 	}
 
@@ -57,7 +60,16 @@ func (u *FileUseCase) UploadAndGetLink(ctx context.Context, cmd UploadObjectComm
 	if err := u.store.Upload(ctx, objectName, cmd.Content, cmd.FileSize, contentType); err != nil {
 		return "", err
 	}
-	return u.store.GetPresignedURL(ctx, objectName, 60*time.Minute)
+	url, err := u.store.GetPresignedURL(ctx, objectName, 60*time.Minute)
+	if err != nil {
+		return "", err
+	}
+	slog.InfoContext(ctx, "file.upload.completed",
+		"object_name", objectName,
+		"file_size", cmd.FileSize,
+		"content_type", contentType,
+	)
+	return url, nil
 }
 
 func (u *FileUseCase) GetFileLink(ctx context.Context, query GetObjectLinkQuery) (string, error) {
@@ -74,7 +86,15 @@ func (u *FileUseCase) GetFileLink(ctx context.Context, query GetObjectLinkQuery)
 	if expiry <= 0 {
 		expiry = 60
 	}
-	return u.store.GetPresignedURL(ctx, objectName, time.Duration(expiry)*time.Minute)
+	url, err := u.store.GetPresignedURL(ctx, objectName, time.Duration(expiry)*time.Minute)
+	if err != nil {
+		return "", err
+	}
+	slog.DebugContext(ctx, "file.link.generated",
+		"object_name", objectName,
+		"expiry_minutes", expiry,
+	)
+	return url, nil
 }
 
 func buildObjectName(pathValue, fileName string) (string, error) {

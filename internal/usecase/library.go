@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -96,9 +97,18 @@ func (u *LibraryUseCase) Scroll(ctx context.Context, query ListLibrariesQuery) (
 		result = append(result, item)
 	}
 
+	hasMore := len(result) == size
+	slog.DebugContext(ctx, "library.scroll.completed",
+		"user_id", userID,
+		"last_id", query.LastID,
+		"size", size,
+		"result_count", len(result),
+		"has_more", hasMore,
+	)
+
 	return ScrollLibrariesResult{
 		Items:   result,
-		HasMore: len(result) == size,
+		HasMore: hasMore,
 	}, nil
 }
 
@@ -137,6 +147,11 @@ func (u *LibraryUseCase) Create(ctx context.Context, cmd CreateLibraryCommand) (
 		"mode":       resolveMutationMode(cmd.DryRun),
 		"dry_run":    cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "library.created",
+		"library_id", record.ID,
+		"user_id", userID,
+		"dry_run", cmd.DryRun,
+	)
 	return record, nil
 }
 
@@ -197,6 +212,13 @@ func (u *LibraryUseCase) Update(ctx context.Context, id uint64, cmd UpdateLibrar
 		"mode":       resolveMutationMode(cmd.DryRun),
 		"dry_run":    cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "library.updated",
+		"library_id", id,
+		"user_id", userID,
+		"name_updated", cmd.Name != nil,
+		"starred_updated", cmd.Starred != nil,
+		"dry_run", cmd.DryRun,
+	)
 	return nil
 }
 
@@ -235,6 +257,11 @@ func (u *LibraryUseCase) Delete(ctx context.Context, cmd DeleteLibraryCommand) e
 		"mode":       resolveMutationMode(cmd.DryRun),
 		"dry_run":    cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "library.deleted",
+		"library_id", cmd.ID,
+		"user_id", userID,
+		"dry_run", cmd.DryRun,
+	)
 	return nil
 }
 

@@ -106,6 +106,8 @@ func HandleUseCaseError(ctx *gin.Context, err error) {
 	if err == nil {
 		return
 	}
+	// 统一挂载到 gin 上下文，供请求日志中间件输出错误摘要。
+	_ = ctx.Error(err)
 
 	switch {
 	case errors.Is(err, usecase.ErrInvalidArgument):

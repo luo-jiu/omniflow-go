@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"omniflow-go/internal/config"
@@ -24,11 +25,18 @@ func NewHealthUseCase(cfg *config.Config) *HealthUseCase {
 }
 
 func (u *HealthUseCase) Status(_ context.Context) HealthStatus {
-	return HealthStatus{
+	status := HealthStatus{
 		Name:      u.cfg.App.Name,
 		Env:       u.cfg.App.Env,
 		Version:   u.cfg.App.Version,
 		Timestamp: time.Now().UTC(),
 		Status:    "ok",
 	}
+	slog.Debug("health.status.checked",
+		"name", status.Name,
+		"env", status.Env,
+		"version", status.Version,
+		"status", status.Status,
+	)
+	return status
 }

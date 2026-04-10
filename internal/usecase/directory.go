@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"path"
@@ -76,9 +77,19 @@ func NewDirectoryUseCase(
 func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFileCommand) (domainnode.Node, error) {
 	fileName := cmd.FileName
 	if cmd.LibraryID == 0 || strings.TrimSpace(fileName) == "" || cmd.Content == nil {
+		slog.WarnContext(ctx, "directory.upload.invalid_argument",
+			"library_id", cmd.LibraryID,
+			"file_name", strings.TrimSpace(fileName),
+			"has_content", cmd.Content != nil,
+		)
 		return domainnode.Node{}, fmt.Errorf("%w: library id, file name and content are required", ErrInvalidArgument)
 	}
 	if cmd.FileSize < 0 {
+		slog.WarnContext(ctx, "directory.upload.invalid_argument",
+			"library_id", cmd.LibraryID,
+			"file_size", cmd.FileSize,
+			"reason", "file_size_lt_zero",
+		)
 		return domainnode.Node{}, fmt.Errorf("%w: file size must be >= 0", ErrInvalidArgument)
 	}
 	if u.storage == nil {
@@ -132,6 +143,12 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		"size":        cmd.FileSize,
 		"mime_type":   contentType,
 	})
+	slog.InfoContext(ctx, "directory.upload.completed",
+		"library_id", cmd.LibraryID,
+		"parent_id", cmd.ParentID,
+		"node_id", node.ID,
+		"size", cmd.FileSize,
+	)
 	return node, nil
 }
 
@@ -192,6 +209,10 @@ func sniffContentType(content io.Reader) (string, io.Reader, error) {
 
 func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLinkQuery) (string, error) {
 	if query.LibraryID == 0 || query.NodeID == 0 {
+		slog.WarnContext(ctx, "directory.link.invalid_argument",
+			"library_id", query.LibraryID,
+			"node_id", query.NodeID,
+		)
 		return "", fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}
 	if u.storage == nil {
@@ -226,6 +247,10 @@ func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLin
 		"library_id": query.LibraryID,
 		"node_id":    query.NodeID,
 	})
+	slog.DebugContext(ctx, "directory.link.generated",
+		"library_id", query.LibraryID,
+		"node_id", query.NodeID,
+	)
 	return url, nil
 }
 
@@ -234,6 +259,7 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 	query BatchGetFileLinksQuery,
 ) ([]BatchFileLinkItem, error) {
 	if query.LibraryID == 0 {
+		slog.WarnContext(ctx, "directory.links.batch.invalid_argument", "library_id", query.LibraryID)
 		return []BatchFileLinkItem{}, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
 	if len(query.NodeIDs) == 0 {
@@ -276,6 +302,11 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 			URL:    url,
 		})
 	}
+	slog.DebugContext(ctx, "directory.links.batch.generated",
+		"library_id", query.LibraryID,
+		"requested_count", len(nodeIDs),
+		"result_count", len(result),
+	)
 	return result, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"path/filepath"
@@ -116,16 +117,22 @@ func (u *UserUseCase) GetByUsername(ctx context.Context, username string) (domai
 
 	username = strings.TrimSpace(username)
 	if username == "" {
+		slog.WarnContext(ctx, "user.by_username.invalid_argument", "reason", "username_missing")
 		return domainuser.User{}, fmt.Errorf("%w: username is required", ErrInvalidArgument)
 	}
 
 	user, err := u.users.FindByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
+			slog.DebugContext(ctx, "user.by_username.not_found", "username", username)
 			return domainuser.User{}, ErrNotFound
 		}
 		return domainuser.User{}, err
 	}
+	slog.DebugContext(ctx, "user.by_username.fetched",
+		"username", username,
+		"user_id", user.ID,
+	)
 	return u.enrichUser(ctx, user), nil
 }
 
@@ -143,6 +150,7 @@ func (u *UserUseCase) GetCurrent(ctx context.Context, principal actor.Actor) (do
 	if err != nil {
 		return domainuser.User{}, err
 	}
+	slog.DebugContext(ctx, "user.profile.fetched", "user_id", userID)
 	return u.enrichUser(ctx, record), nil
 }
 
@@ -153,10 +161,19 @@ func (u *UserUseCase) Exists(ctx context.Context, username string) (bool, error)
 
 	username = strings.TrimSpace(username)
 	if username == "" {
+		slog.WarnContext(ctx, "user.exists.invalid_argument", "reason", "username_missing")
 		return false, fmt.Errorf("%w: username is required", ErrInvalidArgument)
 	}
 
-	return u.users.ExistsByUsername(ctx, username)
+	exists, err := u.users.ExistsByUsername(ctx, username)
+	if err != nil {
+		return false, err
+	}
+	slog.DebugContext(ctx, "user.exists.checked",
+		"username", username,
+		"exists", exists,
+	)
+	return exists, nil
 }
 
 // HasUsername 与 Java 语义保持一致：返回“用户名是否可用（未被占用）”。
@@ -165,7 +182,12 @@ func (u *UserUseCase) HasUsername(ctx context.Context, username string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	return !exists, nil
+	available := !exists
+	slog.DebugContext(ctx, "user.username_availability.checked",
+		"username", strings.TrimSpace(username),
+		"available", available,
+	)
+	return available, nil
 }
 
 func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (domainuser.User, error) {
@@ -176,6 +198,10 @@ func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (do
 	username := strings.TrimSpace(cmd.Username)
 	password := strings.TrimSpace(cmd.Password)
 	if username == "" || password == "" {
+		slog.WarnContext(ctx, "user.register.invalid_argument",
+			"username", username,
+			"has_password", password != "",
+		)
 		return domainuser.User{}, fmt.Errorf("%w: username and password are required", ErrInvalidArgument)
 	}
 
@@ -184,6 +210,10 @@ func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (do
 		return domainuser.User{}, err
 	}
 	if exists {
+		slog.InfoContext(ctx, "user.register.blocked",
+			"username", username,
+			"reason", "username_conflict",
+		)
 		return domainuser.User{}, ErrConflict
 	}
 
@@ -216,6 +246,10 @@ func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (do
 		"has_phone": created.Phone != "",
 		"has_email": created.Email != "",
 	})
+	slog.InfoContext(ctx, "user.registered",
+		"user_id", created.ID,
+		"username", created.Username,
+	)
 	return u.enrichUser(ctx, created), nil
 }
 
@@ -291,6 +325,11 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 		"mode":    resolveMutationMode(cmd.DryRun),
 		"dry_run": cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "user.profile.updated",
+		"user_id", targetID,
+		"fields", len(updates)-1,
+		"dry_run", cmd.DryRun,
+	)
 	return u.enrichUser(ctx, updated), nil
 }
 
@@ -307,9 +346,11 @@ func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurre
 	oldPassword := strings.TrimSpace(cmd.OldPassword)
 	newPassword := strings.TrimSpace(cmd.NewPassword)
 	if oldPassword == "" {
+		slog.WarnContext(ctx, "user.password.update.invalid_argument", "reason", "old_password_missing", "dry_run", cmd.DryRun)
 		return fmt.Errorf("%w: oldPassword is required", ErrInvalidArgument)
 	}
 	if newPassword == "" {
+		slog.WarnContext(ctx, "user.password.update.invalid_argument", "reason", "new_password_missing", "dry_run", cmd.DryRun)
 		return fmt.Errorf("%w: newPassword is required", ErrInvalidArgument)
 	}
 
@@ -322,9 +363,11 @@ func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurre
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(existing.PasswordHash), []byte(oldPassword)); err != nil {
+		slog.InfoContext(ctx, "user.password.update.blocked", "user_id", userID, "reason", "old_password_mismatch", "dry_run", cmd.DryRun)
 		return fmt.Errorf("%w: old password mismatch", ErrInvalidArgument)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(existing.PasswordHash), []byte(newPassword)); err == nil {
+		slog.InfoContext(ctx, "user.password.update.blocked", "user_id", userID, "reason", "new_password_same_as_old", "dry_run", cmd.DryRun)
 		return fmt.Errorf("%w: new password cannot be same as old password", ErrInvalidArgument)
 	}
 
@@ -354,6 +397,7 @@ func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurre
 		"mode":    resolveMutationMode(cmd.DryRun),
 		"dry_run": cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "user.password.updated", "user_id", userID, "dry_run", cmd.DryRun)
 	return nil
 }
 
@@ -410,7 +454,12 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 			"mode":       resolveMutationMode(true),
 			"dry_run":    true,
 		})
-		return u.enrichUser(ctx, simulated), nil
+		slog.InfoContext(ctx, "user.avatar.upload.dry_run",
+			"user_id", userID,
+			"avatar_key", newAvatarKey,
+			"dry_run", true,
+		)
+		return simulated, nil
 	}
 
 	if err := u.storage.Upload(ctx, newAvatarKey, uploadContent, cmd.FileSize, contentType); err != nil {
@@ -453,6 +502,11 @@ func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrent
 		"mode":       resolveMutationMode(false),
 		"dry_run":    false,
 	})
+	slog.InfoContext(ctx, "user.avatar.uploaded",
+		"user_id", userID,
+		"avatar_key", newAvatarKey,
+		"dry_run", false,
+	)
 	return u.enrichUser(ctx, refreshed), nil
 }
 

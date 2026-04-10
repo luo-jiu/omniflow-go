@@ -75,6 +75,7 @@ func NewLogger(cfg *config.Config) *slog.Logger {
 		"file_enabled", cfg.Log.File.Enabled,
 		"file_path", strings.TrimSpace(cfg.Log.File.Path),
 	)
+	slog.SetDefault(logger)
 	return logger
 }
 

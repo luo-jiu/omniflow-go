@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -81,8 +82,10 @@ func NewTagUseCase(tags *repository.TagRepository, tx repository.Transactor) *Ta
 
 func (u *TagUseCase) SearchType() string {
 	if u == nil || u.searchType == "" {
+		slog.Debug("tag.search_type.read", "value", "MySQL", "fallback", true)
 		return "MySQL"
 	}
+	slog.Debug("tag.search_type.read", "value", u.searchType, "fallback", false)
 	return u.searchType
 }
 
@@ -101,7 +104,17 @@ func (u *TagUseCase) List(ctx context.Context, query ListTagsQuery) ([]domaintag
 		return nil, err
 	}
 
-	return u.tags.ListByOwnerAndType(ctx, ownerUserID, normalizedType)
+	rows, err := u.tags.ListByOwnerAndType(ctx, ownerUserID, normalizedType)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.DebugContext(ctx, "tag.list.completed",
+		"owner_user_id", ownerUserID,
+		"type_filter", query.Type,
+		"result_count", len(rows),
+	)
+	return rows, nil
 }
 
 func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domaintag.Tag, error) {
@@ -189,6 +202,12 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 		return domaintag.Tag{}, err
 	}
 
+	slog.InfoContext(ctx, "tag.created",
+		"tag_id", created.ID,
+		"owner_user_id", ownerUserID,
+		"type", created.Type,
+		"dry_run", cmd.DryRun,
+	)
 	return created, nil
 }
 
@@ -288,6 +307,12 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 		return domaintag.Tag{}, err
 	}
 
+	slog.InfoContext(ctx, "tag.updated",
+		"tag_id", updated.ID,
+		"owner_user_id", ownerUserID,
+		"type", updated.Type,
+		"dry_run", cmd.DryRun,
+	)
 	return updated, nil
 }
 
@@ -316,6 +341,11 @@ func (u *TagUseCase) Delete(ctx context.Context, cmd DeleteTagCommand) error {
 	}); err != nil {
 		return err
 	}
+	slog.InfoContext(ctx, "tag.deleted",
+		"tag_id", cmd.TagID,
+		"owner_user_id", ownerUserID,
+		"dry_run", cmd.DryRun,
+	)
 	return nil
 }
 

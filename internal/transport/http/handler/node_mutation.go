@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"strings"
 
 	"omniflow-go/internal/usecase"
@@ -83,6 +84,7 @@ func (h *NodeHandler) Rename(ctx *gin.Context) {
 
 // ReorderNode 与 Java 保持一致：当前为兼容保留接口（空实现）。
 func (h *NodeHandler) ReorderNode(ctx *gin.Context) {
+	slog.DebugContext(ctx.Request.Context(), "node.reorder.compat_noop")
 	SuccessNoData(ctx)
 }
 

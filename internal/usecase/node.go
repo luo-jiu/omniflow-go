@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -206,6 +207,13 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		"mode":       resolveMutationMode(cmd.DryRun),
 		"dry_run":    cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "node.created",
+		"node_id", created.ID,
+		"library_id", created.LibraryID,
+		"parent_id", created.ParentID,
+		"type", created.Type,
+		"dry_run", cmd.DryRun,
+	)
 	return created, nil
 }
 
@@ -228,6 +236,11 @@ func (u *NodeUseCase) GetAllDescendants(ctx context.Context, principal actor.Act
 		}
 		return nil, err
 	}
+	slog.DebugContext(ctx, "node.descendants.listed",
+		"node_id", nodeID,
+		"library_id", libraryID,
+		"result_count", len(rows),
+	)
 	return rows, nil
 }
 
@@ -250,6 +263,11 @@ func (u *NodeUseCase) GetDirectChildren(ctx context.Context, principal actor.Act
 		}
 		return nil, err
 	}
+	slog.DebugContext(ctx, "node.children.listed",
+		"node_id", nodeID,
+		"library_id", libraryID,
+		"result_count", len(rows),
+	)
 	return rows, nil
 }
 
@@ -279,6 +297,14 @@ func (u *NodeUseCase) SearchNodes(ctx context.Context, query SearchNodesQuery) (
 	if err != nil {
 		return nil, err
 	}
+	slog.DebugContext(ctx, "node.search.completed",
+		"library_id", query.LibraryID,
+		"keyword", strings.TrimSpace(query.Keyword),
+		"tag_count", len(tagIDs),
+		"tag_match_mode", tagMatchMode,
+		"limit", limit,
+		"result_count", len(rows),
+	)
 	return rows, nil
 }
 
@@ -302,13 +328,19 @@ func (u *NodeUseCase) GetAncestors(ctx context.Context, principal actor.Actor, n
 		return nil, err
 	}
 
-	return lo.Map(rows, func(item repository.NodePathItem, _ int) NodePath {
+	result := lo.Map(rows, func(item repository.NodePathItem, _ int) NodePath {
 		return NodePath{
 			ID:    item.ID,
 			Name:  item.Name,
 			Depth: item.Depth,
 		}
-	}), nil
+	})
+	slog.DebugContext(ctx, "node.ancestors.listed",
+		"node_id", nodeID,
+		"library_id", libraryID,
+		"result_count", len(result),
+	)
+	return result, nil
 }
 
 func (u *NodeUseCase) GetFullPath(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) (string, error) {
@@ -327,7 +359,13 @@ func (u *NodeUseCase) GetFullPath(ctx context.Context, principal actor.Actor, no
 	segments := lo.Map(ancestors, func(item NodePath, _ int) string {
 		return item.Name
 	})
-	return "/" + strings.Join(segments, "/"), nil
+	path := "/" + strings.Join(segments, "/")
+	slog.DebugContext(ctx, "node.path.resolved",
+		"node_id", nodeID,
+		"library_id", libraryID,
+		"path_depth", len(segments),
+	)
+	return path, nil
 }
 
 func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, principal actor.Actor, libraryID uint64) (uint64, error) {
@@ -346,6 +384,10 @@ func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, principal actor.
 	if err != nil {
 		return 0, err
 	}
+	slog.DebugContext(ctx, "node.root.resolved",
+		"library_id", libraryID,
+		"root_node_id", rootNodeID,
+	)
 	return rootNodeID, nil
 }
 
@@ -368,6 +410,11 @@ func (u *NodeUseCase) GetNodeDetail(ctx context.Context, principal actor.Actor, 
 	if err := u.AuthorizeRead(ctx, principal, row.LibraryID); err != nil {
 		return domainnode.Node{}, err
 	}
+	slog.DebugContext(ctx, "node.detail.fetched",
+		"node_id", row.ID,
+		"library_id", row.LibraryID,
+		"type", row.Type,
+	)
 	return row, nil
 }
 
@@ -465,6 +512,13 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 		"node_id":    nodeID,
 		"library_id": node.LibraryID,
 	})
+	slog.InfoContext(ctx, "node.updated",
+		"node_id", nodeID,
+		"library_id", node.LibraryID,
+		"has_built_in_type", cmd.BuiltInType != nil,
+		"has_archive_mode", cmd.ArchiveMode != nil,
+		"has_view_meta", cmd.ViewMeta != nil,
+	)
 	return nil
 }
 
@@ -517,6 +571,11 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 		"mode":       resolveMutationMode(cmd.DryRun),
 		"dry_run":    cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "node.renamed",
+		"node_id", nodeID,
+		"library_id", node.LibraryID,
+		"dry_run", cmd.DryRun,
+	)
 	return nil
 }
 
@@ -574,6 +633,13 @@ func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
 		"mode":           resolveMutationMode(cmd.DryRun),
 		"dry_run":        cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "node.moved",
+		"node_id", cmd.NodeID,
+		"library_id", cmd.LibraryID,
+		"new_parent_id", cmd.NewParentID,
+		"before_node_id", cmd.BeforeNodeID,
+		"dry_run", cmd.DryRun,
+	)
 	return nil
 }
 
@@ -621,6 +687,10 @@ func (u *NodeUseCase) SortComicChildrenByName(ctx context.Context, cmd SortComic
 		"node_id":    cmd.NodeID,
 		"library_id": node.LibraryID,
 	})
+	slog.InfoContext(ctx, "node.comic_children.sorted_by_name",
+		"node_id", cmd.NodeID,
+		"library_id", node.LibraryID,
+	)
 	return nil
 }
 
@@ -719,6 +789,14 @@ func (u *NodeUseCase) BatchSetArchiveChildrenBuiltInType(
 		"dir_children":   dirChildren,
 		"updated_count":  updatedCount,
 	})
+	slog.InfoContext(ctx, "node.archive_children.built_in_type_batch_set",
+		"node_id", cmd.NodeID,
+		"library_id", node.LibraryID,
+		"built_in_type", builtInType,
+		"total_children", totalChildren,
+		"dir_children", dirChildren,
+		"updated_count", updatedCount,
+	)
 	return result, nil
 }
 
@@ -758,6 +836,13 @@ func (u *NodeUseCase) DeleteNodeAndChildren(ctx context.Context, cmd DeleteNodeT
 		"mode":          resolveMutationMode(cmd.DryRun),
 		"dry_run":       cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "node.tree.deleted",
+		"node_id", cmd.NodeID,
+		"library_id", cmd.LibraryID,
+		"deleted_nodes", deleteResult.DeletedNodeCount,
+		"file_nodes", deleteResult.FileNodeCount,
+		"dry_run", cmd.DryRun,
+	)
 	return true, nil
 }
 
@@ -767,6 +852,7 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 	}
 
 	if libraryID == 0 {
+		slog.WarnContext(ctx, "node.recycle.invalid_argument", "reason", "library_id_missing")
 		return nil, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
 
@@ -813,6 +899,11 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 		}
 		return topLevel[i].ID > topLevel[j].ID
 	})
+	slog.DebugContext(ctx, "node.recycle.listed",
+		"library_id", libraryID,
+		"result_count", len(topLevel),
+		"raw_deleted_count", len(rows),
+	)
 	return topLevel, nil
 }
 
@@ -856,6 +947,12 @@ func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNod
 		"mode":       resolveMutationMode(cmd.DryRun),
 		"dry_run":    cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "node.tree.restored",
+		"node_id", cmd.NodeID,
+		"library_id", cmd.LibraryID,
+		"dry_run", cmd.DryRun,
+		"result", ok,
+	)
 	return ok, nil
 }
 
@@ -893,6 +990,12 @@ func (u *NodeUseCase) HardDeleteNodeAndChildren(ctx context.Context, cmd HardDel
 		"mode":       resolveMutationMode(cmd.DryRun),
 		"dry_run":    cmd.DryRun,
 	})
+	slog.InfoContext(ctx, "node.tree.hard_deleted",
+		"node_id", cmd.NodeID,
+		"library_id", cmd.LibraryID,
+		"dry_run", cmd.DryRun,
+		"result", ok,
+	)
 	return ok, nil
 }
 

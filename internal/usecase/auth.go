@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +50,10 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	username := strings.TrimSpace(cmd.Username)
 	password := strings.TrimSpace(cmd.Password)
 	if username == "" || password == "" {
+		slog.WarnContext(ctx, "auth.login.invalid_argument",
+			"username", username,
+			"has_password", password != "",
+		)
 		return LoginResult{}, fmt.Errorf("%w: username and password are required", ErrInvalidArgument)
 	}
 
@@ -62,6 +67,10 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	authUser, err := u.users.FindActiveByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
+			slog.InfoContext(ctx, "auth.login.failed",
+				"username", username,
+				"reason", "user_not_found",
+			)
 			_ = u.RecordAttempt(ctx, cmd.Actor, false)
 			return LoginResult{}, fmt.Errorf("%w: username or password is invalid", ErrInvalidCredentials)
 		}
@@ -69,6 +78,10 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(authUser.PasswordHash), []byte(password)); err != nil {
+		slog.InfoContext(ctx, "auth.login.failed",
+			"username", username,
+			"reason", "password_mismatch",
+		)
 		_ = u.RecordAttempt(ctx, cmd.Actor, false)
 		return LoginResult{}, fmt.Errorf("%w: username or password is invalid", ErrInvalidCredentials)
 	}
@@ -79,6 +92,11 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	}
 	if token != "" {
 		userInfo := normalizeLoginUser(authUser.User)
+		slog.InfoContext(ctx, "auth.login.succeeded",
+			"username", username,
+			"user_id", userInfo.ID,
+			"cached_session", true,
+		)
 		_ = u.RecordAttempt(ctx, cmd.Actor, true)
 		_ = u.writeAudit(ctx, cmd.Actor, "auth.login", true, map[string]any{
 			"username": username,
@@ -97,6 +115,11 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	}
 
 	userInfo := normalizeLoginUser(authUser.User)
+	slog.InfoContext(ctx, "auth.login.succeeded",
+		"username", username,
+		"user_id", userInfo.ID,
+		"cached_session", false,
+	)
 	_ = u.RecordAttempt(ctx, cmd.Actor, true)
 	_ = u.writeAudit(ctx, cmd.Actor, "auth.login", true, map[string]any{
 		"username": username,
@@ -114,6 +137,11 @@ func (u *AuthUseCase) Check(ctx context.Context, username, token string) (bool, 
 	token = strings.TrimSpace(token)
 	if username == "" || token == "" {
 		// 对齐 Java 黑盒语义：参数为空时直接返回未登录，而不是参数错误。
+		slog.DebugContext(ctx, "auth.status.checked",
+			"username", username,
+			"result", false,
+			"reason", "missing_argument",
+		)
 		return false, nil
 	}
 
@@ -125,6 +153,11 @@ func (u *AuthUseCase) Check(ctx context.Context, username, token string) (bool, 
 	if err != nil {
 		return false, err
 	}
+	slog.DebugContext(ctx, "auth.status.checked",
+		"username", username,
+		"result", ok,
+		"reason", "session_lookup",
+	)
 	return ok, nil
 }
 
@@ -179,6 +212,11 @@ func (u *AuthUseCase) Logout(ctx context.Context, username, token string, dryRun
 	username = strings.TrimSpace(username)
 	token = strings.TrimSpace(token)
 	if username == "" || token == "" {
+		slog.WarnContext(ctx, "auth.logout.invalid_argument",
+			"username", username,
+			"has_token", token != "",
+			"dry_run", dryRun,
+		)
 		return fmt.Errorf("%w: username and token are required", ErrInvalidArgument)
 	}
 
@@ -192,8 +230,17 @@ func (u *AuthUseCase) Logout(ctx context.Context, username, token string, dryRun
 			return err
 		}
 		if !exists {
+			slog.InfoContext(ctx, "auth.logout.blocked",
+				"username", username,
+				"dry_run", true,
+				"reason", "session_not_found",
+			)
 			return ErrUnauthorized
 		}
+		slog.InfoContext(ctx, "auth.logout.dry_run_succeeded",
+			"username", username,
+			"dry_run", true,
+		)
 		_ = u.writeAudit(ctx, actor.Actor{ID: username, Kind: actor.KindUser}, "auth.logout", true, map[string]any{
 			"username": username,
 			"mode":     resolveMutationMode(true),
@@ -204,11 +251,20 @@ func (u *AuthUseCase) Logout(ctx context.Context, username, token string, dryRun
 
 	if err := u.sessions.Delete(ctx, username, token); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
+			slog.InfoContext(ctx, "auth.logout.blocked",
+				"username", username,
+				"dry_run", false,
+				"reason", "session_not_found",
+			)
 			return ErrUnauthorized
 		}
 		return err
 	}
 
+	slog.InfoContext(ctx, "auth.logout.succeeded",
+		"username", username,
+		"dry_run", false,
+	)
 	_ = u.writeAudit(ctx, actor.Actor{ID: username, Kind: actor.KindUser}, "auth.logout", true, map[string]any{
 		"username": username,
 		"mode":     resolveMutationMode(false),
