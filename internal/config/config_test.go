@@ -27,6 +27,12 @@ func TestLoad_DefaultsWhenConfigFileMissing(t *testing.T) {
 	if !cfg.Log.Console.Enabled {
 		t.Fatal("Log.Console.Enabled = false, want true")
 	}
+	if !cfg.Log.Console.Color {
+		t.Fatal("Log.Console.Color = false, want true")
+	}
+	if cfg.Database.LogLevel != "warn" {
+		t.Fatalf("Database.LogLevel = %q, want %q", cfg.Database.LogLevel, "warn")
+	}
 }
 
 func TestLoad_ReleaseModeUsesReleaseLogDefaults(t *testing.T) {
@@ -98,6 +104,41 @@ log:
 	}
 	if !strings.Contains(err.Error(), "invalid log.format") {
 		t.Fatalf("error = %v, want contains %q", err, "invalid log.format")
+	}
+}
+
+func TestLoad_DatabaseDebugSQLForcesInfoLogLevel(t *testing.T) {
+	path := writeTempConfig(t, `
+database:
+  log_level: error
+  debug_sql: true
+`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if !cfg.Database.DebugSQL {
+		t.Fatal("Database.DebugSQL = false, want true")
+	}
+	if cfg.Database.LogLevel != "info" {
+		t.Fatalf("Database.LogLevel = %q, want %q", cfg.Database.LogLevel, "info")
+	}
+}
+
+func TestLoad_InvalidDatabaseLogLevelReturnsError(t *testing.T) {
+	path := writeTempConfig(t, `
+database:
+  log_level: trace
+`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "invalid database.log_level") {
+		t.Fatalf("error = %v, want contains %q", err, "invalid database.log_level")
 	}
 }
 

@@ -18,9 +18,11 @@ log:
   # debug/info/warn/error
   level: debug
   # 是否输出调用源码位置（建议 debug 开启，线上按需）
-  add_source: false
+  add_source: true
   console:
     enabled: true
+    # 仅在 text 格式下生效，控制台按级别上色（debug/info/warn/error）
+    color: true
   file:
     enabled: false
     # 不配置 path 时不会写文件
@@ -36,7 +38,10 @@ database:
   max_open_conns: 20
   max_idle_conns: 10
   conn_max_lifetime: 30m
-  log_level: warn
+  # silent/error/warn/info
+  log_level: info
+  # true 时强制以 info 级别输出 SQL（便于本地联调排查）
+  debug_sql: true
 
 redis:
   addr: 127.0.0.1:6379

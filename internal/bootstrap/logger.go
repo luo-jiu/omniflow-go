@@ -15,10 +15,24 @@ import (
 func NewLogger(cfg *config.Config) *slog.Logger {
 	level := parseLogLevel(cfg.Log.Level)
 	warnings := make([]string, 0, 2)
-	writers := make([]io.Writer, 0, 2)
+	handlers := make([]slog.Handler, 0, 2)
+
+	baseOptions := slog.HandlerOptions{
+		Level:     level,
+		AddSource: cfg.Log.AddSource,
+	}
 
 	if cfg.Log.Console.Enabled {
-		writers = append(writers, os.Stdout)
+		if strings.EqualFold(cfg.Log.Format, "text") {
+			handlers = append(handlers, newPrettyConsoleHandler(os.Stdout, prettyConsoleOptions{
+				Level:     level,
+				AddSource: cfg.Log.AddSource,
+				Color:     cfg.Log.Console.Color,
+			}))
+		} else {
+			consoleOptions := baseOptions
+			handlers = append(handlers, newSlogHandler(cfg.Log.Format, os.Stdout, &consoleOptions))
+		}
 	}
 
 	if cfg.Log.File.Enabled {
@@ -29,36 +43,24 @@ func NewLogger(cfg *config.Config) *slog.Logger {
 			if err := os.MkdirAll(filepath.Dir(logFilePath), 0o755); err != nil {
 				warnings = append(warnings, "create log directory failed: "+err.Error())
 			} else {
-				writers = append(writers, &lumberjack.Logger{
+				handlers = append(handlers, newSlogHandler(cfg.Log.Format, &lumberjack.Logger{
 					Filename:   logFilePath,
 					MaxSize:    cfg.Log.File.MaxSizeMB,
 					MaxBackups: cfg.Log.File.MaxBackups,
 					MaxAge:     cfg.Log.File.MaxAgeDays,
 					Compress:   cfg.Log.File.Compress,
 					LocalTime:  cfg.Log.File.LocalTime,
-				})
+				}, &baseOptions))
 			}
 		}
 	}
 
-	if len(writers) == 0 {
-		writers = append(writers, os.Stdout)
+	if len(handlers) == 0 {
+		handlers = append(handlers, newSlogHandler(cfg.Log.Format, os.Stdout, &baseOptions))
 		warnings = append(warnings, "no log output enabled, fallback to stdout")
 	}
 
-	output := io.MultiWriter(writers...)
-	handlerOptions := &slog.HandlerOptions{
-		Level:     level,
-		AddSource: cfg.Log.AddSource,
-	}
-
-	var handler slog.Handler
-	if strings.EqualFold(cfg.Log.Format, "json") {
-		handler = slog.NewJSONHandler(output, handlerOptions)
-	} else {
-		handler = slog.NewTextHandler(output, handlerOptions)
-	}
-
+	handler := newMultiHandler(handlers...)
 	logger := slog.New(handler).With(
 		"service", cfg.App.Name,
 		"env", cfg.App.Env,
@@ -77,6 +79,13 @@ func NewLogger(cfg *config.Config) *slog.Logger {
 	)
 	slog.SetDefault(logger)
 	return logger
+}
+
+func newSlogHandler(format string, output io.Writer, options *slog.HandlerOptions) slog.Handler {
+	if strings.EqualFold(format, "json") {
+		return slog.NewJSONHandler(output, options)
+	}
+	return slog.NewTextHandler(output, options)
 }
 
 func parseLogLevel(raw string) slog.Leveler {

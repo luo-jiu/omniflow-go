@@ -49,7 +49,8 @@ go run ./cmd/server -config ./configs/config.yaml
 
 - `debug` 场景可使用 `text` 格式（人读友好）
 - `release` 场景建议 `json` 格式（便于采集到 ES/Loki）
-- `console` 与 `file` 输出可独立开关
+- `console` 与 `file` 输出可独立开关（`text` 模式支持彩色级别）
+- `database.debug_sql=true` 可在本地联调时输出 SQL
 - 文件日志使用滚动切割（`max_size_mb / max_backups / max_age_days / compress`）
 
 常见策略：

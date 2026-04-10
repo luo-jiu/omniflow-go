@@ -47,6 +47,7 @@ type Log struct {
 
 type LogConsole struct {
 	Enabled bool `yaml:"enabled"`
+	Color   bool `yaml:"color"`
 }
 
 type LogFile struct {
@@ -65,6 +66,7 @@ type Database struct {
 	MaxIdleConns    int           `yaml:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
 	LogLevel        string        `yaml:"log_level"`
+	DebugSQL        bool          `yaml:"debug_sql"`
 }
 
 type Redis struct {
@@ -139,6 +141,7 @@ func defaultConfig() *Config {
 		Log: Log{
 			Console: LogConsole{
 				Enabled: true,
+				Color:   true,
 			},
 			File: LogFile{
 				Enabled:    false,
@@ -242,8 +245,15 @@ func (c *Config) applyDefaults() error {
 	if c.Database.ConnMaxLifetime == 0 {
 		c.Database.ConnMaxLifetime = 30 * time.Minute
 	}
-	if c.Database.LogLevel == "" {
-		c.Database.LogLevel = "warn"
+	normalizedDBLevel, err := normalizeDatabaseLogLevel(c.Database.LogLevel)
+	if err != nil {
+		return err
+	}
+	if c.Database.DebugSQL {
+		// 开启 SQL 调试时，强制提升到 info，确保语句会输出。
+		c.Database.LogLevel = "info"
+	} else {
+		c.Database.LogLevel = normalizedDBLevel
 	}
 
 	if c.Storage.Provider == "" {
@@ -295,5 +305,17 @@ func normalizeLogFormat(format, mode string) (string, error) {
 		return "json", nil
 	default:
 		return "", fmt.Errorf("invalid log.format: %q (supported: text|json)", format)
+	}
+}
+
+func normalizeDatabaseLogLevel(level string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(level))
+	switch normalized {
+	case "silent", "error", "info":
+		return normalized, nil
+	case "warn", "warning", "":
+		return "warn", nil
+	default:
+		return "", fmt.Errorf("invalid database.log_level: %q (supported: silent|error|warn|info)", level)
 	}
 }

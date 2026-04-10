@@ -15,6 +15,7 @@ log:
   add_source: false       # 是否输出源码位置
   console:
     enabled: true
+    color: true           # 仅 text 格式生效，按级别着色
   file:
     enabled: false
     path: ./logs/omniflow-go.log
@@ -25,6 +26,10 @@ log:
     local_time: true
 ```
 
+database:
+  log_level: warn         # silent | error | warn | info
+  debug_sql: false        # true 时强制输出 SQL（info）
+
 ## 默认策略
 
 - `server.mode=debug`：
@@ -33,6 +38,9 @@ log:
 - `server.mode=release`：
   - 默认 `log.format=json`
   - 默认 `log.level=info`
+- 数据库日志：
+  - 默认 `database.log_level=warn`
+  - `database.debug_sql=true` 时强制提升为 `info`，输出执行 SQL（用于联调排查）
 
 ## 严格校验
 
@@ -48,6 +56,8 @@ log:
 
 - 本地开发：
   - `console.enabled=true`
+  - `console.color=true`（text 格式时更易读）
+  - `database.debug_sql=true`（需要看 SQL 时开启）
   - `file.enabled=true`（需要历史日志时）
 - 测试/预发/生产：
   - `console.enabled=true`
