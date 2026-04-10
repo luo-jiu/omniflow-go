@@ -6,17 +6,17 @@ import (
 )
 
 func buildAuthOptions(authHandler *handler.AuthHandler) middleware.AuthOptions {
-	// 白名单采用“精确路径匹配”，仅放登录、健康检查和公开上传能力。
+	// 白名单采用“精确 method+path 匹配”，仅放登录、健康检查和公开上传能力。
 	return middleware.AuthOptions{
 		IgnorePaths: []string{
-			"/healthz",
-			"/api/v1/health",
-			"/api/v1/auth/login",
-			"/api/v1/user",
-			"/api/v1/user/exists",
-			"/api/v1/files/upload",
-			"/api/v1/files/link",
-			"/api/v1/directory/upload",
+			"GET /healthz",
+			"GET /api/v1/health",
+			"POST /api/v1/auth/login",
+			"POST /api/v1/user",
+			"GET /api/v1/user/exists",
+			"POST /api/v1/files/upload",
+			"GET /api/v1/files/link",
+			"POST /api/v1/directory/upload",
 		},
 		Authenticator: authHandler,
 	}

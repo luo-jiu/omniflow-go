@@ -164,7 +164,7 @@ func (h *UserHandler) UpdateUser(ctx *gin.Context) {
 // GetCurrentUser 获取当前登录用户资料。
 func (h *UserHandler) GetCurrentUser(ctx *gin.Context) {
 	if h.userUseCase == nil {
-		Success(ctx, map[string]any{})
+		InternalError(ctx, "user service not configured")
 		return
 	}
 
@@ -189,7 +189,7 @@ func (h *UserHandler) UpdateCurrentUser(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "user service not configured")
 		return
 	}
 
@@ -227,7 +227,7 @@ func (h *UserHandler) UpdateCurrentUserPassword(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "user service not configured")
 		return
 	}
 
@@ -257,7 +257,7 @@ func (h *UserHandler) UploadCurrentUserAvatar(ctx *gin.Context) {
 	}
 
 	if h.userUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "user service not configured")
 		return
 	}
 

@@ -84,6 +84,7 @@ func (h *TagHandler) CreateTag(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var req tagCreateRequest
 	if !BindJSON(ctx, &req) {
@@ -123,6 +124,7 @@ func (h *TagHandler) UpdateTag(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri tagIDURI
 	if !BindURI(ctx, &uri) {
@@ -167,6 +169,7 @@ func (h *TagHandler) DeleteTag(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	MarkDryRunHeader(ctx, dryRun)
 
 	var uri tagIDURI
 	if !BindURI(ctx, &uri) {

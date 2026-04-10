@@ -18,6 +18,7 @@ import (
 	"omniflow-go/internal/storage"
 
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 )
 
 type UploadFileCommand struct {
@@ -247,7 +248,12 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 		expiry = 60 * time.Minute
 	}
 
-	storageKeys, err := u.nodes.ListFileStorageKeysByNodeIDs(ctx, query.Actor, query.LibraryID, query.NodeIDs)
+	nodeIDs := normalizePositiveNodeIDs(query.NodeIDs)
+	if len(nodeIDs) == 0 {
+		return []BatchFileLinkItem{}, nil
+	}
+
+	storageKeys, err := u.nodes.ListFileStorageKeysByNodeIDs(ctx, query.Actor, query.LibraryID, nodeIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -256,16 +262,7 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 	}
 
 	result := make([]BatchFileLinkItem, 0, len(storageKeys))
-	seen := make(map[uint64]struct{}, len(query.NodeIDs))
-	for _, nodeID := range query.NodeIDs {
-		if nodeID == 0 {
-			continue
-		}
-		if _, exists := seen[nodeID]; exists {
-			continue
-		}
-		seen[nodeID] = struct{}{}
-
+	for _, nodeID := range nodeIDs {
 		storageKey := strings.TrimSpace(storageKeys[nodeID])
 		if storageKey == "" {
 			continue
@@ -280,6 +277,12 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 		})
 	}
 	return result, nil
+}
+
+func normalizePositiveNodeIDs(nodeIDs []uint64) []uint64 {
+	return lo.Uniq(lo.Filter(nodeIDs, func(nodeID uint64, _ int) bool {
+		return nodeID > 0
+	}))
 }
 
 func (u *DirectoryUseCase) RecordUploadIntent(ctx context.Context, cmd UploadFileCommand) error {

@@ -55,6 +55,9 @@ func (u *AuthUseCase) Login(ctx context.Context, cmd LoginCommand) (LoginResult,
 	if u.sessions == nil {
 		return LoginResult{}, fmt.Errorf("%w: session store not configured", ErrInvalidArgument)
 	}
+	if u.users == nil {
+		return LoginResult{}, fmt.Errorf("%w: user repository not configured", ErrInvalidArgument)
+	}
 
 	authUser, err := u.users.FindActiveByUsername(ctx, username)
 	if err != nil {
@@ -134,6 +137,9 @@ func (u *AuthUseCase) ResolveActor(ctx context.Context, username, token string) 
 
 	if u.sessions == nil {
 		return actor.Actor{}, fmt.Errorf("%w: session store not configured", ErrInvalidArgument)
+	}
+	if u.users == nil {
+		return actor.Actor{}, fmt.Errorf("%w: user repository not configured", ErrInvalidArgument)
 	}
 
 	sessionUser, err := u.sessions.GetUser(ctx, username, token)

@@ -20,6 +20,7 @@ import (
 	"omniflow-go/internal/storage"
 
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -29,20 +30,22 @@ const (
 	userAvatarURLExpiry    = 24 * time.Hour
 )
 
-var allowedAvatarExtensions = map[string]struct{}{
-	".jpg":  {},
-	".jpeg": {},
-	".png":  {},
-	".gif":  {},
-	".bmp":  {},
-	".ico":  {},
-	".tif":  {},
-	".tiff": {},
-	".webp": {},
-	".avif": {},
-	".heic": {},
-	".heif": {},
-}
+var allowedAvatarExtensions = lo.SliceToMap([]string{
+	".jpg",
+	".jpeg",
+	".png",
+	".gif",
+	".bmp",
+	".ico",
+	".tif",
+	".tiff",
+	".webp",
+	".avif",
+	".heic",
+	".heif",
+}, func(ext string) (string, struct{}) {
+	return ext, struct{}{}
+})
 
 type RegisterUserCommand struct {
 	Actor    actor.Actor
@@ -123,6 +126,10 @@ func (u *UserUseCase) GetByUsername(ctx context.Context, username string) (domai
 }
 
 func (u *UserUseCase) GetCurrent(ctx context.Context, principal actor.Actor) (domainuser.User, error) {
+	if err := u.ensureUsersConfigured(); err != nil {
+		return domainuser.User{}, err
+	}
+
 	userID, err := actorIDToUint64(principal)
 	if err != nil {
 		return domainuser.User{}, err
@@ -200,6 +207,10 @@ func (u *UserUseCase) Register(ctx context.Context, cmd RegisterUserCommand) (do
 }
 
 func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domainuser.User, error) {
+	if err := u.ensureUsersConfigured(); err != nil {
+		return domainuser.User{}, err
+	}
+
 	targetID, err := u.resolveTargetUserID(cmd)
 	if err != nil {
 		return domainuser.User{}, err
@@ -271,6 +282,10 @@ func (u *UserUseCase) Update(ctx context.Context, cmd UpdateUserCommand) (domain
 }
 
 func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurrentPasswordCommand) error {
+	if err := u.ensureUsersConfigured(); err != nil {
+		return err
+	}
+
 	userID, err := actorIDToUint64(cmd.Actor)
 	if err != nil {
 		return err
@@ -330,6 +345,9 @@ func (u *UserUseCase) UpdateCurrentPassword(ctx context.Context, cmd UpdateCurre
 }
 
 func (u *UserUseCase) UploadCurrentAvatar(ctx context.Context, cmd UploadCurrentUserAvatarCommand) (domainuser.User, error) {
+	if err := u.ensureUsersConfigured(); err != nil {
+		return domainuser.User{}, err
+	}
 	if u.storage == nil {
 		return domainuser.User{}, fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
 	}
@@ -541,31 +559,32 @@ func normalizeAvatarUpload(content io.Reader, fileName, declaredContentType stri
 		detectedMIME = normalizeMIMEType(http.DetectContentType(head))
 	}
 	declaredMIME := normalizeMIMEType(declaredContentType)
-	mimeAllowed := isAllowedAvatarMIME(detectedMIME) || isAllowedAvatarMIME(declaredMIME)
+	mimeAllowed := lo.SomeBy([]string{detectedMIME, declaredMIME}, func(contentType string) bool {
+		return isAllowedAvatarMIME(contentType)
+	})
 	if !extAllowed && !mimeAllowed {
 		return nil, "", "", fmt.Errorf("%w: avatar only supports image files", ErrInvalidArgument)
 	}
 
-	resolvedExt := extWithDot
-	if !isAllowedAvatarExt(resolvedExt) {
-		resolvedExt = resolveAvatarUploadExtByMIME(detectedMIME)
-	}
-	if !isAllowedAvatarExt(resolvedExt) {
-		resolvedExt = resolveAvatarUploadExtByMIME(declaredMIME)
-	}
-	if !isAllowedAvatarExt(resolvedExt) {
+	resolvedExt, ok := lo.Find([]string{
+		extWithDot,
+		resolveAvatarUploadExtByMIME(detectedMIME),
+		resolveAvatarUploadExtByMIME(declaredMIME),
+	}, func(ext string) bool {
+		return isAllowedAvatarExt(ext)
+	})
+	if !ok {
 		return nil, "", "", fmt.Errorf("%w: avatar image format is not supported", ErrInvalidArgument)
 	}
 
-	resolvedContentType := detectedMIME
-	if !isAllowedAvatarMIME(resolvedContentType) {
-		if isAllowedAvatarMIME(declaredMIME) {
-			resolvedContentType = declaredMIME
-		} else {
-			resolvedContentType = resolveAvatarContentType(resolvedExt)
-		}
-	}
-	if resolvedContentType == "" {
+	resolvedContentType, ok := lo.Find([]string{
+		detectedMIME,
+		declaredMIME,
+		resolveAvatarContentType(resolvedExt),
+	}, func(contentType string) bool {
+		return isAllowedAvatarMIME(contentType)
+	})
+	if !ok {
 		resolvedContentType = "application/octet-stream"
 	}
 
@@ -684,6 +703,13 @@ func (u *UserUseCase) withinMutationTx(ctx context.Context, dryRun bool, fn func
 		return err
 	}
 	return nil
+}
+
+func (u *UserUseCase) ensureUsersConfigured() error {
+	if u.users != nil {
+		return nil
+	}
+	return fmt.Errorf("%w: user repository not configured", ErrInvalidArgument)
 }
 
 func (u *UserUseCase) writeAudit(ctx context.Context, principal actor.Actor, action string, success bool, metadata map[string]any) error {

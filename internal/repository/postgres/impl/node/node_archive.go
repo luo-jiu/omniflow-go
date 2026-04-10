@@ -3,6 +3,10 @@ package repository
 import (
 	"context"
 	"strings"
+
+	pgmodel "omniflow-go/internal/repository/postgres/model"
+
+	"github.com/samber/lo"
 )
 
 type ArchiveUnitRow struct {
@@ -122,14 +126,14 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	}
 
 	result := make([]ArchiveUnitRow, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, ArchiveUnitRow{
+	result = lo.Map(rows, func(row *pgmodel.Node, _ int) ArchiveUnitRow {
+		return ArchiveUnitRow{
 			ID:        toDomainUint64(row.ID),
 			Name:      row.Name,
 			SortOrder: int(row.SortOrder),
 			ViewMeta:  row.ViewMeta,
-		})
-	}
+		}
+	})
 	return result, int(totalCount), nil
 }
 
@@ -187,15 +191,12 @@ func (r *NodeRepository) ListStorageKeysByNodeIDs(
 		return nil, err
 	}
 
-	result := make(map[uint64]string, len(rows))
-	for _, row := range rows {
-		nodeID := toDomainUint64(row.NodeID)
-		if nodeID == 0 || strings.TrimSpace(row.StorageKey) == "" {
-			continue
-		}
-		result[nodeID] = row.StorageKey
-	}
-	return result, nil
+	filtered := lo.Filter(rows, func(row storageKeyRow, _ int) bool {
+		return toDomainUint64(row.NodeID) > 0 && strings.TrimSpace(row.StorageKey) != ""
+	})
+	return lo.SliceToMap(filtered, func(row storageKeyRow) (uint64, string) {
+		return toDomainUint64(row.NodeID), strings.TrimSpace(row.StorageKey)
+	}), nil
 }
 
 func (r *NodeRepository) ListDirectChildDirectoryNodesByBuiltInType(
@@ -227,14 +228,14 @@ func (r *NodeRepository) ListDirectChildDirectoryNodesByBuiltInType(
 	}
 
 	result := make([]ArchiveUnitRow, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, ArchiveUnitRow{
+	result = lo.Map(rows, func(row *pgmodel.Node, _ int) ArchiveUnitRow {
+		return ArchiveUnitRow{
 			ID:        toDomainUint64(row.ID),
 			Name:      row.Name,
 			SortOrder: int(row.SortOrder),
 			ViewMeta:  row.ViewMeta,
-		})
-	}
+		}
+	})
 	return result, nil
 }
 

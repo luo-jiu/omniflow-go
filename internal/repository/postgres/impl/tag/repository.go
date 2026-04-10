@@ -3,11 +3,13 @@ package repository
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	domaintag "omniflow-go/internal/domain/tag"
 	pgtx "omniflow-go/internal/repository/postgres/impl/txctx"
 
+	"github.com/samber/lo"
 	"gorm.io/gorm"
 )
 
@@ -75,18 +77,13 @@ func (r *TagRepository) LockScopes(ctx context.Context, scopes ...string) error 
 		return nil
 	}
 
-	uniqueScopes := make([]string, 0, len(scopes))
-	seen := make(map[string]struct{}, len(scopes))
-	for _, scope := range scopes {
-		if scope == "" {
-			continue
+	uniqueScopes := lo.Uniq(lo.FilterMap(scopes, func(scope string, _ int) (string, bool) {
+		clean := strings.TrimSpace(scope)
+		if clean == "" {
+			return "", false
 		}
-		if _, ok := seen[scope]; ok {
-			continue
-		}
-		seen[scope] = struct{}{}
-		uniqueScopes = append(uniqueScopes, scope)
-	}
+		return clean, true
+	}))
 	if len(uniqueScopes) == 0 {
 		return nil
 	}
@@ -128,10 +125,9 @@ func (r *TagRepository) ListByOwnerAndType(ctx context.Context, ownerUserID uint
 		return nil, err
 	}
 
-	result := make([]domaintag.Tag, 0, len(rows))
-	for _, row := range rows {
-		result = append(result, toDomainTag(row))
-	}
+	result := lo.Map(rows, func(row *tagEntity, _ int) domaintag.Tag {
+		return toDomainTag(row)
+	})
 	return result, nil
 }
 

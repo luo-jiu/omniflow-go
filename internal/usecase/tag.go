@@ -10,6 +10,8 @@ import (
 	"omniflow-go/internal/actor"
 	domaintag "omniflow-go/internal/domain/tag"
 	"omniflow-go/internal/repository"
+
+	"github.com/samber/lo"
 )
 
 const (
@@ -19,12 +21,9 @@ const (
 
 var (
 	errTagRepositoryNotConfigured = errors.New("tag repository is not configured")
-	tagTypes                      = map[string]struct{}{
-		"ASMR":     {},
-		"FILE_TAB": {},
-		"COMIC":    {},
-		"GENERAL":  {},
-	}
+	tagTypes                      = lo.SliceToMap([]string{"ASMR", "FILE_TAB", "COMIC", "GENERAL"}, func(item string) (string, struct{}) {
+		return item, struct{}{}
+	})
 	hexColorPattern  = regexp.MustCompile(`^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
 	targetKeyPattern = regexp.MustCompile(`^[A-Z0-9_-]{1,64}$`)
 )
@@ -453,5 +452,9 @@ func (u *TagUseCase) lockTagUniqScopes(
 	if targetKey != nil && *targetKey != "" {
 		scopes = append(scopes, fmt.Sprintf("tags:target:%d:%s:%s", ownerUserID, tagType, *targetKey))
 	}
-	return u.tags.LockScopes(ctx, scopes...)
+
+	uniqueScopes := lo.Uniq(lo.Filter(scopes, func(scope string, _ int) bool {
+		return strings.TrimSpace(scope) != ""
+	}))
+	return u.tags.LockScopes(ctx, uniqueScopes...)
 }

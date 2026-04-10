@@ -46,13 +46,7 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	}
 
 	if h.directoryUseCase == nil {
-		Success(ctx, map[string]any{
-			"id":        0,
-			"name":      fileHeader.Filename,
-			"type":      "file",
-			"parentId":  parentID,
-			"libraryId": libraryID,
-		})
+		InternalError(ctx, "directory service not configured")
 		return
 	}
 
@@ -111,7 +105,7 @@ func (h *DirectoryHandler) GetFileLink(ctx *gin.Context) {
 	}
 
 	if h.directoryUseCase == nil {
-		Success(ctx, "")
+		InternalError(ctx, "directory service not configured")
 		return
 	}
 
@@ -147,7 +141,7 @@ func (h *DirectoryHandler) BatchGetFileLinks(ctx *gin.Context) {
 	}
 
 	if h.directoryUseCase == nil {
-		Success(ctx, []usecase.BatchFileLinkItem{})
+		InternalError(ctx, "directory service not configured")
 		return
 	}
 

@@ -95,7 +95,11 @@ func (h *AuthHandler) Status(ctx *gin.Context) {
 	}
 
 	if h.authUseCase == nil {
-		Success(ctx, false)
+		InternalError(ctx, "auth service not configured")
+		return
+	}
+
+	if !validateAuthStatusQuery(ctx, query) {
 		return
 	}
 
@@ -121,7 +125,11 @@ func (h *AuthHandler) Logout(ctx *gin.Context) {
 	}
 
 	if h.authUseCase == nil {
-		SuccessNoData(ctx)
+		InternalError(ctx, "auth service not configured")
+		return
+	}
+
+	if !validateAuthStatusQuery(ctx, query) {
 		return
 	}
 
@@ -145,4 +153,27 @@ func (h *AuthHandler) AuthenticateActor(ctx context.Context, username, token str
 		}, nil
 	}
 	return h.authUseCase.ResolveActor(ctx, username, token)
+}
+
+// validateAuthStatusQuery 要求 query 中的用户名与 token 必须与当前认证会话一致。
+func validateAuthStatusQuery(ctx *gin.Context, query authStatusQuery) bool {
+	principal := actorFromContext(ctx)
+	if principal.IsZero() {
+		Unauthorized(ctx, "")
+		return false
+	}
+
+	username := strings.TrimSpace(query.Username)
+	token := strings.TrimSpace(query.Token)
+	sessionName := strings.TrimSpace(principal.Name)
+	sessionToken := strings.TrimSpace(ctx.GetString("access_token"))
+	if sessionName == "" || sessionToken == "" {
+		Unauthorized(ctx, "")
+		return false
+	}
+	if username != sessionName || token != sessionToken {
+		Unauthorized(ctx, "")
+		return false
+	}
+	return true
 }
