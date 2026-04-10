@@ -12,6 +12,25 @@ server:
   idle_timeout: 60s
   shutdown_timeout: 10s
 
+log:
+  # debug: 默认 text；release: 默认 json
+  format: text
+  # debug/info/warn/error
+  level: debug
+  # 是否输出调用源码位置（建议 debug 开启，线上按需）
+  add_source: false
+  console:
+    enabled: true
+  file:
+    enabled: false
+    # 不配置 path 时不会写文件
+    path: ./logs/omniflow-go.log
+    max_size_mb: 100
+    max_backups: 10
+    max_age_days: 30
+    compress: true
+    local_time: true
+
 database:
   dsn: postgres://postgres:123456@127.0.0.1:5432/omniflow?sslmode=disable
   max_open_conns: 20

@@ -1,4 +1,5 @@
 .cache/
+logs/
 bin/
 dist/
 .idea/

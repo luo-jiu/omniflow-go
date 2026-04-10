@@ -43,6 +43,20 @@ go run ./cmd/server -config ./configs/config.yaml
 - `GET /healthz`
 - `GET /api/v1/health`
 
+## Logging
+
+项目日志基于 `slog`，支持按配置切换：
+
+- `debug` 场景可使用 `text` 格式（人读友好）
+- `release` 场景建议 `json` 格式（便于采集到 ES/Loki）
+- `console` 与 `file` 输出可独立开关
+- 文件日志使用滚动切割（`max_size_mb / max_backups / max_age_days / compress`）
+
+常见策略：
+
+- 本地调试：`console.enabled=true`，`file.enabled=true`
+- 线上部署：`console.enabled=true`，`file.enabled=false`（由平台采集 stdout）
+
 ## Wire
 
 项目已提交 `wire_gen.go`，即使本地没有安装 `wire` 也能直接编译运行。
