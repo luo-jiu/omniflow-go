@@ -1,5 +1,7 @@
 package handler
 
+import "omniflow-go/internal/usecase"
+
 import "github.com/gin-gonic/gin"
 
 // GetLibraryRootNodeID 获取资料库根节点 ID；当根节点缺失时由后端自动补齐。
@@ -60,6 +62,51 @@ func (h *NodeHandler) GetDirectChildren(ctx *gin.Context) {
 		return
 	}
 	Success(ctx, nodes)
+}
+
+// GetArchiveCards 分页获取归档页卡片（按内置类型过滤，并返回封面节点信息）。
+func (h *NodeHandler) GetArchiveCards(ctx *gin.Context) {
+	var uri nodeURI
+	if !BindURI(ctx, &uri) {
+		return
+	}
+
+	var query archiveCardsQuery
+	if !BindQuery(ctx, &query) {
+		return
+	}
+	if query.LibraryID == 0 {
+		var ok bool
+		query.LibraryID, ok = QueryUint64(ctx, true, "libraryId", "library_id")
+		if !ok {
+			return
+		}
+	}
+
+	if h.nodeUseCase == nil {
+		Success(ctx, usecase.ListArchiveCardsResult{
+			Items:   []usecase.ArchiveCardItem{},
+			Total:   0,
+			Offset:  query.Offset,
+			Limit:   query.Limit,
+			HasMore: false,
+		})
+		return
+	}
+
+	result, err := h.nodeUseCase.ListArchiveCards(ctx.Request.Context(), usecase.ListArchiveCardsQuery{
+		Actor:       actorFromContext(ctx),
+		LibraryID:   query.LibraryID,
+		NodeID:      uri.NodeID,
+		BuiltInType: query.BuiltInType,
+		Offset:      query.Offset,
+		Limit:       query.Limit,
+	})
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, result)
 }
 
 // GetAncestors 获取从根到当前节点的祖先链。

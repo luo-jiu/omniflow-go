@@ -22,6 +22,13 @@ type nodeLibraryQuery struct {
 	LibraryID uint64 `form:"libraryId"`
 }
 
+type archiveCardsQuery struct {
+	LibraryID   uint64 `form:"libraryId"`
+	BuiltInType string `form:"builtInType"`
+	Offset      int    `form:"offset"`
+	Limit       int    `form:"limit"`
+}
+
 type deleteNodeURI struct {
 	NodeID    uint64 `uri:"nodeId" binding:"required"`
 	LibraryID uint64 `uri:"libraryId" binding:"required"`

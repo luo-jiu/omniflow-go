@@ -14,7 +14,7 @@ func (h *NodeHandler) GetNodeDetail(ctx *gin.Context) {
 		return
 	}
 
-	node, err := h.nodeUseCase.GetNodeDetail(ctx.Request.Context(), uri.NodeID)
+	node, err := h.nodeUseCase.GetNodeDetail(ctx.Request.Context(), actorFromContext(ctx), uri.NodeID)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return

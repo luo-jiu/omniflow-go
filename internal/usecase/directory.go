@@ -37,6 +37,18 @@ type GetFileLinkQuery struct {
 	Expiry    time.Duration
 }
 
+type BatchGetFileLinksQuery struct {
+	Actor     actor.Actor
+	LibraryID uint64
+	NodeIDs   []uint64
+	Expiry    time.Duration
+}
+
+type BatchFileLinkItem struct {
+	NodeID uint64 `json:"nodeId"`
+	URL    string `json:"url"`
+}
+
 type DirectoryUseCase struct {
 	nodes      *NodeUseCase
 	storage    storage.ObjectStorage
@@ -214,6 +226,60 @@ func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLin
 		"node_id":    query.NodeID,
 	})
 	return url, nil
+}
+
+func (u *DirectoryUseCase) BatchGetPresignedURLs(
+	ctx context.Context,
+	query BatchGetFileLinksQuery,
+) ([]BatchFileLinkItem, error) {
+	if query.LibraryID == 0 {
+		return []BatchFileLinkItem{}, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
+	}
+	if len(query.NodeIDs) == 0 {
+		return []BatchFileLinkItem{}, nil
+	}
+	if u.storage == nil {
+		return []BatchFileLinkItem{}, fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
+	}
+
+	expiry := query.Expiry
+	if expiry <= 0 {
+		expiry = 60 * time.Minute
+	}
+
+	storageKeys, err := u.nodes.ListFileStorageKeysByNodeIDs(ctx, query.Actor, query.LibraryID, query.NodeIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(storageKeys) == 0 {
+		return []BatchFileLinkItem{}, nil
+	}
+
+	result := make([]BatchFileLinkItem, 0, len(storageKeys))
+	seen := make(map[uint64]struct{}, len(query.NodeIDs))
+	for _, nodeID := range query.NodeIDs {
+		if nodeID == 0 {
+			continue
+		}
+		if _, exists := seen[nodeID]; exists {
+			continue
+		}
+		seen[nodeID] = struct{}{}
+
+		storageKey := strings.TrimSpace(storageKeys[nodeID])
+		if storageKey == "" {
+			continue
+		}
+		url, urlErr := u.storage.GetPresignedURL(ctx, storageKey, expiry)
+		if urlErr != nil {
+			return nil, fmt.Errorf("generate presigned url for node %d: %w", nodeID, urlErr)
+		}
+		result = append(result, BatchFileLinkItem{
+			NodeID: nodeID,
+			URL:    url,
+		})
+	}
+	return result, nil
 }
 
 func (u *DirectoryUseCase) RecordUploadIntent(ctx context.Context, cmd UploadFileCommand) error {

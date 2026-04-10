@@ -321,7 +321,7 @@ func (u *NodeUseCase) GetLibraryRootNodeID(ctx context.Context, principal actor.
 	return rootNodeID, nil
 }
 
-func (u *NodeUseCase) GetNodeDetail(ctx context.Context, nodeID uint64) (domainnode.Node, error) {
+func (u *NodeUseCase) GetNodeDetail(ctx context.Context, principal actor.Actor, nodeID uint64) (domainnode.Node, error) {
 	if nodeID == 0 {
 		return domainnode.Node{}, fmt.Errorf("%w: node id is required", ErrInvalidArgument)
 	}
@@ -333,6 +333,9 @@ func (u *NodeUseCase) GetNodeDetail(ctx context.Context, nodeID uint64) (domainn
 		}
 		return domainnode.Node{}, err
 	}
+	if err := u.AuthorizeRead(ctx, principal, row.LibraryID); err != nil {
+		return domainnode.Node{}, err
+	}
 	return row, nil
 }
 
@@ -341,7 +344,7 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 		return fmt.Errorf("%w: node id is required", ErrInvalidArgument)
 	}
 
-	node, err := u.GetNodeDetail(ctx, nodeID)
+	node, err := u.GetNodeDetail(ctx, cmd.Actor, nodeID)
 	if err != nil {
 		return err
 	}
@@ -381,6 +384,23 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 	if len(updates) == 0 {
 		return nil
 	}
+
+	nextViewMeta := node.ViewMeta
+	if updatedViewMeta, ok := updates["view_meta"].(string); ok {
+		nextViewMeta = updatedViewMeta
+	}
+
+	normalizedNextBuiltInType := strings.TrimSpace(node.BuiltInType)
+	if cmd.BuiltInType != nil {
+		normalizedNextBuiltInType = strings.ToUpper(strings.TrimSpace(*cmd.BuiltInType))
+		if normalizedNextBuiltInType == "" {
+			normalizedNextBuiltInType = strings.TrimSpace(node.BuiltInType)
+			if normalizedNextBuiltInType == "" {
+				normalizedNextBuiltInType = "DEF"
+			}
+		}
+	}
+
 	updates["updated_at"] = time.Now().UTC()
 
 	ok, err := u.nodes.UpdateNodeFields(ctx, nodeID, node.LibraryID, updates)
@@ -392,6 +412,17 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 	}
 	if !ok {
 		return ErrNotFound
+	}
+
+	if node.Type == domainnode.TypeDirectory && cmd.BuiltInType != nil {
+		if normalizedBuiltIn := normalizeArchiveCardBuiltInType(normalizedNextBuiltInType); normalizedBuiltIn != "" {
+			_ = u.warmupArchiveCoverMetaForNodes(ctx, node.LibraryID, normalizedBuiltIn, []ArchiveCardItem{
+				{
+					ID:       node.ID,
+					ViewMeta: nextViewMeta,
+				},
+			})
+		}
 	}
 
 	_ = u.writeAudit(ctx, cmd.Actor, "node.update", true, map[string]any{
@@ -407,7 +438,7 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 		return fmt.Errorf("%w: node id and name are required", ErrInvalidArgument)
 	}
 
-	node, err := u.GetNodeDetail(ctx, nodeID)
+	node, err := u.GetNodeDetail(ctx, cmd.Actor, nodeID)
 	if err != nil {
 		return err
 	}
@@ -507,7 +538,7 @@ func (u *NodeUseCase) SortComicChildrenByName(ctx context.Context, cmd SortComic
 		return fmt.Errorf("%w: node id is required", ErrInvalidArgument)
 	}
 
-	node, err := u.GetNodeDetail(ctx, cmd.NodeID)
+	node, err := u.GetNodeDetail(ctx, cmd.Actor, cmd.NodeID)
 	if err != nil {
 		return err
 	}
@@ -557,7 +588,7 @@ func (u *NodeUseCase) BatchSetArchiveChildrenBuiltInType(
 		return BatchSetArchiveChildrenBuiltInTypeResult{}, fmt.Errorf("%w: node id is required", ErrInvalidArgument)
 	}
 
-	node, err := u.GetNodeDetail(ctx, cmd.NodeID)
+	node, err := u.GetNodeDetail(ctx, cmd.Actor, cmd.NodeID)
 	if err != nil {
 		return BatchSetArchiveChildrenBuiltInTypeResult{}, err
 	}
@@ -616,6 +647,20 @@ func (u *NodeUseCase) BatchSetArchiveChildrenBuiltInType(
 			return nil
 		}); err != nil {
 			return BatchSetArchiveChildrenBuiltInTypeResult{}, err
+		}
+
+		if normalizedBuiltIn := normalizeArchiveCardBuiltInType(builtInType); normalizedBuiltIn != "" {
+			archiveItems := make([]ArchiveCardItem, 0, dirChildren)
+			for _, child := range children {
+				if child.Type != domainnode.TypeDirectory {
+					continue
+				}
+				archiveItems = append(archiveItems, ArchiveCardItem{
+					ID:       child.ID,
+					ViewMeta: child.ViewMeta,
+				})
+			}
+			_ = u.warmupArchiveCoverMetaForNodes(ctx, node.LibraryID, normalizedBuiltIn, archiveItems)
 		}
 	}
 

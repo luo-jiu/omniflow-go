@@ -22,6 +22,12 @@ type fileLinkQuery struct {
 	Expiry    int    `form:"expiry"`
 }
 
+type batchFileLinkRequest struct {
+	LibraryID uint64   `json:"libraryId" binding:"required"`
+	NodeIDs   []uint64 `json:"nodeIds" binding:"required"`
+	Expiry    int      `json:"expiry"`
+}
+
 // UploadFile 上传文件并在目录下创建对应文件节点。
 func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	fileHeader, err := ctx.FormFile("file")
@@ -120,4 +126,40 @@ func (h *DirectoryHandler) GetFileLink(ctx *gin.Context) {
 		return
 	}
 	Success(ctx, url)
+}
+
+// BatchGetFileLinks 批量获取目录文件节点的预签名链接。
+func (h *DirectoryHandler) BatchGetFileLinks(ctx *gin.Context) {
+	var req batchFileLinkRequest
+	if !BindJSON(ctx, &req) {
+		return
+	}
+	if req.LibraryID == 0 {
+		BadRequest(ctx, "libraryId is required")
+		return
+	}
+	if len(req.NodeIDs) == 0 {
+		Success(ctx, []usecase.BatchFileLinkItem{})
+		return
+	}
+	if req.Expiry <= 0 {
+		req.Expiry = 60
+	}
+
+	if h.directoryUseCase == nil {
+		Success(ctx, []usecase.BatchFileLinkItem{})
+		return
+	}
+
+	items, err := h.directoryUseCase.BatchGetPresignedURLs(ctx.Request.Context(), usecase.BatchGetFileLinksQuery{
+		Actor:     actorFromContext(ctx),
+		LibraryID: req.LibraryID,
+		NodeIDs:   req.NodeIDs,
+		Expiry:    time.Duration(req.Expiry) * time.Minute,
+	})
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, items)
 }

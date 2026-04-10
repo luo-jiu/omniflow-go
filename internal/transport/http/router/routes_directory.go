@@ -10,4 +10,5 @@ func registerDirectoryRoutes(api *gin.RouterGroup, directoryHandler *handler.Dir
 	// 目录上传和直链
 	api.POST("/directory/upload", directoryHandler.UploadFile)
 	api.GET("/directory/link", directoryHandler.GetFileLink)
+	api.POST("/directory/links/batch", directoryHandler.BatchGetFileLinks)
 }
