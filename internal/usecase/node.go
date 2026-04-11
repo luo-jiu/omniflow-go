@@ -694,6 +694,20 @@ func (u *NodeUseCase) MoveBatch(ctx context.Context, cmd MoveNodeBatchCommand) (
 			return fmt.Errorf("%w: no movable items after normalization", ErrInvalidArgument)
 		}
 
+		targetParent, err := u.nodes.FindViewByNodeID(txCtx, cmd.NewParentID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if targetParent.LibraryID != cmd.LibraryID {
+			return fmt.Errorf("%w: target parent %d is not in library %d", ErrInvalidArgument, cmd.NewParentID, cmd.LibraryID)
+		}
+		if targetParent.ArchiveMode == 1 {
+			return fmt.Errorf("%w: archive mode directory cannot be used as move target", ErrInvalidArgument)
+		}
+
 		parentAncestors, err := u.nodes.ListAncestors(txCtx, cmd.NewParentID, cmd.LibraryID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
