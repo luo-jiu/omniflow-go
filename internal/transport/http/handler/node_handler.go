@@ -68,12 +68,16 @@ type renameNodeRequest struct {
 	Ext  *string `json:"ext"`
 }
 
-type moveNodeRequest struct {
-	Name         string `json:"name"`
-	NodeID       uint64 `json:"nodeId"`
-	NewParentID  uint64 `json:"newParentId" binding:"required"`
-	BeforeNodeID uint64 `json:"beforeNodeId"`
-	LibraryID    uint64 `json:"libraryId" binding:"required"`
+type moveNodeBatchItemRequest struct {
+	NodeID uint64 `json:"nodeId" binding:"required"`
+	Name   string `json:"name"`
+}
+
+type moveNodesBatchRequest struct {
+	NewParentID  uint64                     `json:"newParentId" binding:"required"`
+	BeforeNodeID uint64                     `json:"beforeNodeId"`
+	LibraryID    uint64                     `json:"libraryId" binding:"required"`
+	Items        []moveNodeBatchItemRequest `json:"items" binding:"required"`
 }
 
 // parseNodeScope 从 URI 解析节点 ID，并从查询参数解析资料库 ID。

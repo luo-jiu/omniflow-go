@@ -76,17 +76,16 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 	}
 
 	var ext *string
+	createStorageBinding := false
 	if input.Type == domainnode.TypeFile {
 		trimmedExt := strings.TrimSpace(input.Ext)
 		if trimmedExt != "" {
 			ext = &trimmedExt
 		}
-		if strings.TrimSpace(input.StorageKey) == "" {
-			return domainnode.Node{}, fmt.Errorf("%w: storage key is required for file node", ErrInvalidState)
-		}
 		if input.FileSize < 0 {
 			return domainnode.Node{}, fmt.Errorf("%w: file size must be >= 0", ErrInvalidState)
 		}
+		createStorageBinding = strings.TrimSpace(input.StorageKey) != ""
 	}
 
 	builtInType := strings.TrimSpace(input.BuiltInType)
@@ -110,7 +109,7 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 		return domainnode.Node{}, err
 	}
 
-	if input.Type == domainnode.TypeFile {
+	if input.Type == domainnode.TypeFile && createStorageBinding {
 		storageRow := &pgmodel.StorageObject{
 			LibraryID:     toPGInt64(input.LibraryID),
 			Provider:      strings.TrimSpace(input.StorageProvider),

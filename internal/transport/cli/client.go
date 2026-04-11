@@ -131,12 +131,16 @@ type RenameNodeRequest struct {
 	Name string `json:"name"`
 }
 
-type MoveNodeRequest struct {
-	Name         string `json:"name,omitempty"`
-	NodeID       uint64 `json:"nodeId"`
-	NewParentID  uint64 `json:"newParentId"`
-	BeforeNodeID uint64 `json:"beforeNodeId,omitempty"`
-	LibraryID    uint64 `json:"libraryId"`
+type MoveNodeBatchItemRequest struct {
+	NodeID uint64 `json:"nodeId"`
+	Name   string `json:"name,omitempty"`
+}
+
+type MoveNodesBatchRequest struct {
+	NewParentID  uint64                     `json:"newParentId"`
+	BeforeNodeID uint64                     `json:"beforeNodeId,omitempty"`
+	LibraryID    uint64                     `json:"libraryId"`
+	Items        []MoveNodeBatchItemRequest `json:"items"`
 }
 
 type BatchSetArchiveChildrenBuiltInTypeResult struct {
@@ -253,11 +257,11 @@ func (c *Client) RenameNode(ctx context.Context, nodeID uint64, req RenameNodeRe
 	)
 }
 
-func (c *Client) MoveNode(ctx context.Context, nodeID uint64, req MoveNodeRequest, dryRun bool) error {
+func (c *Client) MoveNodesBatch(ctx context.Context, req MoveNodesBatchRequest, dryRun bool) error {
 	return c.doJSON(
 		ctx,
 		http.MethodPatch,
-		fmt.Sprintf("/api/v1/nodes/%d/move", nodeID),
+		"/api/v1/nodes/move/batch",
 		withDryRunQuery(nil, dryRun),
 		req,
 		true,

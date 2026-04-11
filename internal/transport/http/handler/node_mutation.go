@@ -88,25 +88,21 @@ func (h *NodeHandler) ReorderNode(ctx *gin.Context) {
 	SuccessNoData(ctx)
 }
 
-// MoveNode 按路径中的节点 ID 执行移动。
-func (h *NodeHandler) MoveNode(ctx *gin.Context) {
+// MoveNodesBatch 批量移动节点（单节点移动也走该接口）。
+func (h *NodeHandler) MoveNodesBatch(ctx *gin.Context) {
 	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
 	if !ok {
 		return
 	}
 	MarkDryRunHeader(ctx, dryRun)
 
-	var uri nodeURI
-	if !BindURI(ctx, &uri) {
-		return
-	}
-
-	var req moveNodeRequest
+	var req moveNodesBatchRequest
 	if !BindJSON(ctx, &req) {
 		return
 	}
-	if req.NodeID == 0 {
-		req.NodeID = uri.NodeID
+	if len(req.Items) == 0 {
+		BadRequest(ctx, "items is required")
+		return
 	}
 
 	if h.nodeUseCase == nil {
@@ -114,19 +110,27 @@ func (h *NodeHandler) MoveNode(ctx *gin.Context) {
 		return
 	}
 
-	if err := h.nodeUseCase.Move(ctx.Request.Context(), usecase.MoveNodeCommand{
+	items := make([]usecase.MoveNodeBatchItemCommand, 0, len(req.Items))
+	for _, item := range req.Items {
+		items = append(items, usecase.MoveNodeBatchItemCommand{
+			NodeID: item.NodeID,
+			Name:   item.Name,
+		})
+	}
+
+	result, err := h.nodeUseCase.MoveBatch(ctx.Request.Context(), usecase.MoveNodeBatchCommand{
 		Actor:        actorFromContext(ctx),
 		LibraryID:    req.LibraryID,
-		NodeID:       req.NodeID,
 		NewParentID:  req.NewParentID,
 		BeforeNodeID: req.BeforeNodeID,
-		Name:         req.Name,
+		Items:        items,
 		DryRun:       dryRun,
-	}); err != nil {
+	})
+	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	SuccessNoData(ctx)
+	Success(ctx, result)
 }
 
 // SortComicChildrenByName 对 COMIC 目录的直接子节点按名称重排。

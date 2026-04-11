@@ -222,12 +222,16 @@ func (a *App) runFSMove(args []string) error {
 		newParentID = parentNode.ID
 	}
 
-	if err := client.MoveNode(context.Background(), nodeID, MoveNodeRequest{
-		Name:         strings.TrimSpace(name),
-		NodeID:       nodeID,
+	if err := client.MoveNodesBatch(context.Background(), MoveNodesBatchRequest{
 		NewParentID:  newParentID,
 		BeforeNodeID: beforeNodeID,
 		LibraryID:    libraryID,
+		Items: []MoveNodeBatchItemRequest{
+			{
+				NodeID: nodeID,
+				Name:   strings.TrimSpace(name),
+			},
+		},
 	}, dryRun); err != nil {
 		return err
 	}

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"omniflow-go/internal/actor"
 	"omniflow-go/internal/audit"
@@ -77,6 +78,26 @@ type MoveNodeCommand struct {
 	DryRun       bool
 }
 
+type MoveNodeBatchItemCommand struct {
+	NodeID uint64
+	Name   string
+}
+
+type MoveNodeBatchCommand struct {
+	Actor        actor.Actor
+	LibraryID    uint64
+	NewParentID  uint64
+	BeforeNodeID uint64
+	Items        []MoveNodeBatchItemCommand
+	DryRun       bool
+}
+
+type MoveNodeBatchResult struct {
+	MovedCount        int      `json:"movedCount"`
+	AffectedParentIDs []uint64 `json:"affectedParentIds"`
+	MovedNodeIDs      []uint64 `json:"movedNodeIds"`
+}
+
 type SortComicChildrenCommand struct {
 	Actor  actor.Actor
 	NodeID uint64
@@ -141,6 +162,7 @@ func NewNodeUseCase(
 const (
 	defaultStorageProvider = "MINIO"
 	defaultStorageBucket   = "my-bucket"
+	maxNodeExtLength       = 32
 )
 
 var errNodeRepositoryNotConfigured = errors.New("node repository is not configured")
@@ -158,6 +180,11 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		return domainnode.Node{}, err
 	}
 
+	normalizedExt := normalizeNodeExt(cmd.Ext)
+	if normalizedExt != "" && utf8.RuneCountInString(normalizedExt) > maxNodeExtLength {
+		return domainnode.Node{}, fmt.Errorf("%w: ext is too long", ErrInvalidArgument)
+	}
+
 	var created domainnode.Node
 	err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		parentID, err := u.resolveCreateParentID(txCtx, cmd.LibraryID, cmd.ParentID)
@@ -170,7 +197,7 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 			Type:            cmd.Type,
 			ParentID:        parentID,
 			LibraryID:       cmd.LibraryID,
-			Ext:             strings.TrimSpace(cmd.Ext),
+			Ext:             normalizedExt,
 			MIMEType:        strings.TrimSpace(cmd.MIMEType),
 			FileSize:        cmd.FileSize,
 			StorageKey:      strings.TrimSpace(cmd.StorageKey),
@@ -542,7 +569,10 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 
 	var ext *string
 	if node.Type == domainnode.TypeFile && cmd.Ext != nil {
-		trimmed := strings.TrimSpace(*cmd.Ext)
+		trimmed := normalizeNodeExt(*cmd.Ext)
+		if trimmed != "" && utf8.RuneCountInString(trimmed) > maxNodeExtLength {
+			return fmt.Errorf("%w: ext is too long", ErrInvalidArgument)
+		}
 		ext = &trimmed
 	}
 
@@ -580,67 +610,222 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 }
 
 func (u *NodeUseCase) Move(ctx context.Context, cmd MoveNodeCommand) error {
-	if err := u.ensureNodesConfigured(); err != nil {
-		return err
-	}
+	_, err := u.MoveBatch(ctx, MoveNodeBatchCommand{
+		Actor:        cmd.Actor,
+		LibraryID:    cmd.LibraryID,
+		NewParentID:  cmd.NewParentID,
+		BeforeNodeID: cmd.BeforeNodeID,
+		Items: []MoveNodeBatchItemCommand{
+			{
+				NodeID: cmd.NodeID,
+				Name:   cmd.Name,
+			},
+		},
+		DryRun: cmd.DryRun,
+	})
+	return err
+}
 
-	if cmd.LibraryID == 0 || cmd.NodeID == 0 {
-		return fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
+func (u *NodeUseCase) MoveBatch(ctx context.Context, cmd MoveNodeBatchCommand) (MoveNodeBatchResult, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return MoveNodeBatchResult{}, err
+	}
+	if cmd.LibraryID == 0 {
+		return MoveNodeBatchResult{}, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
 	}
 	if cmd.NewParentID == 0 {
-		return fmt.Errorf("%w: new parent id is required", ErrInvalidArgument)
+		return MoveNodeBatchResult{}, fmt.Errorf("%w: new parent id is required", ErrInvalidArgument)
+	}
+	if len(cmd.Items) == 0 {
+		return MoveNodeBatchResult{}, fmt.Errorf("%w: items are required", ErrInvalidArgument)
 	}
 	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
-		return err
+		return MoveNodeBatchResult{}, err
 	}
 
+	normalizedItems := normalizeMoveBatchItems(cmd.Items)
+	if len(normalizedItems) == 0 {
+		return MoveNodeBatchResult{}, fmt.Errorf("%w: items are required", ErrInvalidArgument)
+	}
+
+	result := MoveNodeBatchResult{}
 	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
-		if cmd.BeforeNodeID > 0 && cmd.BeforeNodeID == cmd.NodeID {
-			// Java 语义：beforeNode 指向自己时直接视为 no-op。
-			return nil
+		nodesByID := make(map[uint64]domainnode.Node, len(normalizedItems))
+		selectedIDSet := make(map[uint64]struct{}, len(normalizedItems))
+		for _, item := range normalizedItems {
+			node, err := u.nodes.FindViewByNodeID(txCtx, item.NodeID)
+			if err != nil {
+				if errors.Is(err, repository.ErrNotFound) {
+					return ErrNotFound
+				}
+				return err
+			}
+			if node.LibraryID != cmd.LibraryID {
+				return fmt.Errorf("%w: node %d is not in library %d", ErrInvalidArgument, item.NodeID, cmd.LibraryID)
+			}
+			nodesByID[item.NodeID] = node
+			selectedIDSet[item.NodeID] = struct{}{}
 		}
 
-		if err := u.nodes.MoveNode(txCtx, repository.MoveNodeInput{
-			LibraryID:    cmd.LibraryID,
-			NodeID:       cmd.NodeID,
-			NewParentID:  cmd.NewParentID,
-			BeforeNodeID: cmd.BeforeNodeID,
-			Name:         cmd.Name,
-			UpdatedAt:    time.Now().UTC(),
-		}); err != nil {
+		filteredItems := make([]MoveNodeBatchItemCommand, 0, len(normalizedItems))
+		for _, item := range normalizedItems {
+			ancestors, err := u.nodes.ListAncestors(txCtx, item.NodeID, cmd.LibraryID)
+			if err != nil {
+				if errors.Is(err, repository.ErrNotFound) {
+					return ErrNotFound
+				}
+				return err
+			}
+			hasSelectedAncestor := false
+			for _, ancestor := range ancestors {
+				if ancestor.ID == item.NodeID {
+					continue
+				}
+				if _, exists := selectedIDSet[ancestor.ID]; exists {
+					hasSelectedAncestor = true
+					break
+				}
+			}
+			if !hasSelectedAncestor {
+				filteredItems = append(filteredItems, item)
+			}
+		}
+		if len(filteredItems) == 0 {
+			return fmt.Errorf("%w: no movable items after normalization", ErrInvalidArgument)
+		}
+
+		parentAncestors, err := u.nodes.ListAncestors(txCtx, cmd.NewParentID, cmd.LibraryID)
+		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
 				return ErrNotFound
 			}
-			if errors.Is(err, repository.ErrConflict) {
-				return ErrConflict
-			}
-			if errors.Is(err, repository.ErrInvalidState) {
-				return fmt.Errorf("%w: invalid node move request", ErrInvalidArgument)
-			}
 			return err
+		}
+		parentAncestorSet := make(map[uint64]struct{}, len(parentAncestors))
+		for _, ancestor := range parentAncestors {
+			parentAncestorSet[ancestor.ID] = struct{}{}
+		}
+
+		movedIDSet := make(map[uint64]struct{}, len(filteredItems))
+		for _, item := range filteredItems {
+			if _, exists := parentAncestorSet[item.NodeID]; exists {
+				return fmt.Errorf("%w: cannot move node under descendant", ErrInvalidArgument)
+			}
+			movedIDSet[item.NodeID] = struct{}{}
+		}
+
+		beforeNodeID := cmd.BeforeNodeID
+		if _, exists := movedIDSet[beforeNodeID]; exists {
+			beforeNodeID = 0
+		}
+
+		affectedParentSet := make(map[uint64]struct{}, len(filteredItems)+1)
+		affectedParentSet[cmd.NewParentID] = struct{}{}
+		movedNodeIDs := make([]uint64, 0, len(filteredItems))
+
+		for _, item := range filteredItems {
+			node := nodesByID[item.NodeID]
+			if err := u.nodes.MoveNode(txCtx, repository.MoveNodeInput{
+				LibraryID:    cmd.LibraryID,
+				NodeID:       item.NodeID,
+				NewParentID:  cmd.NewParentID,
+				BeforeNodeID: beforeNodeID,
+				Name:         item.Name,
+				UpdatedAt:    time.Now().UTC(),
+			}); err != nil {
+				if errors.Is(err, repository.ErrNotFound) {
+					return ErrNotFound
+				}
+				if errors.Is(err, repository.ErrConflict) {
+					return ErrConflict
+				}
+				if errors.Is(err, repository.ErrInvalidState) {
+					return fmt.Errorf("%w: invalid node move request", ErrInvalidArgument)
+				}
+				return err
+			}
+			movedNodeIDs = append(movedNodeIDs, item.NodeID)
+			affectedParentSet[node.ParentID] = struct{}{}
+		}
+
+		result = MoveNodeBatchResult{
+			MovedCount:        len(movedNodeIDs),
+			AffectedParentIDs: mapKeysSortedUint64(affectedParentSet),
+			MovedNodeIDs:      movedNodeIDs,
 		}
 		return nil
 	}); err != nil {
-		return err
+		return MoveNodeBatchResult{}, err
 	}
 
-	_ = u.RecordMoveIntent(ctx, cmd)
-	_ = u.writeAudit(ctx, cmd.Actor, "node.move", true, map[string]any{
-		"node_id":        cmd.NodeID,
-		"library_id":     cmd.LibraryID,
-		"new_parent_id":  cmd.NewParentID,
-		"before_node_id": cmd.BeforeNodeID,
-		"mode":           resolveMutationMode(cmd.DryRun),
-		"dry_run":        cmd.DryRun,
+	for _, item := range result.MovedNodeIDs {
+		_ = u.RecordMoveIntent(ctx, MoveNodeCommand{
+			Actor:        cmd.Actor,
+			LibraryID:    cmd.LibraryID,
+			NodeID:       item,
+			NewParentID:  cmd.NewParentID,
+			BeforeNodeID: cmd.BeforeNodeID,
+			DryRun:       cmd.DryRun,
+		})
+	}
+	_ = u.writeAudit(ctx, cmd.Actor, "node.move.batch", true, map[string]any{
+		"library_id":          cmd.LibraryID,
+		"new_parent_id":       cmd.NewParentID,
+		"before_node_id":      cmd.BeforeNodeID,
+		"moved_count":         result.MovedCount,
+		"moved_node_ids":      result.MovedNodeIDs,
+		"affected_parent_ids": result.AffectedParentIDs,
+		"mode":                resolveMutationMode(cmd.DryRun),
+		"dry_run":             cmd.DryRun,
 	})
-	slog.InfoContext(ctx, "node.moved",
-		"node_id", cmd.NodeID,
+	slog.InfoContext(ctx, "node.moved.batch",
 		"library_id", cmd.LibraryID,
 		"new_parent_id", cmd.NewParentID,
 		"before_node_id", cmd.BeforeNodeID,
+		"moved_count", result.MovedCount,
 		"dry_run", cmd.DryRun,
 	)
-	return nil
+	return result, nil
+}
+
+func normalizeMoveBatchItems(items []MoveNodeBatchItemCommand) []MoveNodeBatchItemCommand {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[uint64]struct{}, len(items))
+	normalized := make([]MoveNodeBatchItemCommand, 0, len(items))
+	for _, item := range items {
+		if item.NodeID == 0 {
+			continue
+		}
+		if _, exists := seen[item.NodeID]; exists {
+			continue
+		}
+		seen[item.NodeID] = struct{}{}
+		normalized = append(normalized, MoveNodeBatchItemCommand{
+			NodeID: item.NodeID,
+			Name:   strings.TrimSpace(item.Name),
+		})
+	}
+	return normalized
+}
+
+func normalizeNodeExt(ext string) string {
+	return strings.TrimPrefix(strings.TrimSpace(ext), ".")
+}
+
+func mapKeysSortedUint64(input map[uint64]struct{}) []uint64 {
+	if len(input) == 0 {
+		return []uint64{}
+	}
+	output := make([]uint64, 0, len(input))
+	for item := range input {
+		output = append(output, item)
+	}
+	sort.Slice(output, func(i, j int) bool {
+		return output[i] < output[j]
+	})
+	return output
 }
 
 func (u *NodeUseCase) SortComicChildrenByName(ctx context.Context, cmd SortComicChildrenCommand) error {
