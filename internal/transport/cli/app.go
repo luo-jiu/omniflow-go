@@ -515,6 +515,94 @@ func (a *App) buildCommandTree() *command {
 	}
 	root.Children["config"] = config
 
+	browserMap := &command{
+		Name:     "browser-map",
+		Summary:  "Browser file mapping commands",
+		Usage:    "of browser-map <ls|resolve|create|update|rm> [flags]",
+		Children: map[string]*command{},
+	}
+	browserMap.Children["ls"] = &command{
+		Name:    "ls",
+		Summary: "List browser file mappings",
+		Usage:   "of browser-map ls [--base-url <url>] [--json]",
+		Flags: []string{
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-map ls",
+			"of browser-map ls --json",
+		},
+		Run: a.runBrowserMapList,
+	}
+	browserMap.Children["resolve"] = &command{
+		Name:    "resolve",
+		Summary: "Resolve browser mapping by file extension",
+		Usage:   "of browser-map resolve --ext <ext> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--ext <ext>         file extension without leading dot (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-map resolve --ext excalidraw",
+			"of browser-map resolve --ext txt --json",
+		},
+		Run: a.runBrowserMapResolve,
+	}
+	browserMap.Children["create"] = &command{
+		Name:    "create",
+		Summary: "Create a browser file mapping",
+		Usage:   "of browser-map create --ext <ext> --url <url> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--ext <ext>         file extension without leading dot (required)",
+			"--url <url>         site url (required)",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-map create --ext excalidraw --url https://excalidraw.com",
+			"of browser-map create --ext txt --url https://example.test --dry-run --json",
+		},
+		Run: a.runBrowserMapCreate,
+	}
+	browserMap.Children["update"] = &command{
+		Name:    "update",
+		Summary: "Update a browser file mapping",
+		Usage:   "of browser-map update --id <id> --ext <ext> --url <url> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--id <id>           mapping id (required)",
+			"--ext <ext>         file extension without leading dot (required)",
+			"--url <url>         site url (required)",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-map update --id 3 --ext excalidraw --url https://excalidraw.com",
+			"of browser-map update --id 3 --ext txt --url https://example.test --dry-run --json",
+		},
+		Run: a.runBrowserMapUpdate,
+	}
+	browserMap.Children["rm"] = &command{
+		Name:    "rm",
+		Summary: "Delete a browser file mapping",
+		Usage:   "of browser-map rm --id <id> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--id <id>           mapping id (required)",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-map rm --id 3",
+			"of browser-map rm --id 3 --dry-run --json",
+		},
+		Run: a.runBrowserMapDelete,
+	}
+	root.Children["browser-map"] = browserMap
+
 	return root
 }
 

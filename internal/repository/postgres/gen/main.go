@@ -17,11 +17,12 @@ import (
 )
 
 var defaultTableModels = map[string]string{
-	"users":           "User",
-	"libraries":       "Library",
-	"nodes":           "Node",
-	"node_files":      "NodeFile",
-	"storage_objects": "StorageObject",
+	"browser_file_mappings": "BrowserFileMapping",
+	"users":                 "User",
+	"libraries":             "Library",
+	"nodes":                 "Node",
+	"node_files":            "NodeFile",
+	"storage_objects":       "StorageObject",
 }
 
 func main() {

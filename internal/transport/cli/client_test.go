@@ -179,6 +179,89 @@ func TestClearRecycleBinWithoutDryRun(t *testing.T) {
 	}
 }
 
+func TestResolveBrowserFileMapping(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-file-mappings/resolve" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("fileExt"); got != "txt" {
+			t.Fatalf("expected fileExt=txt, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"id":9,"fileExt":"txt","siteUrl":"https://example.test","ownerUserId":1,"createdAt":"2026-04-12T00:00:00Z","updatedAt":"2026-04-12T00:00:00Z"},"request_id":"req-browser-resolve"}`)),
+		}, nil
+	})
+
+	item, err := client.ResolveBrowserFileMapping(context.Background(), "txt")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if item.ID != 9 {
+		t.Fatalf("expected id=9, got %d", item.ID)
+	}
+	if item.FileExt != "txt" {
+		t.Fatalf("expected fileExt=txt, got %s", item.FileExt)
+	}
+	if item.SiteURL != "https://example.test" {
+		t.Fatalf("expected siteUrl to match, got %s", item.SiteURL)
+	}
+}
+
+func TestCreateBrowserFileMapping(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-file-mappings" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"id":11,"fileExt":"excalidraw","siteUrl":"https://excalidraw.com","ownerUserId":1,"createdAt":"2026-04-12T00:00:00Z","updatedAt":"2026-04-12T00:00:00Z"},"request_id":"req-browser-create"}`)),
+		}, nil
+	})
+
+	item, err := client.CreateBrowserFileMapping(context.Background(), BrowserFileMappingUpsertRequest{
+		FileExt: "excalidraw",
+		SiteURL: "https://excalidraw.com",
+	}, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if item.ID != 11 {
+		t.Fatalf("expected id=11, got %d", item.ID)
+	}
+	if item.FileExt != "excalidraw" {
+		t.Fatalf("expected fileExt=excalidraw, got %s", item.FileExt)
+	}
+}
+
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

@@ -16,6 +16,7 @@ func registerAPIRoutes(
 	directoryHandler *handler.DirectoryHandler,
 	fileHandler *handler.FileHandler,
 	tagHandler *handler.TagHandler,
+	browserFileMappingHandler *handler.BrowserFileMappingHandler,
 ) {
 	registerHealthRoutes(api, healthHandler)
 	registerAuthRoutes(api, authHandler)
@@ -25,4 +26,5 @@ func registerAPIRoutes(
 	registerDirectoryRoutes(api, directoryHandler)
 	registerFileRoutes(api, fileHandler)
 	registerTagRoutes(api, tagHandler)
+	registerBrowserFileMappingRoutes(api, browserFileMappingHandler)
 }

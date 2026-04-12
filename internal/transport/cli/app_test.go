@@ -103,6 +103,35 @@ func TestRunHelpFSContainsMkdir(t *testing.T) {
 	}
 }
 
+func TestRunHelpBrowserMapContainsSubcommands(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "browser-map"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "resolve") {
+		t.Fatalf("expected resolve in browser-map help, got: %s", out)
+	}
+	if !strings.Contains(out, "create") {
+		t.Fatalf("expected create in browser-map help, got: %s", out)
+	}
+	if !strings.Contains(out, "update") {
+		t.Fatalf("expected update in browser-map help, got: %s", out)
+	}
+	if !strings.Contains(out, "rm") {
+		t.Fatalf("expected rm in browser-map help, got: %s", out)
+	}
+}
+
 func TestRunHelpFSRecycleContainsSubcommands(t *testing.T) {
 	t.Parallel()
 
@@ -383,6 +412,94 @@ func TestRunFSArchiveBatchSetBuiltInTypeRequiresNodeID(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "`--node-id` is required and must be greater than 0") {
 		t.Fatalf("expected missing node id error, got: %s", stderr.String())
+	}
+}
+
+func TestRunBrowserMapResolveRequiresExt(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"browser-map", "resolve"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--ext` is required") {
+		t.Fatalf("expected missing ext error, got: %s", stderr.String())
+	}
+}
+
+func TestRunBrowserMapCreateSuccessJSON(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	t.Setenv(envUsername, "tester")
+	t.Setenv(envToken, "token-123")
+
+	originTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-file-mappings" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"id":3,"fileExt":"excalidraw","siteUrl":"https://excalidraw.com","ownerUserId":1,"createdAt":"2026-04-12T00:00:00Z","updatedAt":"2026-04-12T00:00:00Z"},"request_id":"req-browser-create"}`)),
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originTransport
+	}()
+
+	exitCode := app.Run([]string{
+		"browser-map", "create",
+		"--base-url", "http://example.test",
+		"--ext", "excalidraw",
+		"--url", "https://excalidraw.com",
+		"--dry-run",
+		"--json",
+	})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got err=%v output=%s", err, stdout.String())
+	}
+	if got["dryRun"] != true {
+		t.Fatalf("expected dryRun=true, got %#v", got["dryRun"])
+	}
+	result, ok := got["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected result object, got %#v", got["result"])
+	}
+	if result["id"] != float64(3) {
+		t.Fatalf("expected id=3, got %#v", result["id"])
+	}
+	if result["fileExt"] != "excalidraw" {
+		t.Fatalf("expected fileExt=excalidraw, got %#v", result["fileExt"])
 	}
 }
 

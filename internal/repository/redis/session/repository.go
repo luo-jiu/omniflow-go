@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -77,7 +78,7 @@ func (r *SessionRepository) GetUser(ctx context.Context, username, token string)
 
 	payload, err := r.client.HGet(ctx, r.loginKey(username), token).Result()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return domainuser.User{}, repoerr.ErrNotFound
 		}
 		return domainuser.User{}, err

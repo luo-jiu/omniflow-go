@@ -7,6 +7,7 @@
 - 支持资料库列表
 - 支持文件树查询（children/search）
 - 支持文件树基础写操作（mkdir/rename/mv/rm）与回收站管理
+- 支持浏览器文件映射管理（list/resolve/create/update/delete）
 
 ## 1. 构建
 
@@ -40,6 +41,11 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of fs recycle restore --library-id <id> --node-id <id>
 ./bin/of fs recycle hard --library-id <id> --node-id <id>
 ./bin/of fs path resolve --library-id <id> --path </docs/ch1>
+./bin/of browser-map ls
+./bin/of browser-map resolve --ext <ext>
+./bin/of browser-map create --ext <ext> --url <url> [--dry-run] [--json]
+./bin/of browser-map update --id <id> --ext <ext> --url <url> [--dry-run] [--json]
+./bin/of browser-map rm --id <id> [--dry-run] [--json]
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。

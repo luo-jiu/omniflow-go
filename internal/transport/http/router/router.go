@@ -21,6 +21,7 @@ func New(
 	directoryHandler *handler.DirectoryHandler,
 	fileHandler *handler.FileHandler,
 	tagHandler *handler.TagHandler,
+	browserFileMappingHandler *handler.BrowserFileMappingHandler,
 ) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 
@@ -43,6 +44,7 @@ func New(
 		directoryHandler,
 		fileHandler,
 		tagHandler,
+		browserFileMappingHandler,
 	)
 
 	return engine

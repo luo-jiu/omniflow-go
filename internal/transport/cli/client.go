@@ -112,6 +112,15 @@ type RecycleItem struct {
 	DeletedDescendantCount int       `json:"deletedDescendantCount,omitempty"`
 }
 
+type BrowserFileMapping struct {
+	ID          uint64    `json:"id"`
+	FileExt     string    `json:"fileExt"`
+	SiteURL     string    `json:"siteUrl"`
+	OwnerUserID uint64    `json:"ownerUserId"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
 type SearchNodesRequest struct {
 	LibraryID    uint64   `json:"libraryId"`
 	Keyword      string   `json:"keyword,omitempty"`
@@ -150,6 +159,11 @@ type BatchSetArchiveChildrenBuiltInTypeResult struct {
 	TotalChildren int    `json:"totalChildren"`
 	DirChildren   int    `json:"dirChildren"`
 	UpdatedCount  int    `json:"updatedCount"`
+}
+
+type BrowserFileMappingUpsertRequest struct {
+	FileExt string `json:"fileExt"`
+	SiteURL string `json:"siteUrl"`
 }
 
 func NewClient(baseURL, username, token string) *Client {
@@ -329,6 +343,70 @@ func (c *Client) ClearRecycleBin(ctx context.Context, libraryID uint64, dryRun b
 		&out,
 	)
 	return out.ClearedCount, err
+}
+
+func (c *Client) ListBrowserFileMappings(ctx context.Context) ([]BrowserFileMapping, error) {
+	var out []BrowserFileMapping
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/browser-file-mappings", nil, nil, true, &out)
+	return out, err
+}
+
+func (c *Client) ResolveBrowserFileMapping(ctx context.Context, fileExt string) (BrowserFileMapping, error) {
+	query := url.Values{}
+	query.Set("fileExt", strings.TrimSpace(fileExt))
+
+	var out BrowserFileMapping
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/browser-file-mappings/resolve", query, nil, true, &out)
+	return out, err
+}
+
+func (c *Client) CreateBrowserFileMapping(
+	ctx context.Context,
+	req BrowserFileMappingUpsertRequest,
+	dryRun bool,
+) (BrowserFileMapping, error) {
+	var out BrowserFileMapping
+	err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/v1/browser-file-mappings",
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) UpdateBrowserFileMapping(
+	ctx context.Context,
+	mappingID uint64,
+	req BrowserFileMappingUpsertRequest,
+	dryRun bool,
+) (BrowserFileMapping, error) {
+	var out BrowserFileMapping
+	err := c.doJSON(
+		ctx,
+		http.MethodPut,
+		fmt.Sprintf("/api/v1/browser-file-mappings/%d", mappingID),
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) DeleteBrowserFileMapping(ctx context.Context, mappingID uint64, dryRun bool) error {
+	return c.doJSON(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/api/v1/browser-file-mappings/%d", mappingID),
+		withDryRunQuery(nil, dryRun),
+		nil,
+		true,
+		nil,
+	)
 }
 
 func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {
