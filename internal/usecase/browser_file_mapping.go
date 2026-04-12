@@ -51,13 +51,23 @@ type DeleteBrowserFileMappingCommand struct {
 }
 
 type BrowserFileMappingUseCase struct {
-	mappings *repository.BrowserFileMappingRepository
+	mappings browserFileMappingRepository
 	tx       repository.Transactor
 	auditLog audit.Sink
 }
 
+type browserFileMappingRepository interface {
+	ListByOwner(ctx context.Context, ownerUserID uint64) ([]domainbrowserfilemapping.BrowserFileMapping, error)
+	FindByOwnerAndExt(ctx context.Context, ownerUserID uint64, fileExt string) (domainbrowserfilemapping.BrowserFileMapping, error)
+	Create(ctx context.Context, input repository.CreateBrowserFileMappingInput) (domainbrowserfilemapping.BrowserFileMapping, error)
+	FindOwnerByID(ctx context.Context, id, ownerUserID uint64) (domainbrowserfilemapping.BrowserFileMapping, error)
+	UpdateOwnerByID(ctx context.Context, id, ownerUserID uint64, input repository.UpdateBrowserFileMappingInput) (domainbrowserfilemapping.BrowserFileMapping, error)
+	SoftDeleteOwnerByID(ctx context.Context, id, ownerUserID uint64) (bool, error)
+	ExistsFileExt(ctx context.Context, ownerUserID uint64, fileExt string, excludeID uint64) (bool, error)
+}
+
 func NewBrowserFileMappingUseCase(
-	mappings *repository.BrowserFileMappingRepository,
+	mappings browserFileMappingRepository,
 	tx repository.Transactor,
 	auditLog audit.Sink,
 ) *BrowserFileMappingUseCase {

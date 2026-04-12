@@ -7,6 +7,8 @@ import (
 
 	"omniflow-go/internal/actor"
 	"omniflow-go/internal/audit"
+	domainbrowserfilemapping "omniflow-go/internal/domain/browserfilemapping"
+	"omniflow-go/internal/repository"
 )
 
 func TestBrowserFileMappingUseCaseWithinMutationTx(t *testing.T) {
@@ -111,6 +113,65 @@ type captureAuditSink struct {
 	events []audit.Event
 }
 
+type fakeBrowserFileMappingRepository struct {
+	listByOwnerFunc       func(ctx context.Context, ownerUserID uint64) ([]domainbrowserfilemapping.BrowserFileMapping, error)
+	findByOwnerAndExtFunc func(ctx context.Context, ownerUserID uint64, fileExt string) (domainbrowserfilemapping.BrowserFileMapping, error)
+	createFunc            func(ctx context.Context, input repository.CreateBrowserFileMappingInput) (domainbrowserfilemapping.BrowserFileMapping, error)
+	findOwnerByIDFunc     func(ctx context.Context, id, ownerUserID uint64) (domainbrowserfilemapping.BrowserFileMapping, error)
+	updateOwnerByIDFunc   func(ctx context.Context, id, ownerUserID uint64, input repository.UpdateBrowserFileMappingInput) (domainbrowserfilemapping.BrowserFileMapping, error)
+	softDeleteOwnerByID   func(ctx context.Context, id, ownerUserID uint64) (bool, error)
+	existsFileExtFunc     func(ctx context.Context, ownerUserID uint64, fileExt string, excludeID uint64) (bool, error)
+}
+
+func (f *fakeBrowserFileMappingRepository) ListByOwner(ctx context.Context, ownerUserID uint64) ([]domainbrowserfilemapping.BrowserFileMapping, error) {
+	if f.listByOwnerFunc == nil {
+		return nil, nil
+	}
+	return f.listByOwnerFunc(ctx, ownerUserID)
+}
+
+func (f *fakeBrowserFileMappingRepository) FindByOwnerAndExt(ctx context.Context, ownerUserID uint64, fileExt string) (domainbrowserfilemapping.BrowserFileMapping, error) {
+	if f.findByOwnerAndExtFunc == nil {
+		return domainbrowserfilemapping.BrowserFileMapping{}, nil
+	}
+	return f.findByOwnerAndExtFunc(ctx, ownerUserID, fileExt)
+}
+
+func (f *fakeBrowserFileMappingRepository) Create(ctx context.Context, input repository.CreateBrowserFileMappingInput) (domainbrowserfilemapping.BrowserFileMapping, error) {
+	if f.createFunc == nil {
+		return domainbrowserfilemapping.BrowserFileMapping{}, nil
+	}
+	return f.createFunc(ctx, input)
+}
+
+func (f *fakeBrowserFileMappingRepository) FindOwnerByID(ctx context.Context, id, ownerUserID uint64) (domainbrowserfilemapping.BrowserFileMapping, error) {
+	if f.findOwnerByIDFunc == nil {
+		return domainbrowserfilemapping.BrowserFileMapping{}, nil
+	}
+	return f.findOwnerByIDFunc(ctx, id, ownerUserID)
+}
+
+func (f *fakeBrowserFileMappingRepository) UpdateOwnerByID(ctx context.Context, id, ownerUserID uint64, input repository.UpdateBrowserFileMappingInput) (domainbrowserfilemapping.BrowserFileMapping, error) {
+	if f.updateOwnerByIDFunc == nil {
+		return domainbrowserfilemapping.BrowserFileMapping{}, nil
+	}
+	return f.updateOwnerByIDFunc(ctx, id, ownerUserID, input)
+}
+
+func (f *fakeBrowserFileMappingRepository) SoftDeleteOwnerByID(ctx context.Context, id, ownerUserID uint64) (bool, error) {
+	if f.softDeleteOwnerByID == nil {
+		return false, nil
+	}
+	return f.softDeleteOwnerByID(ctx, id, ownerUserID)
+}
+
+func (f *fakeBrowserFileMappingRepository) ExistsFileExt(ctx context.Context, ownerUserID uint64, fileExt string, excludeID uint64) (bool, error) {
+	if f.existsFileExtFunc == nil {
+		return false, nil
+	}
+	return f.existsFileExtFunc(ctx, ownerUserID, fileExt, excludeID)
+}
+
 func (s *captureAuditSink) Write(_ context.Context, event audit.Event) error {
 	s.events = append(s.events, event)
 	return nil
@@ -173,4 +234,77 @@ func TestBrowserFileMappingUseCaseWriteAudit(t *testing.T) {
 			t.Fatalf("unexpected mode: %#v", event.Metadata["mode"])
 		}
 	})
+}
+
+func TestBrowserFileMappingUseCaseResolveMapsNotFound(t *testing.T) {
+	t.Parallel()
+
+	u := &BrowserFileMappingUseCase{
+		mappings: &fakeBrowserFileMappingRepository{
+			findByOwnerAndExtFunc: func(ctx context.Context, ownerUserID uint64, fileExt string) (domainbrowserfilemapping.BrowserFileMapping, error) {
+				return domainbrowserfilemapping.BrowserFileMapping{}, repository.ErrNotFound
+			},
+		},
+	}
+
+	_, err := u.Resolve(context.Background(), ResolveBrowserFileMappingQuery{
+		Actor:   actor.Actor{ID: "7", Kind: actor.KindUser},
+		FileExt: "txt",
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestBrowserFileMappingUseCaseCreateReturnsConflictWhenExtExists(t *testing.T) {
+	t.Parallel()
+
+	tx := &fakeTransactor{}
+	u := &BrowserFileMappingUseCase{
+		mappings: &fakeBrowserFileMappingRepository{
+			existsFileExtFunc: func(ctx context.Context, ownerUserID uint64, fileExt string, excludeID uint64) (bool, error) {
+				return true, nil
+			},
+		},
+		tx: tx,
+	}
+
+	_, err := u.Create(context.Background(), CreateBrowserFileMappingCommand{
+		Actor:   actor.Actor{ID: "7", Kind: actor.KindUser},
+		FileExt: "txt",
+		SiteURL: "https://example.com",
+		DryRun:  false,
+	})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+	if tx.calls != 1 {
+		t.Fatalf("expected transactor calls=1, got %d", tx.calls)
+	}
+}
+
+func TestBrowserFileMappingUseCaseDeleteReturnsNotFound(t *testing.T) {
+	t.Parallel()
+
+	tx := &fakeTransactor{}
+	u := &BrowserFileMappingUseCase{
+		mappings: &fakeBrowserFileMappingRepository{
+			softDeleteOwnerByID: func(ctx context.Context, id, ownerUserID uint64) (bool, error) {
+				return false, nil
+			},
+		},
+		tx: tx,
+	}
+
+	err := u.Delete(context.Background(), DeleteBrowserFileMappingCommand{
+		Actor:     actor.Actor{ID: "7", Kind: actor.KindUser},
+		MappingID: 42,
+		DryRun:    false,
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if tx.calls != 1 {
+		t.Fatalf("expected transactor calls=1, got %d", tx.calls)
+	}
 }
