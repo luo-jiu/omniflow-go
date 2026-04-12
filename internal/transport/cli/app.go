@@ -397,7 +397,7 @@ func (a *App) buildCommandTree() *command {
 	recycle := &command{
 		Name:     "recycle",
 		Summary:  "Recycle bin commands",
-		Usage:    "of fs recycle <ls|restore|hard> [flags]",
+		Usage:    "of fs recycle <ls|clear|restore|hard> [flags]",
 		Children: map[string]*command{},
 	}
 	recycle.Children["ls"] = &command{
@@ -414,6 +414,23 @@ func (a *App) buildCommandTree() *command {
 			"of fs recycle ls --library-id 1 --json",
 		},
 		Run: a.runFSRecycleList,
+	}
+	recycle.Children["clear"] = &command{
+		Name:    "clear",
+		Summary: "Permanently clear all top-level nodes in recycle bin",
+		Usage:   "of fs recycle clear --library-id <id> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of fs recycle clear --library-id 1",
+			"of fs recycle clear --library-id 1 --dry-run --json",
+			"of fs recycle clear --library-id 1 --json",
+		},
+		Run: a.runFSRecycleClear,
 	}
 	recycle.Children["restore"] = &command{
 		Name:    "restore",

@@ -118,6 +118,9 @@ func TestRunHelpFSRecycleContainsSubcommands(t *testing.T) {
 		t.Fatalf("expected no stderr output, got: %s", stderr.String())
 	}
 	out := stdout.String()
+	if !strings.Contains(out, "clear") {
+		t.Fatalf("expected clear in recycle help, got: %s", out)
+	}
 	if !strings.Contains(out, "restore") {
 		t.Fatalf("expected restore in recycle help, got: %s", out)
 	}
@@ -335,6 +338,22 @@ func TestRunFSRecycleRestoreRequiresNodeInput(t *testing.T) {
 	}
 }
 
+func TestRunFSRecycleClearRequiresLibraryID(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"fs", "recycle", "clear"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--library-id` is required") {
+		t.Fatalf("expected missing library id error, got: %s", stderr.String())
+	}
+}
+
 func TestRunFSRecycleHardRequiresNodeInput(t *testing.T) {
 	t.Parallel()
 
@@ -443,5 +462,72 @@ func TestRunFSArchiveBatchSetBuiltInTypeSuccessJSON(t *testing.T) {
 	}
 	if got["updatedCount"] != float64(2) {
 		t.Fatalf("expected updatedCount=2, got %#v", got["updatedCount"])
+	}
+}
+
+func TestRunFSRecycleClearSuccessJSON(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	t.Setenv(envUsername, "tester")
+	t.Setenv(envToken, "token-123")
+
+	originTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes/recycle/library/7/clear" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"clearedCount":4},"request_id":"req-clear"}`)),
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originTransport
+	}()
+
+	exitCode := app.Run([]string{
+		"fs", "recycle", "clear",
+		"--base-url", "http://example.test",
+		"--library-id", "7",
+		"--dry-run",
+		"--json",
+	})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got err=%v output=%s", err, stdout.String())
+	}
+	if got["dryRun"] != true {
+		t.Fatalf("expected dryRun=true, got %#v", got["dryRun"])
+	}
+	if got["libraryId"] != float64(7) {
+		t.Fatalf("expected libraryId=7, got %#v", got["libraryId"])
+	}
+	if got["clearedCount"] != float64(4) {
+		t.Fatalf("expected clearedCount=4, got %#v", got["clearedCount"])
 	}
 }

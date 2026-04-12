@@ -48,6 +48,7 @@
 - `of fs search`
 - `of fs archive batch-set-built-in-type`
 - `of fs recycle ls`
+- `of fs recycle clear`
 - `of fs recycle restore`
 - `of fs recycle hard`
 - `of fs path resolve`
@@ -90,7 +91,7 @@
 - 完成 M4 第四项：
   - 新增 `of fs rm`（调用 `DELETE /api/v1/nodes/{nodeId}/library/{libraryId}`）。
 - 完成 M4 第五项：
-  - 新增 `of fs recycle ls|restore|hard`（调用回收站查询/恢复/彻删 API）。
+  - 新增 `of fs recycle ls|clear|restore|hard`（调用回收站查询/清空/恢复/彻删 API）。
 - 完成 M5 第一项：
   - 新增 `of fs path resolve`（通过根节点+逐层 children 解析路径到 nodeId）。
 - 完成 M5 第二项（阶段 1）：

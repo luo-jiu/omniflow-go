@@ -138,6 +138,12 @@ type HardDeleteNodeTreeCommand struct {
 	DryRun    bool
 }
 
+type ClearRecycleBinCommand struct {
+	Actor     actor.Actor
+	LibraryID uint64
+	DryRun    bool
+}
+
 type NodeUseCase struct {
 	nodes      *repository.NodeRepository
 	tx         repository.Transactor
@@ -1196,6 +1202,60 @@ func (u *NodeUseCase) HardDeleteNodeAndChildren(ctx context.Context, cmd HardDel
 		"result", ok,
 	)
 	return ok, nil
+}
+
+func (u *NodeUseCase) ClearRecycleBin(ctx context.Context, cmd ClearRecycleBinCommand) (int, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return 0, err
+	}
+
+	if cmd.LibraryID == 0 {
+		return 0, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
+	}
+	if err := u.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
+		return 0, err
+	}
+
+	topLevelItems, err := u.GetRecycleBinItems(ctx, cmd.LibraryID)
+	if err != nil {
+		return 0, err
+	}
+	if len(topLevelItems) == 0 {
+		return 0, nil
+	}
+
+	clearedCount := 0
+	err = u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		for _, item := range topLevelItems {
+			result, hardErr := u.nodes.HardDeleteTree(txCtx, item.ID, cmd.LibraryID)
+			if hardErr != nil {
+				if errors.Is(hardErr, repository.ErrInvalidState) {
+					return fmt.Errorf("%w: invalid recycle bin clear request", ErrInvalidArgument)
+				}
+				return hardErr
+			}
+			if result {
+				clearedCount++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	_ = u.writeAudit(ctx, cmd.Actor, "node.recycle.clear", true, map[string]any{
+		"library_id":    cmd.LibraryID,
+		"cleared_count": clearedCount,
+		"mode":          resolveMutationMode(cmd.DryRun),
+		"dry_run":       cmd.DryRun,
+	})
+	slog.InfoContext(ctx, "node.recycle.cleared",
+		"library_id", cmd.LibraryID,
+		"cleared_count", clearedCount,
+		"dry_run", cmd.DryRun,
+	)
+	return clearedCount, nil
 }
 
 func (u *NodeUseCase) findNodeView(ctx context.Context, nodeID, libraryID uint64) (domainnode.Node, error) {

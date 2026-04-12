@@ -111,6 +111,7 @@
 - `PATCH /api/v1/nodes/{nodeId}/move`（mv）
 - `PATCH /api/v1/nodes/{nodeId}/rename`（rename）
 - `DELETE /api/v1/nodes/{ancestorId}/library/{libraryId}`（rm）
+- `DELETE /api/v1/nodes/recycle/library/{libraryId}/clear`（recycle clear）
 - `PATCH /api/v1/nodes/{ancestorId}/library/{libraryId}/restore`（recycle restore）
 - `DELETE /api/v1/nodes/{ancestorId}/library/{libraryId}/hard`（recycle hard）
 

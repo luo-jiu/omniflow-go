@@ -394,6 +394,63 @@ func (a *App) runFSRecycleList(args []string) error {
 	return nil
 }
 
+func (a *App) runFSRecycleClear(args []string) error {
+	fs := a.newFlagSet("fs recycle clear")
+
+	var (
+		baseURL   string
+		libraryID uint64
+		dryRun    bool
+		jsonOut   bool
+	)
+	fs.StringVar(&baseURL, "base-url", "", "API base url")
+	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
+	fs.BoolVar(&jsonOut, "json", false, "output JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := ensureNoExtraArgs(fs); err != nil {
+		return err
+	}
+	if libraryID == 0 {
+		return errors.New("`--library-id` is required")
+	}
+
+	_, client, err := a.resolveClient(baseURL, true)
+	if err != nil {
+		return err
+	}
+
+	clearedCount, err := client.ClearRecycleBin(context.Background(), libraryID, dryRun)
+	if err != nil {
+		return err
+	}
+
+	result := map[string]any{
+		"dryRun":       dryRun,
+		"libraryId":    libraryID,
+		"clearedCount": clearedCount,
+	}
+	if jsonOut {
+		return a.printJSON(result)
+	}
+	if dryRun {
+		if clearedCount > 0 {
+			a.printf("dry-run: clear recycle bin request validated: library=%d cleared=%d\n", libraryID, clearedCount)
+			return nil
+		}
+		a.printf("dry-run: clear recycle bin request validated but no change: library=%d\n", libraryID)
+		return nil
+	}
+	if clearedCount > 0 {
+		a.printf("cleared recycle bin: library=%d cleared=%d\n", libraryID, clearedCount)
+		return nil
+	}
+	a.printf("recycle bin already empty: library=%d\n", libraryID)
+	return nil
+}
+
 func (a *App) runFSRecycleRestore(args []string) error {
 	fs := a.newFlagSet("fs recycle restore")
 

@@ -26,6 +26,36 @@ func (h *NodeHandler) GetRecycleBinItems(ctx *gin.Context) {
 	Success(ctx, items)
 }
 
+// ClearRecycleBin 清空资料库回收站顶层条目。
+func (h *NodeHandler) ClearRecycleBin(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+	MarkDryRunHeader(ctx, dryRun)
+
+	var uri libraryRootURI
+	if !BindURI(ctx, &uri) {
+		return
+	}
+
+	if h.nodeUseCase == nil {
+		InternalError(ctx, "node service not configured")
+		return
+	}
+
+	clearedCount, err := h.nodeUseCase.ClearRecycleBin(ctx.Request.Context(), usecase.ClearRecycleBinCommand{
+		Actor:     actorFromContext(ctx),
+		LibraryID: uri.LibraryID,
+		DryRun:    dryRun,
+	})
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, gin.H{"clearedCount": clearedCount})
+}
+
 // RestoreNodeAndChildren 从回收站恢复节点及其后代。
 func (h *NodeHandler) RestoreNodeAndChildren(ctx *gin.Context) {
 	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")

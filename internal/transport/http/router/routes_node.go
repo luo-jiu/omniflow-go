@@ -25,6 +25,7 @@ func registerNodeRoutes(api *gin.RouterGroup, nodeHandler *handler.NodeHandler) 
 	api.PATCH("/nodes/:nodeId/archive/built-in-type/batch-set", nodeHandler.BatchSetArchiveChildrenBuiltInType)
 	api.DELETE("/nodes/:nodeId/library/:libraryId", nodeHandler.DeleteNodeAndChildren)
 	api.GET("/nodes/recycle/library/:libraryId", nodeHandler.GetRecycleBinItems)
+	api.DELETE("/nodes/recycle/library/:libraryId/clear", nodeHandler.ClearRecycleBin)
 	api.PATCH("/nodes/:nodeId/library/:libraryId/restore", nodeHandler.RestoreNodeAndChildren)
 	api.DELETE("/nodes/:nodeId/library/:libraryId/hard", nodeHandler.HardDeleteNodeAndChildren)
 }

@@ -36,6 +36,7 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of help fs archive batch-set-built-in-type --examples
 ./bin/of fs archive batch-set-built-in-type --node-id <id> [--dry-run] [--json]
 ./bin/of fs recycle ls --library-id <id>
+./bin/of fs recycle clear --library-id <id> [--dry-run] [--json]
 ./bin/of fs recycle restore --library-id <id> --node-id <id>
 ./bin/of fs recycle hard --library-id <id> --node-id <id>
 ./bin/of fs path resolve --library-id <id> --path </docs/ch1>

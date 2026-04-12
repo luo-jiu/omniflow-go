@@ -114,6 +114,71 @@ func TestBatchSetArchiveChildrenBuiltInTypeWithoutDryRun(t *testing.T) {
 	}
 }
 
+func TestClearRecycleBin(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes/recycle/library/7/clear" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"clearedCount":3},"request_id":"req-2"}`)),
+		}, nil
+	})
+
+	clearedCount, err := client.ClearRecycleBin(context.Background(), 7, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if clearedCount != 3 {
+		t.Fatalf("expected clearedCount=3, got %d", clearedCount)
+	}
+}
+
+func TestClearRecycleBinWithoutDryRun(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.URL.Query().Get("dryRun"); got != "" {
+			t.Fatalf("expected dryRun to be omitted, got %q", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"clearedCount":0},"request_id":"req-3"}`)),
+		}, nil
+	})
+
+	clearedCount, err := client.ClearRecycleBin(context.Background(), 7, false)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if clearedCount != 0 {
+		t.Fatalf("expected clearedCount=0, got %d", clearedCount)
+	}
+}
+
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

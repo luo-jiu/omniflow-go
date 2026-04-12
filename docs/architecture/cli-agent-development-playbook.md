@@ -24,6 +24,7 @@
   - `of fs rm`（支持 `--node-id`/`--path`）
 - 回收站：
   - `of fs recycle ls`
+  - `of fs recycle clear`
   - `of fs recycle restore|hard`（当前仅支持 `--node-id`，不支持 `--path`）
 
 ### 1.2 已知约束

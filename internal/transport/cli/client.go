@@ -315,6 +315,22 @@ func (c *Client) ListRecycleBin(ctx context.Context, libraryID uint64) ([]Recycl
 	return out, err
 }
 
+func (c *Client) ClearRecycleBin(ctx context.Context, libraryID uint64, dryRun bool) (int, error) {
+	var out struct {
+		ClearedCount int `json:"clearedCount"`
+	}
+	err := c.doJSON(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/api/v1/nodes/recycle/library/%d/clear", libraryID),
+		withDryRunQuery(nil, dryRun),
+		nil,
+		true,
+		&out,
+	)
+	return out.ClearedCount, err
+}
+
 func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {
 	var out bool
 	err := c.doJSON(
