@@ -603,6 +603,118 @@ func (a *App) buildCommandTree() *command {
 	}
 	root.Children["browser-map"] = browserMap
 
+	browserBookmark := &command{
+		Name:     "browser-bookmark",
+		Summary:  "Browser bookmark commands",
+		Usage:    "of browser-bookmark <tree|match|create|update|move|rm> [flags]",
+		Children: map[string]*command{},
+	}
+	browserBookmark.Children["tree"] = &command{
+		Name:    "tree",
+		Summary: "Show browser bookmark tree",
+		Usage:   "of browser-bookmark tree [--base-url <url>] [--json]",
+		Flags: []string{
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-bookmark tree",
+			"of browser-bookmark tree --json",
+		},
+		Run: a.runBrowserBookmarkTree,
+	}
+	browserBookmark.Children["match"] = &command{
+		Name:    "match",
+		Summary: "Match a browser url against saved bookmarks",
+		Usage:   "of browser-bookmark match --url <url> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--url <url>         browser url to match (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-bookmark match --url https://example.com/path?utm=1",
+			"of browser-bookmark match --url https://example.com/path --json",
+		},
+		Run: a.runBrowserBookmarkMatch,
+	}
+	browserBookmark.Children["create"] = &command{
+		Name:    "create",
+		Summary: "Create a browser bookmark or folder",
+		Usage:   "of browser-bookmark create --title <title> [--kind <url|folder>] [--url <url>] [--parent-id <id>] [--icon-url <url>] [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--title <title>     bookmark title (required)",
+			"--kind <kind>       bookmark kind: url or folder",
+			"--url <url>         bookmark url for url kind",
+			"--parent-id <id>    parent folder id",
+			"--icon-url <url>    bookmark icon url",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-bookmark create --title Example --url https://example.com",
+			"of browser-bookmark create --title Work --kind folder --dry-run --json",
+		},
+		Run: a.runBrowserBookmarkCreate,
+	}
+	browserBookmark.Children["update"] = &command{
+		Name:    "update",
+		Summary: "Update a browser bookmark",
+		Usage:   "of browser-bookmark update --id <id> [--title <title>] [--url <url>] [--icon-url <url>] [--clear-icon] [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--id <id>           bookmark id (required)",
+			"--title <title>     bookmark title",
+			"--url <url>         bookmark url",
+			"--icon-url <url>    bookmark icon url",
+			"--clear-icon        clear bookmark icon",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-bookmark update --id 8 --title Example Home",
+			"of browser-bookmark update --id 8 --clear-icon --dry-run --json",
+		},
+		Run: a.runBrowserBookmarkUpdate,
+	}
+	browserBookmark.Children["move"] = &command{
+		Name:    "move",
+		Summary: "Move a browser bookmark within the tree",
+		Usage:   "of browser-bookmark move --id <id> [--parent-id <id>] [--before-id <id>|--after-id <id>] [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--id <id>           bookmark id (required)",
+			"--parent-id <id>    target parent folder id",
+			"--before-id <id>    insert before sibling id",
+			"--after-id <id>     insert after sibling id",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-bookmark move --id 8 --parent-id 2 --after-id 5",
+			"of browser-bookmark move --id 8 --before-id 3 --dry-run --json",
+		},
+		Run: a.runBrowserBookmarkMove,
+	}
+	browserBookmark.Children["rm"] = &command{
+		Name:    "rm",
+		Summary: "Delete a browser bookmark subtree",
+		Usage:   "of browser-bookmark rm --id <id> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--id <id>           bookmark id (required)",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of browser-bookmark rm --id 8",
+			"of browser-bookmark rm --id 8 --dry-run --json",
+		},
+		Run: a.runBrowserBookmarkDelete,
+	}
+	root.Children["browser-bookmark"] = browserBookmark
+
 	return root
 }
 

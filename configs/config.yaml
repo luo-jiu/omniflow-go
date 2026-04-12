@@ -39,9 +39,9 @@ database:
   max_idle_conns: 10
   conn_max_lifetime: 30m
   # silent/error/warn/info
-  log_level: info
+  log_level: silent
   # true 时强制以 info 级别输出 SQL（便于本地联调排查）
-  debug_sql: true
+  debug_sql: false
 
 redis:
   addr: 127.0.0.1:6379

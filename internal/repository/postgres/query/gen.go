@@ -17,6 +17,7 @@ import (
 
 var (
 	Q                  = new(Query)
+	BrowserBookmark    *browserBookmark
 	BrowserFileMapping *browserFileMapping
 	Library            *library
 	Node               *node
@@ -27,6 +28,7 @@ var (
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
+	BrowserBookmark = &Q.BrowserBookmark
 	BrowserFileMapping = &Q.BrowserFileMapping
 	Library = &Q.Library
 	Node = &Q.Node
@@ -38,6 +40,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:                 db,
+		BrowserBookmark:    newBrowserBookmark(db, opts...),
 		BrowserFileMapping: newBrowserFileMapping(db, opts...),
 		Library:            newLibrary(db, opts...),
 		Node:               newNode(db, opts...),
@@ -50,6 +53,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 type Query struct {
 	db *gorm.DB
 
+	BrowserBookmark    browserBookmark
 	BrowserFileMapping browserFileMapping
 	Library            library
 	Node               node
@@ -63,6 +67,7 @@ func (q *Query) Available() bool { return q.db != nil }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:                 db,
+		BrowserBookmark:    q.BrowserBookmark.clone(db),
 		BrowserFileMapping: q.BrowserFileMapping.clone(db),
 		Library:            q.Library.clone(db),
 		Node:               q.Node.clone(db),
@@ -83,6 +88,7 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:                 db,
+		BrowserBookmark:    q.BrowserBookmark.replaceDB(db),
 		BrowserFileMapping: q.BrowserFileMapping.replaceDB(db),
 		Library:            q.Library.replaceDB(db),
 		Node:               q.Node.replaceDB(db),
@@ -93,6 +99,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 }
 
 type queryCtx struct {
+	BrowserBookmark    IBrowserBookmarkDo
 	BrowserFileMapping IBrowserFileMappingDo
 	Library            ILibraryDo
 	Node               INodeDo
@@ -103,6 +110,7 @@ type queryCtx struct {
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		BrowserBookmark:    q.BrowserBookmark.WithContext(ctx),
 		BrowserFileMapping: q.BrowserFileMapping.WithContext(ctx),
 		Library:            q.Library.WithContext(ctx),
 		Node:               q.Node.WithContext(ctx),

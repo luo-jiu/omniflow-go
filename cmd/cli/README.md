@@ -21,7 +21,7 @@
 - `internal/transport/cli/app.go`
   - 命令树、路由分发、帮助信息。
 - `internal/transport/cli/command_*.go`
-  - 各子命令实现（auth/lib/fs/browser-map/config/health）。
+  - 各子命令实现（auth/lib/fs/browser-map/browser-bookmark/config/health）。
 - `internal/transport/cli/helpers.go`
   - 通用输出、flag 解析、会话检查与通用解析工具。
 - `internal/transport/cli/client.go`

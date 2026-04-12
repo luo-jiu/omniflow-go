@@ -46,6 +46,12 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of browser-map create --ext <ext> --url <url> [--dry-run] [--json]
 ./bin/of browser-map update --id <id> --ext <ext> --url <url> [--dry-run] [--json]
 ./bin/of browser-map rm --id <id> [--dry-run] [--json]
+./bin/of browser-bookmark tree [--json]
+./bin/of browser-bookmark match --url <url> [--json]
+./bin/of browser-bookmark create --title <title> [--kind <url|folder>] [--url <url>] [--dry-run] [--json]
+./bin/of browser-bookmark update --id <id> [--title <title>] [--url <url>] [--icon-url <url>] [--clear-icon] [--dry-run] [--json]
+./bin/of browser-bookmark move --id <id> [--parent-id <id>] [--before-id <id>|--after-id <id>] [--dry-run] [--json]
+./bin/of browser-bookmark rm --id <id> [--dry-run] [--json]
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。

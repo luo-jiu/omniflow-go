@@ -132,6 +132,38 @@ func TestRunHelpBrowserMapContainsSubcommands(t *testing.T) {
 	}
 }
 
+func TestRunHelpBrowserBookmarkContainsSubcommands(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "browser-bookmark"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "tree") {
+		t.Fatalf("expected tree in browser-bookmark help, got: %s", out)
+	}
+	if !strings.Contains(out, "match") {
+		t.Fatalf("expected match in browser-bookmark help, got: %s", out)
+	}
+	if !strings.Contains(out, "create") {
+		t.Fatalf("expected create in browser-bookmark help, got: %s", out)
+	}
+	if !strings.Contains(out, "move") {
+		t.Fatalf("expected move in browser-bookmark help, got: %s", out)
+	}
+	if !strings.Contains(out, "rm") {
+		t.Fatalf("expected rm in browser-bookmark help, got: %s", out)
+	}
+}
+
 func TestRunHelpFSRecycleContainsSubcommands(t *testing.T) {
 	t.Parallel()
 
@@ -431,6 +463,22 @@ func TestRunBrowserMapResolveRequiresExt(t *testing.T) {
 	}
 }
 
+func TestRunBrowserBookmarkMatchRequiresURL(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"browser-bookmark", "match"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--url` is required") {
+		t.Fatalf("expected missing url error, got: %s", stderr.String())
+	}
+}
+
 func TestRunBrowserMapCreateSuccessJSON(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -500,6 +548,72 @@ func TestRunBrowserMapCreateSuccessJSON(t *testing.T) {
 	}
 	if result["fileExt"] != "excalidraw" {
 		t.Fatalf("expected fileExt=excalidraw, got %#v", result["fileExt"])
+	}
+}
+
+func TestRunBrowserBookmarkCreateSuccessJSON(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	t.Setenv(envUsername, "tester")
+	t.Setenv(envToken, "token-123")
+
+	originTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-bookmarks" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"dryRun":true,"result":{"id":8,"ownerUserId":1,"kind":"url","title":"Example","url":"https://example.com","urlMatchKey":"https://example.com","sortOrder":1000,"createdAt":"2026-04-12T00:00:00Z","updatedAt":"2026-04-12T00:00:00Z"}},"request_id":"req-browser-bookmark-create"}`)),
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originTransport
+	}()
+
+	exitCode := app.Run([]string{
+		"browser-bookmark", "create",
+		"--base-url", "http://example.test",
+		"--title", "Example",
+		"--url", "https://example.com",
+		"--dry-run",
+		"--json",
+	})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got err=%v output=%s", err, stdout.String())
+	}
+	if got["dryRun"] != true {
+		t.Fatalf("expected dryRun=true, got %#v", got["dryRun"])
+	}
+	result, ok := got["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected result object, got %#v", got["result"])
+	}
+	if result["id"] != float64(8) {
+		t.Fatalf("expected id=8, got %#v", result["id"])
+	}
+	if result["title"] != "Example" {
+		t.Fatalf("expected title=Example, got %#v", result["title"])
 	}
 }
 

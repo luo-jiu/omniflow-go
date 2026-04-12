@@ -23,7 +23,7 @@
 | 里程碑 | 内容 | 状态 | 说明 |
 |---|---|---|---|
 | M1 | CLI 基础框架（薄入口 + 命令树 + 模块拆分） | 已完成 | `cmd/cli` + `internal/transport/cli` 已落地。 |
-| M2 | 最小可用命令（health/auth/lib/fs/browser-map/config） | 已完成 | 支持 `--json`，可登录并执行查询。 |
+| M2 | 最小可用命令（health/auth/lib/fs/browser-map/browser-bookmark/config） | 已完成 | 支持 `--json`，可登录并执行查询。 |
 | M3 | CLI 契约加固（退出码/参数严格/帮助输出/配置恢复） | 已完成 | 已修复 review 发现项并补测试。 |
 | M4 | 文件系统写操作（mkdir/rename/mv/rm/recycle） | 已完成 | 已支持删除到回收站、回收站查看、恢复、彻删。 |
 | M5 | 路径体验层（path -> nodeId） | 进行中 | 已新增 `of fs path resolve`，后续扩展路径化操作。 |
@@ -57,6 +57,12 @@
 - `of browser-map create`
 - `of browser-map update`
 - `of browser-map rm`
+- `of browser-bookmark tree`
+- `of browser-bookmark match`
+- `of browser-bookmark create`
+- `of browser-bookmark update`
+- `of browser-bookmark move`
+- `of browser-bookmark rm`
 - `of config show`
 
 ### 3.2 计划中（优先级顺序）
@@ -64,7 +70,7 @@
 1. `of fs cp` / `of fs put`（为自动化与 AI 场景准备）
 2. 回收站路径语义设计（需要后端补充 deleted 节点路径解析能力）
 
-说明：`fs mkdir`、`fs rename`、`fs mv`、`fs rm`、`fs recycle`、`browser-map` 已完成，下一阶段进入路径体验层。
+说明：`fs mkdir`、`fs rename`、`fs mv`、`fs rm`、`fs recycle`、`browser-map`、`browser-bookmark` 已完成，下一阶段进入路径体验层。
 
 ## 4. 质量门禁（每次迭代必过）
 
@@ -105,6 +111,7 @@
   - 新增 `of fs archive batch-set-built-in-type`（调用 `PATCH /api/v1/nodes/{nodeId}/archive/built-in-type/batch-set`，支持 `--dry-run`、`--json`）。
 - 完成浏览器文件映射能力同步：
   - 新增 `of browser-map ls|resolve|create|update|rm`（调用 `/api/v1/browser-file-mappings*`，写命令支持 `--dry-run`、`--json`）。
+  - 新增 `of browser-bookmark tree|match|create|update|move|rm`（调用 `/api/v1/browser-bookmarks*`，写命令支持 `--dry-run`、`--json`）。
 - M5 约束修正：
   - `fs recycle restore/hard` 暂不支持路径参数，避免与回收站语义冲突（仅支持 `--node-id`）。
 - help 渐进式披露升级：

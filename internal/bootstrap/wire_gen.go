@@ -46,6 +46,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	libraryRepository := repository.NewLibraryRepository(database)
 	nodeRepository := repository.NewNodeRepository(database)
 	tagRepository := repository.NewTagRepository(database)
+	browserBookmarkRepository := repository.NewBrowserBookmarkRepository(database)
 	browserFileMappingRepository := repository.NewBrowserFileMappingRepository(database)
 	sessionRepository := repository.NewSessionRepository(redisClient)
 	transactor := repository.NewTransactor(database)
@@ -58,6 +59,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, objectStorage, allowAll, logSink)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
 	tagUseCase := usecase.NewTagUseCase(tagRepository, transactor)
+	browserBookmarkUseCase := usecase.NewBrowserBookmarkUseCase(browserBookmarkRepository, transactor, logSink)
 	browserFileMappingUseCase := usecase.NewBrowserFileMappingUseCase(browserFileMappingRepository, transactor, logSink)
 
 	healthHandler := httpHandler.NewHealthHandler(healthUseCase)
@@ -68,9 +70,10 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	directoryHandler := httpHandler.NewDirectoryHandler(directoryUseCase)
 	fileHandler := httpHandler.NewFileHandler(fileUseCase)
 	tagHandler := httpHandler.NewTagHandler(tagUseCase)
+	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(browserBookmarkUseCase)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(browserFileMappingUseCase)
 
-	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserFileMappingHandler)
+	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler)
 	httpServer := server.NewHTTPServer(cfg, engine, logger)
 	application := app.New(cfg, logger, httpServer)
 

@@ -47,6 +47,11 @@ type apiEnvelope struct {
 	RequestID string          `json:"request_id"`
 }
 
+type apiDryRunEnvelope struct {
+	DryRun bool            `json:"dryRun"`
+	Result json.RawMessage `json:"result"`
+}
+
 type HealthStatus struct {
 	Name      string    `json:"name"`
 	Env       string    `json:"env"`
@@ -119,6 +124,46 @@ type BrowserFileMapping struct {
 	OwnerUserID uint64    `json:"ownerUserId"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type BrowserBookmark struct {
+	ID          uint64            `json:"id"`
+	OwnerUserID uint64            `json:"ownerUserId"`
+	ParentID    *uint64           `json:"parentId,omitempty"`
+	Kind        string            `json:"kind"`
+	Title       string            `json:"title"`
+	URL         *string           `json:"url,omitempty"`
+	URLMatchKey *string           `json:"urlMatchKey,omitempty"`
+	IconURL     *string           `json:"iconUrl,omitempty"`
+	SortOrder   int               `json:"sortOrder"`
+	CreatedAt   time.Time         `json:"createdAt"`
+	UpdatedAt   time.Time         `json:"updatedAt"`
+	Children    []BrowserBookmark `json:"children,omitempty"`
+}
+
+type BrowserBookmarkMatchResult struct {
+	Matched  bool             `json:"matched"`
+	Bookmark *BrowserBookmark `json:"bookmark,omitempty"`
+}
+
+type BrowserBookmarkCreateRequest struct {
+	ParentID *uint64 `json:"parentId,omitempty"`
+	Kind     string  `json:"kind,omitempty"`
+	Title    string  `json:"title"`
+	URL      string  `json:"url,omitempty"`
+	IconURL  string  `json:"iconUrl,omitempty"`
+}
+
+type BrowserBookmarkUpdateRequest struct {
+	Title   *string `json:"title,omitempty"`
+	URL     *string `json:"url,omitempty"`
+	IconURL *string `json:"iconUrl,omitempty"`
+}
+
+type BrowserBookmarkMoveRequest struct {
+	ParentID *uint64 `json:"parentId,omitempty"`
+	BeforeID *uint64 `json:"beforeId,omitempty"`
+	AfterID  *uint64 `json:"afterId,omitempty"`
 }
 
 type SearchNodesRequest struct {
@@ -409,6 +454,89 @@ func (c *Client) DeleteBrowserFileMapping(ctx context.Context, mappingID uint64,
 	)
 }
 
+func (c *Client) ListBrowserBookmarksTree(ctx context.Context) ([]BrowserBookmark, error) {
+	var out []BrowserBookmark
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/browser-bookmarks/tree", nil, nil, true, &out)
+	return out, err
+}
+
+func (c *Client) MatchBrowserBookmark(ctx context.Context, rawURL string) (BrowserBookmarkMatchResult, error) {
+	query := url.Values{}
+	query.Set("url", strings.TrimSpace(rawURL))
+
+	var out BrowserBookmarkMatchResult
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/browser-bookmarks/match", query, nil, true, &out)
+	return out, err
+}
+
+func (c *Client) CreateBrowserBookmark(
+	ctx context.Context,
+	req BrowserBookmarkCreateRequest,
+	dryRun bool,
+) (BrowserBookmark, error) {
+	var out BrowserBookmark
+	err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/v1/browser-bookmarks",
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) UpdateBrowserBookmark(
+	ctx context.Context,
+	bookmarkID uint64,
+	req BrowserBookmarkUpdateRequest,
+	dryRun bool,
+) (BrowserBookmark, error) {
+	var out BrowserBookmark
+	err := c.doJSON(
+		ctx,
+		http.MethodPut,
+		fmt.Sprintf("/api/v1/browser-bookmarks/%d", bookmarkID),
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) MoveBrowserBookmark(
+	ctx context.Context,
+	bookmarkID uint64,
+	req BrowserBookmarkMoveRequest,
+	dryRun bool,
+) (BrowserBookmark, error) {
+	var out BrowserBookmark
+	err := c.doJSON(
+		ctx,
+		http.MethodPatch,
+		fmt.Sprintf("/api/v1/browser-bookmarks/%d/move", bookmarkID),
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) DeleteBrowserBookmark(ctx context.Context, bookmarkID uint64, dryRun bool) error {
+	return c.doJSON(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/api/v1/browser-bookmarks/%d", bookmarkID),
+		withDryRunQuery(nil, dryRun),
+		nil,
+		true,
+		nil,
+	)
+}
+
 func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {
 	var out bool
 	err := c.doJSON(
@@ -526,6 +654,13 @@ func (c *Client) doJSON(
 	}
 
 	if out == nil || len(envelope.Data) == 0 || string(envelope.Data) == "null" {
+		return nil
+	}
+	var dryRunEnvelope apiDryRunEnvelope
+	if err := json.Unmarshal(envelope.Data, &dryRunEnvelope); err == nil && dryRunEnvelope.DryRun && len(dryRunEnvelope.Result) > 0 {
+		if err := json.Unmarshal(dryRunEnvelope.Result, out); err != nil {
+			return fmt.Errorf("decode dry-run response data: %w", err)
+		}
 		return nil
 	}
 	if err := json.Unmarshal(envelope.Data, out); err != nil {

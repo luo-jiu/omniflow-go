@@ -17,6 +17,7 @@ import (
 )
 
 var defaultTableModels = map[string]string{
+	"browser_bookmarks":     "BrowserBookmark",
 	"browser_file_mappings": "BrowserFileMapping",
 	"users":                 "User",
 	"libraries":             "Library",

@@ -262,6 +262,74 @@ func TestCreateBrowserFileMapping(t *testing.T) {
 	}
 }
 
+func TestMatchBrowserBookmark(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-bookmarks/match" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("url"); got != "https://example.com/path?utm=1" {
+			t.Fatalf("expected url query to match, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"matched":true,"bookmark":{"id":5,"ownerUserId":1,"kind":"url","title":"Example","url":"https://example.com/path","urlMatchKey":"https://example.com/path","sortOrder":1000,"createdAt":"2026-04-12T00:00:00Z","updatedAt":"2026-04-12T00:00:00Z"}},"request_id":"req-browser-bookmark-match"}`)),
+		}, nil
+	})
+
+	result, err := client.MatchBrowserBookmark(context.Background(), "https://example.com/path?utm=1")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !result.Matched || result.Bookmark == nil || result.Bookmark.ID != 5 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestMoveBrowserBookmark(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-bookmarks/9/move" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"dryRun":true,"result":{"id":9,"ownerUserId":1,"parentId":2,"kind":"url","title":"Example","url":"https://example.com/path","urlMatchKey":"https://example.com/path","sortOrder":2000,"createdAt":"2026-04-12T00:00:00Z","updatedAt":"2026-04-12T00:00:00Z"}},"request_id":"req-browser-bookmark-move"}`)),
+		}, nil
+	})
+
+	parentID := uint64(2)
+	item, err := client.MoveBrowserBookmark(context.Background(), 9, BrowserBookmarkMoveRequest{
+		ParentID: &parentID,
+	}, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if item.ID != 9 || item.ParentID == nil || *item.ParentID != 2 {
+		t.Fatalf("unexpected bookmark move result: %+v", item)
+	}
+}
+
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
