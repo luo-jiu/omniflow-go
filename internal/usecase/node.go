@@ -1069,27 +1069,8 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 		return []domainnode.RecycleItem{}, nil
 	}
 
-	deletedSet := lo.SliceToMap(rows, func(item domainnode.RecycleItem) (uint64, struct{}) {
-		return item.ID, struct{}{}
-	})
-	childrenByParent := make(map[uint64][]uint64, len(rows))
-	for _, item := range rows {
-		if item.ParentID == 0 {
-			continue
-		}
-		if _, ok := deletedSet[item.ParentID]; !ok {
-			continue
-		}
-		childrenByParent[item.ParentID] = append(childrenByParent[item.ParentID], item.ID)
-	}
-
-	topLevel := lo.Filter(rows, func(item domainnode.RecycleItem, _ int) bool {
-		if item.ParentID == 0 {
-			return true
-		}
-		_, ok := deletedSet[item.ParentID]
-		return !ok
-	})
+	topLevel, deletedSet := resolveRecycleTopLevelItems(rows)
+	childrenByParent := buildRecycleChildrenByParent(rows, deletedSet)
 
 	for i := range topLevel {
 		subtreeCount := countDeletedSubtree(childrenByParent, topLevel[i].ID)
@@ -1110,6 +1091,37 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 		"raw_deleted_count", len(rows),
 	)
 	return topLevel, nil
+}
+
+// resolveRecycleTopLevelItems returns the deleted roots that drive recycle-bin mutations.
+// Presentation-only enrichment such as descendant counts and sorting stays in GetRecycleBinItems.
+func resolveRecycleTopLevelItems(rows []domainnode.RecycleItem) ([]domainnode.RecycleItem, map[uint64]struct{}) {
+	deletedSet := lo.SliceToMap(rows, func(item domainnode.RecycleItem) (uint64, struct{}) {
+		return item.ID, struct{}{}
+	})
+
+	topLevel := lo.Filter(rows, func(item domainnode.RecycleItem, _ int) bool {
+		if item.ParentID == 0 {
+			return true
+		}
+		_, ok := deletedSet[item.ParentID]
+		return !ok
+	})
+	return topLevel, deletedSet
+}
+
+func buildRecycleChildrenByParent(rows []domainnode.RecycleItem, deletedSet map[uint64]struct{}) map[uint64][]uint64 {
+	childrenByParent := make(map[uint64][]uint64, len(rows))
+	for _, item := range rows {
+		if item.ParentID == 0 {
+			continue
+		}
+		if _, ok := deletedSet[item.ParentID]; !ok {
+			continue
+		}
+		childrenByParent[item.ParentID] = append(childrenByParent[item.ParentID], item.ID)
+	}
+	return childrenByParent
 }
 
 func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNodeTreeCommand) (bool, error) {
@@ -1216,10 +1228,11 @@ func (u *NodeUseCase) ClearRecycleBin(ctx context.Context, cmd ClearRecycleBinCo
 		return 0, err
 	}
 
-	topLevelItems, err := u.GetRecycleBinItems(ctx, cmd.LibraryID)
+	rows, err := u.nodes.ListDeletedNodes(ctx, cmd.LibraryID)
 	if err != nil {
 		return 0, err
 	}
+	topLevelItems, _ := resolveRecycleTopLevelItems(rows)
 	if len(topLevelItems) == 0 {
 		return 0, nil
 	}
