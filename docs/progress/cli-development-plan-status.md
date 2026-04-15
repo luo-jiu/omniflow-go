@@ -1,136 +1,84 @@
-# OmniFlow CLI 开发计划与进度台账
+# CLI 开发计划与进度台账
 
-更新时间：2026-04-12  
-维护方式：每次 CLI 开发完成后，必须同步更新本文件（作为唯一进度基线）。
+更新时间：2026-04-15  
+状态：M1-M4 已完成，M5 路径体验层进行中
 
 关联文档：
-- `cmd/cli/README.md`（CLI 开发规范）
-- `docs/architecture/cli-agent-development-playbook.md`（Agent 执行手册）
-- `docs/architecture/cli-minimal-quickstart.md`（CLI 快速使用）
-- `docs/architecture/layered-structure-spec.md`（分层约束）
 
-## 1. 目标
+- `cmd/cli/README.md`：CLI 开发规范
+- `docs/architecture/cli-agent-development-playbook.md`：Agent 执行手册
+- `docs/architecture/cli-minimal-quickstart.md`：CLI 快速使用
+- `docs/progress/cli-dry-run-master-plan.md`：dry-run 契约
 
-- 打造可长期维护的 CLI，不做一次性脚本集合。
-- 保持与现有 HTTP 契约一致，优先复用后端稳定能力。
-- 满足三类场景：
-  - 开发者本地操作
-  - 自动化脚本调用（可机器读取）
-  - 后续 AI 工具调用（命令稳定、可组合）
+## 1. 当前结论
 
-## 2. 里程碑计划
+`of` CLI 已从最小可用进入持续扩展阶段。当前重点不是重做框架，而是在保持命令契约稳定的前提下补齐路径体验、发布安装和未来知识库命令域。
 
-| 里程碑 | 内容 | 状态 | 说明 |
+## 2. 里程碑
+
+| 里程碑 | 内容 | 状态 | 当前结论 |
 |---|---|---|---|
-| M1 | CLI 基础框架（薄入口 + 命令树 + 模块拆分） | 已完成 | `cmd/cli` + `internal/transport/cli` 已落地。 |
-| M2 | 最小可用命令（health/auth/lib/fs/browser-map/browser-bookmark/config） | 已完成 | 支持 `--json`，可登录并执行查询。 |
-| M3 | CLI 契约加固（退出码/参数严格/帮助输出/配置恢复） | 已完成 | 已修复 review 发现项并补测试。 |
-| M4 | 文件系统写操作（mkdir/rename/mv/rm/recycle） | 已完成 | 已支持删除到回收站、回收站查看、恢复、彻删。 |
-| M5 | 路径体验层（path -> nodeId） | 进行中 | 已新增 `of fs path resolve`，后续扩展路径化操作。 |
-| M6 | 发布与安装（version/goreleaser/多平台） | 待开始 | 提升团队可用性与分发效率。 |
-| M7 | RAG 命令域（kb ingest/search/reindex） | 待开始 | 服务知识库运维与 AI 集成。 |
+| M1 | CLI 基础框架 | 已完成 | 薄入口、命令树、模块拆分已落地 |
+| M2 | 最小可用命令 | 已完成 | health/auth/lib/fs/browser/config 可用 |
+| M3 | CLI 契约加固 | 已完成 | 退出码、参数严格、help、配置恢复已收口 |
+| M4 | 文件系统写操作 | 已完成 | mkdir/rename/mv/rm/recycle 已支持 |
+| M5 | 路径体验层 | 进行中 | 已有 `fs path resolve`，部分写命令支持 path 输入 |
+| M6 | 发布与安装 | 待开始 | version、goreleaser、多平台分发未开始 |
+| M7 | RAG 命令域 | 待开始 | `kb ingest/search/reindex` 未开始 |
 
-## 3. 当前命令覆盖
+## 3. 命令域覆盖
 
-### 3.1 已实现
+| 命令域 | 覆盖情况 |
+|---|---|
+| `health` | 健康检查 |
+| `auth` | login/status/whoami/logout |
+| `lib` | 资料库列表 |
+| `fs` | mkdir/rename/mv/rm/ls/search/archive/recycle/path resolve |
+| `browser-map` | ls/resolve/create/update/rm |
+| `browser-bookmark` | tree/match/import/create/update/move/rm |
+| `config` | show |
 
-- `of health`
-- `of auth login`
-- `of auth status`
-- `of auth whoami`
-- `of auth logout`
-- `of lib ls`
-- `of fs mkdir`
-- `of fs rename`
-- `of fs mv`
-- `of fs rm`
-- `of fs ls`
-- `of fs search`
-- `of fs archive batch-set-built-in-type`
-- `of fs recycle ls`
-- `of fs recycle clear`
-- `of fs recycle restore`
-- `of fs recycle hard`
-- `of fs path resolve`
-- `of browser-map ls`
-- `of browser-map resolve`
-- `of browser-map create`
-- `of browser-map update`
-- `of browser-map rm`
-- `of browser-bookmark tree`
-- `of browser-bookmark match`
-- `of browser-bookmark import`
-- `of browser-bookmark create`
-- `of browser-bookmark update`
-- `of browser-bookmark move`
-- `of browser-bookmark rm`
-- `of config show`
+完整命令示例见 `docs/architecture/cli-minimal-quickstart.md`。
 
-### 3.2 计划中（优先级顺序）
+## 4. 保留规则
 
-1. `of fs cp` / `of fs put`（为自动化与 AI 场景准备）
-2. 回收站路径语义设计（需要后端补充 deleted 节点路径解析能力）
+- CLI 是正式入口，不是临时脚本。
+- 命令采用 `of <domain> <action>` 风格。
+- flag 使用 kebab-case。
+- 禁止隐式位置参数。
+- 写命令默认支持 `--dry-run`。
+- 支持机器消费的命令必须支持 `--json`。
+- CLI 不得私自改写后端 `code/message/data/request_id` 语义。
+- `id/path` 双模式必须互斥、必填、错误清晰。
 
-说明：`fs mkdir`、`fs rename`、`fs mv`、`fs rm`、`fs recycle`、`browser-map`、`browser-bookmark` 已完成，下一阶段进入路径体验层。
+## 5. 下一步任务
 
-## 4. 质量门禁（每次迭代必过）
+按当前优先级：
 
-1. 通过：`go test ./...`
-2. 构建：`go build -o ./bin/of ./cmd/cli`
-3. 手工验证最小链路：
-   - `./bin/of --help`
-   - `./bin/of auth status`
-   - 至少 1 条新增命令的成功/失败路径
-4. 同步更新本台账和相关命令文档。
+1. 继续完善路径输入层，评估 `fs cp` / `fs put` 的命令设计。
+2. 与后端协作补回收站路径解析能力后，再评估 `recycle --path`。
+3. 设计 `of version` 与发布安装流程。
+4. RAG 命令域开始前，先补对应后端能力和文档契约。
 
-## 5. 本轮已完成事项（2026-04-12）
+## 6. 质量门禁
 
-- 完成 CLI 架构重构：
-  - 入口薄化：`cmd/cli/main.go`
-  - 命令模块化：`internal/transport/cli/command_*.go`
-  - 路由与帮助：`internal/transport/cli/app.go`
-- 完成评审问题修复：
-  - `auth status` 未登录返回非零退出码。
-  - 叶子命令拒绝多余位置参数。
-  - help 成功输出走 stdout。
-  - 配置损坏时回落默认配置，支持自恢复。
-- 完成 M4 第一项：
-  - 新增 `of fs mkdir`（调用 `POST /api/v1/nodes`，目录类型）。
-- 完成 M4 第二项：
-  - 新增 `of fs rename`（调用 `PATCH /api/v1/nodes/{nodeId}/rename`）。
-- 完成 M4 第三项：
-  - 新增 `of fs mv`（调用 `PATCH /api/v1/nodes/{nodeId}/move`）。
-- 完成 M4 第四项：
-  - 新增 `of fs rm`（调用 `DELETE /api/v1/nodes/{nodeId}/library/{libraryId}`）。
-- 完成 M4 第五项：
-  - 新增 `of fs recycle ls|clear|restore|hard`（调用回收站查询/清空/恢复/彻删 API）。
-- 完成 M5 第一项：
-  - 新增 `of fs path resolve`（通过根节点+逐层 children 解析路径到 nodeId）。
-- 完成 M5 第二项（阶段 1）：
-  - `fs mkdir/mv/rm` 已支持可选路径参数（兼容既有 id 参数）。
-- 完成 fs 归档批量能力同步：
-  - 新增 `of fs archive batch-set-built-in-type`（调用 `PATCH /api/v1/nodes/{nodeId}/archive/built-in-type/batch-set`，支持 `--dry-run`、`--json`）。
-- 完成浏览器文件映射能力同步：
-  - 新增 `of browser-map ls|resolve|create|update|rm`（调用 `/api/v1/browser-file-mappings*`，写命令支持 `--dry-run`、`--json`）。
-  - 新增 `of browser-bookmark tree|match|import|create|update|move|rm`（调用 `/api/v1/browser-bookmarks*`，写命令支持 `--dry-run`、`--json`）。
-- M5 约束修正：
-  - `fs recycle restore/hard` 暂不支持路径参数，避免与回收站语义冲突（仅支持 `--node-id`）。
-- help 渐进式披露升级：
-  - 单命令 help 默认显示 usage + flags。
-  - 可通过 `--examples` 查看命令示例。
-- 补充单测：
-  - `app_test.go`
-  - `helpers_test.go`
-  - `config_test.go`
+每次 CLI 迭代至少验证：
 
-## 6. 下一步开发任务（建议直接执行）
+```bash
+go test ./...
+go build -o ./bin/of ./cmd/cli
+./bin/of --help
+```
 
-1. 为 `cp/put` 设计可复用路径输入层
-2. 与后端协作补回收站路径解析 API 后，再评估 `recycle --path`
+新增命令还必须覆盖：
 
-## 7. 更新规则（团队协作约定）
+- 至少 1 条成功路径。
+- 至少 1 条参数失败路径。
+- `client_test.go` 中关键 path、query、header、body 契约。
+- 相关 README、quickstart、进度台账同步更新。
 
-- 规则 1：新增/变更命令时，先改代码再更新本台账。
-- 规则 2：`里程碑状态`、`当前命令覆盖`、`下一步任务` 三块必须同步。
-- 规则 3：若计划优先级变化，先改本文件再开始编码。
-- 规则 4：所有“完成”项需可被命令和测试证明。
+## 7. 维护规则
+
+- 新增或变更命令后，更新本文档的里程碑、命令域覆盖和下一步任务。
+- 已完成的批次不再追加流水账，只保留当前结论。
+- 若计划优先级变化，先改本文档再开始编码。
