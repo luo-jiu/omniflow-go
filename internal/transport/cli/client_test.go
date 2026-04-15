@@ -330,6 +330,51 @@ func TestMoveBrowserBookmark(t *testing.T) {
 	}
 }
 
+func TestImportBrowserBookmarks(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-bookmarks/import" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		body := string(bodyBytes)
+		if !strings.Contains(body, `"source":"chrome-local"`) || !strings.Contains(body, `"title":"Example"`) {
+			t.Fatalf("unexpected request body: %s", body)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"dryRun":true,"result":{"importedCount":12}},"request_id":"req-browser-bookmark-import"}`)),
+		}, nil
+	})
+
+	result, err := client.ImportBrowserBookmarks(context.Background(), BrowserBookmarkImportRequest{
+		Source: "chrome-local",
+		Items: []BrowserBookmarkImportItem{
+			{Kind: "url", Title: "Example", URL: "https://example.com"},
+		},
+	}, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.ImportedCount != 12 {
+		t.Fatalf("expected importedCount=12, got %d", result.ImportedCount)
+	}
+}
+
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

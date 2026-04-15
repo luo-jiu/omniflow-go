@@ -46,6 +46,7 @@
   - 归档操作：`archive batch-set-built-in-type`
   - 回收站操作：`recycle ls|clear|restore|hard`
   - 路径工具：`path resolve`
+- 浏览器书签命令支持结构化导入：`browser-bookmark import --file <path> [--dry-run] [--json]`
 - 路径演进策略：写命令保持 `id` 参数兼容，同时逐步增加 `path` 参数入口。
 
 ## 4. 错误与退出码约定

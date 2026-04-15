@@ -166,6 +166,23 @@ type BrowserBookmarkMoveRequest struct {
 	AfterID  *uint64 `json:"afterId,omitempty"`
 }
 
+type BrowserBookmarkImportItem struct {
+	Kind     string                      `json:"kind,omitempty"`
+	Title    string                      `json:"title"`
+	URL      string                      `json:"url,omitempty"`
+	IconURL  string                      `json:"iconUrl,omitempty"`
+	Children []BrowserBookmarkImportItem `json:"children,omitempty"`
+}
+
+type BrowserBookmarkImportRequest struct {
+	Source string                      `json:"source,omitempty"`
+	Items  []BrowserBookmarkImportItem `json:"items"`
+}
+
+type BrowserBookmarkImportResult struct {
+	ImportedCount int `json:"importedCount"`
+}
+
 type SearchNodesRequest struct {
 	LibraryID    uint64   `json:"libraryId"`
 	Keyword      string   `json:"keyword,omitempty"`
@@ -535,6 +552,24 @@ func (c *Client) DeleteBrowserBookmark(ctx context.Context, bookmarkID uint64, d
 		true,
 		nil,
 	)
+}
+
+func (c *Client) ImportBrowserBookmarks(
+	ctx context.Context,
+	req BrowserBookmarkImportRequest,
+	dryRun bool,
+) (BrowserBookmarkImportResult, error) {
+	var out BrowserBookmarkImportResult
+	err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/v1/browser-bookmarks/import",
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		&out,
+	)
+	return out, err
 }
 
 func (c *Client) RestoreNodeTree(ctx context.Context, nodeID, libraryID uint64, dryRun bool) (bool, error) {

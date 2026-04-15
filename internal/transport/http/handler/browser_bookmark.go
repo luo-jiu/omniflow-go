@@ -44,6 +44,19 @@ type browserBookmarkMoveRequest struct {
 	AfterID  *uint64 `json:"afterId"`
 }
 
+type browserBookmarkImportItemRequest struct {
+	Kind     string                             `json:"kind"`
+	Title    string                             `json:"title" binding:"required"`
+	URL      string                             `json:"url"`
+	IconURL  string                             `json:"iconUrl"`
+	Children []browserBookmarkImportItemRequest `json:"children"`
+}
+
+type browserBookmarkImportRequest struct {
+	Source string                             `json:"source"`
+	Items  []browserBookmarkImportItemRequest `json:"items" binding:"required"`
+}
+
 func (h *BrowserBookmarkHandler) Tree(ctx *gin.Context) {
 	if h.useCase == nil {
 		InternalError(ctx, "browser bookmark service not configured")
@@ -217,6 +230,35 @@ func (h *BrowserBookmarkHandler) Delete(ctx *gin.Context) {
 	SuccessNoDataWithDryRun(ctx, dryRun)
 }
 
+func (h *BrowserBookmarkHandler) Import(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+	MarkDryRunHeader(ctx, dryRun)
+
+	var req browserBookmarkImportRequest
+	if !BindJSON(ctx, &req) {
+		return
+	}
+	if h.useCase == nil {
+		InternalError(ctx, "browser bookmark service not configured")
+		return
+	}
+
+	result, err := h.useCase.Import(ctx.Request.Context(), usecase.ImportBrowserBookmarksCommand{
+		Actor:  actorFromContext(ctx),
+		Source: strings.TrimSpace(req.Source),
+		Items:  toImportBrowserBookmarkItems(req.Items),
+		DryRun: dryRun,
+	})
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	SuccessWithDryRun(ctx, dryRun, result)
+}
+
 func trimOptionalString(value *string) *string {
 	if value == nil {
 		return nil
@@ -230,4 +272,18 @@ func normalizeOptionalUint64Ptr(value *uint64) *uint64 {
 		return nil
 	}
 	return value
+}
+
+func toImportBrowserBookmarkItems(items []browserBookmarkImportItemRequest) []usecase.ImportBrowserBookmarkItem {
+	result := make([]usecase.ImportBrowserBookmarkItem, 0, len(items))
+	for _, item := range items {
+		result = append(result, usecase.ImportBrowserBookmarkItem{
+			Kind:     strings.TrimSpace(item.Kind),
+			Title:    strings.TrimSpace(item.Title),
+			URL:      strings.TrimSpace(item.URL),
+			IconURL:  strings.TrimSpace(item.IconURL),
+			Children: toImportBrowserBookmarkItems(item.Children),
+		})
+	}
+	return result
 }

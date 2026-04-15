@@ -713,6 +713,23 @@ func (a *App) buildCommandTree() *command {
 		},
 		Run: a.runBrowserBookmarkDelete,
 	}
+	browserBookmark.Children["import"] = &command{
+		Name:    "import",
+		Summary: "Import browser bookmarks from a normalized JSON tree",
+		Usage:   "of browser-bookmark import --file <path> [--source <label>] [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--file <path>      JSON file path containing import payload (required)",
+			"--source <label>   import source label",
+			"--base-url <url>   API base URL",
+			"--dry-run          preview only, do not commit changes",
+			"--json             output JSON",
+		},
+		Examples: []string{
+			"of browser-bookmark import --file ./browser-bookmarks.json --source chrome-local",
+			"of browser-bookmark import --file ./browser-bookmarks.json --dry-run --json",
+		},
+		Run: a.runBrowserBookmarkImport,
+	}
 	root.Children["browser-bookmark"] = browserBookmark
 
 	return root

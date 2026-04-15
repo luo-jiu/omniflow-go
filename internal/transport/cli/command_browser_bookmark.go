@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 )
 
@@ -327,6 +329,64 @@ func (a *App) runBrowserBookmarkDelete(args []string) error {
 		return nil
 	}
 	a.printf("deleted browser bookmark: id=%d\n", bookmarkID)
+	return nil
+}
+
+func (a *App) runBrowserBookmarkImport(args []string) error {
+	fs := a.newFlagSet("browser-bookmark import")
+
+	var (
+		baseURL  string
+		filePath string
+		source   string
+		dryRun   bool
+		jsonOut  bool
+	)
+	fs.StringVar(&baseURL, "base-url", "", "API base url")
+	fs.StringVar(&filePath, "file", "", "JSON file path containing import payload (required)")
+	fs.StringVar(&source, "source", "", "import source label")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
+	fs.BoolVar(&jsonOut, "json", false, "output JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := ensureNoExtraArgs(fs); err != nil {
+		return err
+	}
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return errors.New("`--file` is required")
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+	var req BrowserBookmarkImportRequest
+	if err := json.Unmarshal(content, &req); err != nil {
+		return err
+	}
+	if strings.TrimSpace(source) != "" {
+		req.Source = strings.TrimSpace(source)
+	}
+
+	_, client, err := a.resolveClient(baseURL, true)
+	if err != nil {
+		return err
+	}
+	result, err := client.ImportBrowserBookmarks(context.Background(), req, dryRun)
+	if err != nil {
+		return err
+	}
+
+	if jsonOut {
+		return printDryRunJSON(a, dryRun, result)
+	}
+	if dryRun {
+		a.printf("dry-run: browser bookmark import validated: imported=%d\n", result.ImportedCount)
+		return nil
+	}
+	a.printf("imported browser bookmarks: count=%d\n", result.ImportedCount)
 	return nil
 }
 

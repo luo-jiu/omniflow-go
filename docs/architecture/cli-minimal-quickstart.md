@@ -48,6 +48,7 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of browser-map rm --id <id> [--dry-run] [--json]
 ./bin/of browser-bookmark tree [--json]
 ./bin/of browser-bookmark match --url <url> [--json]
+./bin/of browser-bookmark import --file <path> [--source <label>] [--dry-run] [--json]
 ./bin/of browser-bookmark create --title <title> [--kind <url|folder>] [--url <url>] [--dry-run] [--json]
 ./bin/of browser-bookmark update --id <id> [--title <title>] [--url <url>] [--icon-url <url>] [--clear-icon] [--dry-run] [--json]
 ./bin/of browser-bookmark move --id <id> [--parent-id <id>] [--before-id <id>|--after-id <id>] [--dry-run] [--json]

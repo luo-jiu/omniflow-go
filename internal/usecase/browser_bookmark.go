@@ -60,6 +60,26 @@ type DeleteBrowserBookmarkCommand struct {
 	DryRun bool
 }
 
+type ImportBrowserBookmarkItem struct {
+	Kind        string
+	Title       string
+	URL         string
+	URLMatchKey string
+	IconURL     string
+	Children    []ImportBrowserBookmarkItem
+}
+
+type ImportBrowserBookmarksCommand struct {
+	Actor  actor.Actor
+	Items  []ImportBrowserBookmarkItem
+	Source string
+	DryRun bool
+}
+
+type ImportBrowserBookmarksResult struct {
+	ImportedCount int `json:"importedCount"`
+}
+
 type browserBookmarkRepository interface {
 	ListByOwner(ctx context.Context, ownerUserID uint64) ([]domainbrowserbookmark.BrowserBookmark, error)
 	ListSiblings(ctx context.Context, ownerUserID uint64, parentID *uint64, excludeID uint64) ([]domainbrowserbookmark.BrowserBookmark, error)

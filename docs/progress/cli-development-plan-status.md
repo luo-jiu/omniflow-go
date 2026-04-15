@@ -59,6 +59,7 @@
 - `of browser-map rm`
 - `of browser-bookmark tree`
 - `of browser-bookmark match`
+- `of browser-bookmark import`
 - `of browser-bookmark create`
 - `of browser-bookmark update`
 - `of browser-bookmark move`
@@ -111,7 +112,7 @@
   - 新增 `of fs archive batch-set-built-in-type`（调用 `PATCH /api/v1/nodes/{nodeId}/archive/built-in-type/batch-set`，支持 `--dry-run`、`--json`）。
 - 完成浏览器文件映射能力同步：
   - 新增 `of browser-map ls|resolve|create|update|rm`（调用 `/api/v1/browser-file-mappings*`，写命令支持 `--dry-run`、`--json`）。
-  - 新增 `of browser-bookmark tree|match|create|update|move|rm`（调用 `/api/v1/browser-bookmarks*`，写命令支持 `--dry-run`、`--json`）。
+  - 新增 `of browser-bookmark tree|match|import|create|update|move|rm`（调用 `/api/v1/browser-bookmarks*`，写命令支持 `--dry-run`、`--json`）。
 - M5 约束修正：
   - `fs recycle restore/hard` 暂不支持路径参数，避免与回收站语义冲突（仅支持 `--node-id`）。
 - help 渐进式披露升级：

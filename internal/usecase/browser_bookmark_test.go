@@ -230,3 +230,91 @@ func TestBrowserBookmarkUseCaseDeleteMapsMissingBookmark(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestBrowserBookmarkUseCaseImportAppendsHierarchy(t *testing.T) {
+	t.Parallel()
+
+	var created []repository.CreateBrowserBookmarkInput
+	u := NewBrowserBookmarkUseCase(&fakeBrowserBookmarkRepository{
+		nextSortOrderFunc: func(ctx context.Context, ownerUserID uint64, parentID *uint64) (int, error) {
+			if parentID == nil {
+				return 3000, nil
+			}
+			return 1000, nil
+		},
+		createFunc: func(ctx context.Context, input repository.CreateBrowserBookmarkInput) (domainbrowserbookmark.BrowserBookmark, error) {
+			created = append(created, input)
+			id := uint64(len(created))
+			return domainbrowserbookmark.BrowserBookmark{
+				ID:          id,
+				OwnerUserID: input.OwnerUserID,
+				ParentID:    input.ParentID,
+				Kind:        input.Kind,
+				Title:       input.Title,
+				URL:         input.URL,
+				URLMatchKey: input.URLMatchKey,
+				IconURL:     input.IconURL,
+				SortOrder:   input.SortOrder,
+			}, nil
+		},
+	}, nil, nil)
+
+	result, err := u.Import(context.Background(), ImportBrowserBookmarksCommand{
+		Actor: actor.Actor{ID: "3", Kind: actor.KindUser},
+		Items: []ImportBrowserBookmarkItem{
+			{
+				Kind:  domainbrowserbookmark.KindFolder,
+				Title: "Work",
+				Children: []ImportBrowserBookmarkItem{
+					{
+						Kind:  domainbrowserbookmark.KindURL,
+						Title: "Docs",
+						URL:   "https://example.com/docs?utm=1",
+					},
+				},
+			},
+			{
+				Kind:  domainbrowserbookmark.KindURL,
+				Title: "Home",
+				URL:   "https://example.com/",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.ImportedCount != 3 {
+		t.Fatalf("expected importedCount=3, got %d", result.ImportedCount)
+	}
+	if len(created) != 3 {
+		t.Fatalf("expected 3 creates, got %d", len(created))
+	}
+	if created[0].SortOrder != 3000 || created[1].SortOrder != 1000 || created[2].SortOrder != 4000 {
+		t.Fatalf("unexpected sort orders: %+v", created)
+	}
+	if created[1].ParentID == nil || *created[1].ParentID != 1 {
+		t.Fatalf("expected child to be created under folder id=1, got %+v", created[1].ParentID)
+	}
+	if created[1].URLMatchKey == nil || *created[1].URLMatchKey != "https://example.com/docs" {
+		t.Fatalf("expected normalized child match key, got %+v", created[1].URLMatchKey)
+	}
+}
+
+func TestBrowserBookmarkUseCaseImportRejectsFolderURL(t *testing.T) {
+	t.Parallel()
+
+	u := NewBrowserBookmarkUseCase(&fakeBrowserBookmarkRepository{}, nil, nil)
+	_, err := u.Import(context.Background(), ImportBrowserBookmarksCommand{
+		Actor: actor.Actor{ID: "3", Kind: actor.KindUser},
+		Items: []ImportBrowserBookmarkItem{
+			{
+				Kind:  domainbrowserbookmark.KindFolder,
+				Title: "Broken",
+				URL:   "https://example.com",
+			},
+		},
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("expected ErrInvalidArgument, got %v", err)
+	}
+}

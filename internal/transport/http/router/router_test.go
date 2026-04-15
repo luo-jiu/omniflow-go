@@ -291,6 +291,22 @@ func TestBrowserBookmarkDeleteRouteMapsNotFound(t *testing.T) {
 	}
 }
 
+func TestBrowserBookmarkImportRouteMapsInvalidArgument(t *testing.T) {
+	engine := newBookmarkBehaviorTestEngine(&routerTestBrowserBookmarkRepository{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/browser-bookmarks/import", strings.NewReader(`{"source":"chrome-local","items":[{"kind":"folder","title":"Bad","url":"https://example.com"}]}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("username", "1")
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d with body %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestBrowserFileMappingDeleteDryRunMarksHeader(t *testing.T) {
 	engine := newTestEngine()
 

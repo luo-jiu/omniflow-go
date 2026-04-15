@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -161,6 +162,9 @@ func TestRunHelpBrowserBookmarkContainsSubcommands(t *testing.T) {
 	}
 	if !strings.Contains(out, "rm") {
 		t.Fatalf("expected rm in browser-bookmark help, got: %s", out)
+	}
+	if !strings.Contains(out, "import") {
+		t.Fatalf("expected import in browser-bookmark help, got: %s", out)
 	}
 }
 
@@ -479,6 +483,22 @@ func TestRunBrowserBookmarkMatchRequiresURL(t *testing.T) {
 	}
 }
 
+func TestRunBrowserBookmarkImportRequiresFile(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"browser-bookmark", "import"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--file` is required") {
+		t.Fatalf("expected missing file error, got: %s", stderr.String())
+	}
+}
+
 func TestRunBrowserMapCreateSuccessJSON(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
@@ -614,6 +634,78 @@ func TestRunBrowserBookmarkCreateSuccessJSON(t *testing.T) {
 	}
 	if result["title"] != "Example" {
 		t.Fatalf("expected title=Example, got %#v", result["title"])
+	}
+}
+
+func TestRunBrowserBookmarkImportSuccessJSON(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	t.Setenv(envUsername, "tester")
+	t.Setenv(envToken, "token-123")
+
+	importFile, err := os.CreateTemp(t.TempDir(), "bookmark-import-*.json")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	if _, err := importFile.WriteString(`{"source":"chrome-local","items":[{"kind":"url","title":"Example","url":"https://example.com"}]}`); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	if err := importFile.Close(); err != nil {
+		t.Fatalf("close temp file: %v", err)
+	}
+
+	originTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/browser-bookmarks/import" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"dryRun":true,"result":{"importedCount":5}},"request_id":"req-browser-bookmark-import"}`)),
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originTransport
+	}()
+
+	exitCode := app.Run([]string{
+		"browser-bookmark", "import",
+		"--base-url", "http://example.test",
+		"--file", importFile.Name(),
+		"--dry-run",
+		"--json",
+	})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got err=%v output=%s", err, stdout.String())
+	}
+	if got["dryRun"] != true {
+		t.Fatalf("expected dryRun=true, got %#v", got["dryRun"])
+	}
+	result, ok := got["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected result object, got %#v", got["result"])
+	}
+	if result["importedCount"] != float64(5) {
+		t.Fatalf("expected importedCount=5, got %#v", result["importedCount"])
 	}
 }
 
