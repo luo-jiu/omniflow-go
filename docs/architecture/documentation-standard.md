@@ -21,7 +21,7 @@
 - `docs/progress/`：阶段计划、交付状态、完成度台账。完成后应转为归档摘要，不长期保留大段流水账。
 - `docs/logging.md`：日志配置、可观测性策略。
 - `cmd/cli/README.md`：CLI 开发规范与命令约定。
-- `internal/ARCHITECTURE.md`：`internal/` 目录职责速览。
+- `docs/architecture/internal-structure-overview.md`：`internal/` 目录职责速览。
 
 新增文档文件名使用小写英文短横线，例如 `node-dry-run-contract.md`。
 

@@ -24,7 +24,7 @@
 - 后端总审查标准：`docs/architecture/backend-review-standard.md`
 - 文档规范：`docs/architecture/documentation-standard.md`
 - 分层与目录规范：`docs/architecture/layered-structure-spec.md`
-- 内部架构概览：`internal/ARCHITECTURE.md`
+- internal 目录速览：`docs/architecture/internal-structure-overview.md`
 - 日志规范：`docs/logging.md`
 - CLI 开发规范：`cmd/cli/README.md`
 - CLI 作战手册：`docs/architecture/cli-agent-development-playbook.md`
@@ -182,7 +182,7 @@ go build -o ./bin/of ./cmd/cli
 - 阶段计划、交付状态、完成度台账：`docs/progress/`
 - CLI 使用与开发规则：`cmd/cli/README.md` 与 `docs/architecture/cli-*.md`
 - 日志配置与观测规则：`docs/logging.md`
-- 内部目录职责说明：`internal/ARCHITECTURE.md`
+- internal 目录职责说明：`docs/architecture/internal-structure-overview.md`
 
 如果现有文档没有合适位置，可以在 `docs/architecture/` 或 `docs/progress/` 下创建新文档。文件名使用小写英文短横线连接，例如 `node-dry-run-contract.md`。
 
