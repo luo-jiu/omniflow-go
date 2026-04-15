@@ -130,7 +130,7 @@ CLI 硬规则：
 - 事务边界统一放在 `usecase`，普通仓储函数不隐式开启事务。
 - 仓储函数必须接收 `context.Context`，并通过上下文复用事务。
 - `internal/repository/postgres/model/*.gen.go` 与 `internal/repository/postgres/query/*.gen.go` 是生成结果，不手工编辑。
-- 需要连接真实数据库验证时，优先使用本地工具 `dbgate`；先运行 `dbgate --help` 查看用法，连接数据库的 `dbgate` 命令需要提权执行，写操作必须获得明确许可。
+- 需要连接真实数据库验证时，优先使用本地工具 `dbgate`；本地 PostgreSQL 默认使用 `dbgate pg -k local "SQL"`，连接数据库的 `dbgate` 命令需要提权执行，写操作必须获得明确许可。
 
 ### 构建与测试规范
 
