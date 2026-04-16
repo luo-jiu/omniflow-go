@@ -49,6 +49,8 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - `GET /api/v1/health`
 - `POST /api/v1/directory/links/batch`
 - `GET /api/v1/nodes/:nodeId/archive/cards`
+  - 当前支持 `COMIC` / `ASMR` / `VIDEO` 归档卡片查询
+  - `VIDEO` 当前返回归档目录下的直属视频媒体文件，不要求子文件额外设置 `built_in_type=VIDEO`
 - `PATCH /api/v1/nodes/:nodeId/archive/built-in-type/batch-set`
 - Browser file mapping 与 browser bookmark 相关接口
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约

@@ -50,7 +50,7 @@ type ListArchiveCardsResult struct {
 
 func normalizeArchiveCardBuiltInType(input string) string {
 	normalized := strings.ToUpper(strings.TrimSpace(input))
-	if normalized == "COMIC" || normalized == "ASMR" {
+	if normalized == "COMIC" || normalized == "ASMR" || normalized == "VIDEO" {
 		return normalized
 	}
 	return ""
@@ -128,7 +128,7 @@ func parsePositiveUint64(value any) uint64 {
 
 func resolveArchiveCoverNodeIDFromMeta(viewMetaRaw string, builtInType string) uint64 {
 	meta := parseJSONMap(viewMetaRaw)
-	if builtInType == "ASMR" {
+	if builtInType == "ASMR" || builtInType == "VIDEO" {
 		return parsePositiveUint64(meta[viewMetaCoverNodeIDKey])
 	}
 
@@ -163,7 +163,7 @@ func applyArchiveCoverNodeIDToMeta(viewMetaRaw string, builtInType string, cover
 	}
 
 	meta := parseJSONMap(viewMetaRaw)
-	if builtInType == "ASMR" {
+	if builtInType == "ASMR" || builtInType == "VIDEO" {
 		current := parsePositiveUint64(meta[viewMetaCoverNodeIDKey])
 		if current == coverNodeID {
 			return strings.TrimSpace(viewMetaRaw), false
@@ -214,6 +214,9 @@ func (u *NodeUseCase) warmupArchiveCoverMetaForNodes(
 ) error {
 	normalizedType := normalizeArchiveCardBuiltInType(builtInType)
 	if normalizedType == "" || len(nodes) == 0 {
+		return nil
+	}
+	if normalizedType == "VIDEO" {
 		return nil
 	}
 
@@ -324,7 +327,7 @@ func (u *NodeUseCase) ListArchiveCards(
 	missingParentIDs := make([]uint64, 0, len(units))
 	for _, unit := range units {
 		coverNodeID := resolveArchiveCoverNodeIDFromMeta(unit.ViewMeta, builtInType)
-		if coverNodeID == 0 {
+		if coverNodeID == 0 && builtInType != "VIDEO" {
 			missingParentIDs = append(missingParentIDs, unit.ID)
 		}
 		items = append(items, ArchiveCardItem{
@@ -336,7 +339,7 @@ func (u *NodeUseCase) ListArchiveCards(
 		})
 	}
 
-	if len(missingParentIDs) > 0 {
+	if builtInType != "VIDEO" && len(missingParentIDs) > 0 {
 		coverByParentID, detectErr := u.nodes.DetectFirstImageChildrenByParentIDs(ctx, query.LibraryID, missingParentIDs)
 		if detectErr != nil {
 			return ListArchiveCardsResult{}, detectErr

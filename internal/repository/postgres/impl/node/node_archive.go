@@ -38,6 +38,29 @@ var archiveImageExtensions = []string{
 	"thumb",
 }
 
+var archiveVideoExtensions = []string{
+	"mp4",
+	"m4v",
+	"webm",
+	"mkv",
+	"mov",
+	"avi",
+	"ts",
+	"flv",
+	"hlv",
+	"f4v",
+	"mpeg",
+	"mpg",
+	"wmv",
+	"asf",
+	"movie",
+	"divx",
+	"mpeg4",
+	"vid",
+	"ogv",
+	"3gp",
+}
+
 const sqlDetectFirstImageChildrenByParentIDs = `
 WITH ranked AS (
     SELECT
@@ -82,6 +105,49 @@ WHERE nf.library_id = ?
   AND nf.file_id IN ?
 `
 
+const sqlCountVideoArchiveUnitsByParentID = `
+SELECT COUNT(1)
+FROM nodes n
+LEFT JOIN node_files nf
+  ON nf.file_id = n.id
+ AND nf.library_id = n.library_id
+WHERE n.library_id = ?
+  AND n.parent_id = ?
+  AND n.node_type = 1
+  AND n.deleted_at IS NULL
+  AND n.name NOT LIKE '.%%'
+  AND NOT (COALESCE(n.name, '') = '' AND COALESCE(n.ext, '') <> '')
+  AND (
+        LOWER(COALESCE(nf.mime_type, '')) LIKE 'video/%%'
+     OR LOWER(COALESCE(n.ext, '')) IN ?
+  )
+`
+
+const sqlListVideoArchiveUnitsByParentID = `
+SELECT
+    n.id,
+    n.name,
+    n.sort_order,
+    n.view_meta
+FROM nodes n
+LEFT JOIN node_files nf
+  ON nf.file_id = n.id
+ AND nf.library_id = n.library_id
+WHERE n.library_id = ?
+  AND n.parent_id = ?
+  AND n.node_type = 1
+  AND n.deleted_at IS NULL
+  AND n.name NOT LIKE '.%%'
+  AND NOT (COALESCE(n.name, '') = '' AND COALESCE(n.ext, '') <> '')
+  AND (
+        LOWER(COALESCE(nf.mime_type, '')) LIKE 'video/%%'
+     OR LOWER(COALESCE(n.ext, '')) IN ?
+  )
+ORDER BY n.sort_order ASC, n.id ASC
+OFFSET ?
+LIMIT ?
+`
+
 func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	ctx context.Context,
 	parentNodeID uint64,
@@ -93,6 +159,9 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	normalizedType := strings.ToUpper(strings.TrimSpace(builtInType))
 	if normalizedType == "" {
 		return []ArchiveUnitRow{}, 0, nil
+	}
+	if normalizedType == "VIDEO" {
+		return r.listVideoArchiveUnits(ctx, parentNodeID, libraryID, offset, limit)
 	}
 
 	q := r.query(ctx)
@@ -135,6 +204,44 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 		}
 	})
 	return result, int(totalCount), nil
+}
+
+func (r *NodeRepository) listVideoArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+	offset int,
+	limit int,
+) ([]ArchiveUnitRow, int, error) {
+	var totalCount int64
+	if err := r.scanRaw(
+		ctx,
+		&totalCount,
+		sqlCountVideoArchiveUnitsByParentID,
+		toPGInt64(libraryID),
+		toPGInt64(parentNodeID),
+		archiveVideoExtensions,
+	); err != nil {
+		return nil, 0, err
+	}
+	if totalCount == 0 {
+		return []ArchiveUnitRow{}, 0, nil
+	}
+
+	rows := make([]ArchiveUnitRow, 0, limit)
+	if err := r.scanRaw(
+		ctx,
+		&rows,
+		sqlListVideoArchiveUnitsByParentID,
+		toPGInt64(libraryID),
+		toPGInt64(parentNodeID),
+		archiveVideoExtensions,
+		offset,
+		limit,
+	); err != nil {
+		return nil, 0, err
+	}
+	return rows, int(totalCount), nil
 }
 
 func (r *NodeRepository) DetectFirstImageChildrenByParentIDs(
