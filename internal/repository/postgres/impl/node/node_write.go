@@ -106,7 +106,7 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 	}
 	q := r.query(ctx)
 	if err := q.Node.WithContext(ctx).Create(row); err != nil {
-		return domainnode.Node{}, err
+		return domainnode.Node{}, mapDBError(err)
 	}
 
 	if input.Type == domainnode.TypeFile && createStorageBinding {
@@ -120,7 +120,7 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 			Extra:         "{}",
 		}
 		if err := q.StorageObject.WithContext(ctx).Create(storageRow); err != nil {
-			return domainnode.Node{}, err
+			return domainnode.Node{}, mapDBError(err)
 		}
 
 		fileRow := &pgmodel.NodeFile{
@@ -131,11 +131,17 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 			FileSize:        input.FileSize,
 		}
 		if err := q.NodeFile.WithContext(ctx).Create(fileRow); err != nil {
-			return domainnode.Node{}, err
+			return domainnode.Node{}, mapDBError(err)
 		}
 	}
 
 	return r.FindViewByID(ctx, toDomainUint64(row.ID), input.LibraryID)
+}
+
+// LockSiblingNameScope 对同一资料库、同一父节点下的命名空间加事务级锁。
+func (r *NodeRepository) LockSiblingNameScope(ctx context.Context, libraryID, parentID uint64) error {
+	scope := fmt.Sprintf("nodes:name:%d:%d", libraryID, parentID)
+	return r.dbWithContext(ctx).Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", scope).Error
 }
 
 // UpdateNodeFields 更新节点元数据字段。

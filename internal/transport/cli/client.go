@@ -192,10 +192,11 @@ type SearchNodesRequest struct {
 }
 
 type CreateNodeRequest struct {
-	Name      string `json:"name"`
-	Type      int    `json:"type"`
-	ParentID  uint64 `json:"parentId,omitempty"`
-	LibraryID uint64 `json:"libraryId"`
+	Name           string `json:"name"`
+	Type           int    `json:"type"`
+	ParentID       uint64 `json:"parentId,omitempty"`
+	LibraryID      uint64 `json:"libraryId"`
+	ConflictPolicy string `json:"conflictPolicy,omitempty"`
 }
 
 type RenameNodeRequest struct {

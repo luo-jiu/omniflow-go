@@ -87,3 +87,8 @@ cd /Users/loyce/personal/omniflow/omniflow-go
 GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of --help
 ```
+
+`of fs mkdir` 当前支持可选 `--conflict-policy <error|auto_rename>`，用于和后端节点创建的重名策略保持一致：
+
+- 省略或 `error`：同目录重名时返回 `409`
+- `auto_rename`：自动改成 `name`、`name (1)`、`name (2)`

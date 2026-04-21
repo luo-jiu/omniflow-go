@@ -256,12 +256,13 @@ func (a *App) buildCommandTree() *command {
 	fs.Children["mkdir"] = &command{
 		Name:    "mkdir",
 		Summary: "Create a directory node",
-		Usage:   "of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>] [--base-url <url>] [--dry-run] [--json]",
+		Usage:   "of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>] [--conflict-policy <error|auto_rename>] [--base-url <url>] [--dry-run] [--json]",
 		Flags: []string{
 			"--library-id <id>   library id (required)",
 			"--name <name>       directory name (required)",
 			"--parent-id <id>    parent node id, defaults to root",
 			"--parent-path <p>   parent path from root",
+			"--conflict-policy   name conflict strategy: error or auto_rename",
 			"--base-url <url>    API base URL",
 			"--dry-run           preview only, do not commit changes",
 			"--json              output JSON",
@@ -269,6 +270,7 @@ func (a *App) buildCommandTree() *command {
 		Examples: []string{
 			"of fs mkdir --library-id 1 --name docs",
 			"of fs mkdir --library-id 1 --parent-path /docs --name chapter-1",
+			"of fs mkdir --library-id 1 --name docs --conflict-policy auto_rename",
 			"of fs mkdir --library-id 1 --name docs --dry-run --json",
 			"of fs mkdir --library-id 1 --parent-id 100 --name chapter-1 --json",
 		},

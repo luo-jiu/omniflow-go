@@ -28,7 +28,7 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of auth logout
 ./bin/of lib ls --size 20
 ./bin/of help fs mkdir --examples
-./bin/of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>]
+./bin/of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>] [--conflict-policy <error|auto_rename>]
 ./bin/of fs rename --node-id <id> --name <new_name>
 ./bin/of fs mv --library-id <id> (--node-id <id>|--node-path </a/b>) (--new-parent-id <id>|--new-parent-path </a/b>) [--before-node-id <id>] [--name <new_name>]
 ./bin/of fs rm --library-id <id> (--node-id <id>|--path </a/b>)
@@ -56,6 +56,11 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。
+
+`fs mkdir` 的 `--conflict-policy` 与后端节点创建一致：
+
+- 省略或 `error`：同目录重名时返回 `409`
+- `auto_rename`：自动改名为 `name`、`name (1)`、`name (2)`
 
 ## 3. 本地会话文件
 

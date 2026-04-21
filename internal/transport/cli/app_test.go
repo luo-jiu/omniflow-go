@@ -301,6 +301,25 @@ func TestRunHelpFSMkdirContainsDryRunFlag(t *testing.T) {
 	}
 }
 
+func TestRunHelpFSMkdirContainsConflictPolicyFlag(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "fs", "mkdir"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "--conflict-policy") {
+		t.Fatalf("expected --conflict-policy in mkdir help, got: %s", stdout.String())
+	}
+}
+
 func TestRunHelpAuthLogoutContainsDryRunFlag(t *testing.T) {
 	t.Parallel()
 

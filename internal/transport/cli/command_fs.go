@@ -12,19 +12,21 @@ func (a *App) runFSMkdir(args []string) error {
 	fs := a.newFlagSet("fs mkdir")
 
 	var (
-		baseURL    string
-		libraryID  uint64
-		parentID   uint64
-		parentPath string
-		name       string
-		dryRun     bool
-		jsonOut    bool
+		baseURL        string
+		libraryID      uint64
+		parentID       uint64
+		parentPath     string
+		name           string
+		conflictPolicy string
+		dryRun         bool
+		jsonOut        bool
 	)
 	fs.StringVar(&baseURL, "base-url", "", "API base url")
 	fs.Uint64Var(&libraryID, "library-id", 0, "library id (required)")
 	fs.Uint64Var(&parentID, "parent-id", 0, "parent node id (optional, default root)")
 	fs.StringVar(&parentPath, "parent-path", "", "parent path from root, e.g. /docs")
 	fs.StringVar(&name, "name", "", "directory name (required)")
+	fs.StringVar(&conflictPolicy, "conflict-policy", "", "name conflict strategy: error or auto_rename")
 	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	if err := fs.Parse(args); err != nil {
@@ -41,6 +43,7 @@ func (a *App) runFSMkdir(args []string) error {
 	if name == "" {
 		return errors.New("`--name` is required")
 	}
+	conflictPolicy = strings.TrimSpace(conflictPolicy)
 
 	parentPath = strings.TrimSpace(parentPath)
 	if parentID > 0 && parentPath != "" {
@@ -64,10 +67,11 @@ func (a *App) runFSMkdir(args []string) error {
 	}
 
 	created, err := client.CreateNode(context.Background(), CreateNodeRequest{
-		Name:      name,
-		Type:      0,
-		ParentID:  parentID,
-		LibraryID: libraryID,
+		Name:           name,
+		Type:           0,
+		ParentID:       parentID,
+		LibraryID:      libraryID,
+		ConflictPolicy: conflictPolicy,
 	}, dryRun)
 	if err != nil {
 		return err

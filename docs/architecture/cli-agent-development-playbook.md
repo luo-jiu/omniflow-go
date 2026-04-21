@@ -18,7 +18,7 @@
   - `of fs search`
   - `of fs path resolve`
 - 文件域（写）：
-  - `of fs mkdir`（支持 `--parent-id`/`--parent-path`）
+  - `of fs mkdir`（支持 `--parent-id`/`--parent-path` 与 `--conflict-policy`）
   - `of fs rename`
   - `of fs mv`（支持 `id/path` 混合输入策略）
   - `of fs rm`（支持 `--node-id`/`--path`）

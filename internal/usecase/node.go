@@ -42,16 +42,17 @@ type NodePath struct {
 }
 
 type CreateNodeCommand struct {
-	Actor      actor.Actor
-	Name       string
-	Type       domainnode.Type
-	ParentID   uint64
-	LibraryID  uint64
-	Ext        string
-	MIMEType   string
-	FileSize   int64
-	StorageKey string
-	DryRun     bool
+	Actor          actor.Actor
+	Name           string
+	Type           domainnode.Type
+	ParentID       uint64
+	LibraryID      uint64
+	Ext            string
+	MIMEType       string
+	FileSize       int64
+	StorageKey     string
+	ConflictPolicy NodeNameConflictPolicy
+	DryRun         bool
 }
 
 type UpdateNodeCommand struct {
@@ -171,7 +172,10 @@ const (
 	maxNodeExtLength       = 32
 )
 
-var errNodeRepositoryNotConfigured = errors.New("node repository is not configured")
+var (
+	errNodeRepositoryNotConfigured = errors.New("node repository is not configured")
+	errNodeNameAlreadyExists       = newClientMessageError(ErrConflict, "同一目录下已存在同名节点")
+)
 
 func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domainnode.Node, error) {
 	if err := u.ensureNodesConfigured(); err != nil {
@@ -197,9 +201,16 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		if err != nil {
 			return err
 		}
+		if err := u.nodes.LockSiblingNameScope(txCtx, cmd.LibraryID, parentID); err != nil {
+			return err
+		}
+		resolvedName, err := u.resolveCreateNodeName(txCtx, parentID, cmd.LibraryID, name, cmd.ConflictPolicy)
+		if err != nil {
+			return err
+		}
 
 		result, err := u.nodes.CreateNode(txCtx, repository.CreateNodeInput{
-			Name:            name,
+			Name:            resolvedName,
 			Type:            cmd.Type,
 			ParentID:        parentID,
 			LibraryID:       cmd.LibraryID,
@@ -217,7 +228,7 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 				return ErrNotFound
 			}
 			if errors.Is(err, repository.ErrConflict) {
-				return ErrConflict
+				return errNodeNameAlreadyExists
 			}
 			if errors.Is(err, repository.ErrInvalidState) {
 				return fmt.Errorf("%w: invalid node create request", ErrInvalidArgument)
@@ -588,7 +599,7 @@ func (u *NodeUseCase) Rename(ctx context.Context, nodeID uint64, cmd RenameNodeC
 				return ErrNotFound
 			}
 			if errors.Is(err, repository.ErrConflict) {
-				return ErrConflict
+				return errNodeNameAlreadyExists
 			}
 			if errors.Is(err, repository.ErrInvalidState) {
 				return fmt.Errorf("%w: invalid node rename request", ErrInvalidArgument)
@@ -757,7 +768,7 @@ func (u *NodeUseCase) MoveBatch(ctx context.Context, cmd MoveNodeBatchCommand) (
 					return ErrNotFound
 				}
 				if errors.Is(err, repository.ErrConflict) {
-					return ErrConflict
+					return errNodeNameAlreadyExists
 				}
 				if errors.Is(err, repository.ErrInvalidState) {
 					return fmt.Errorf("%w: invalid node move request", ErrInvalidArgument)
@@ -1144,7 +1155,7 @@ func (u *NodeUseCase) RestoreNodeAndChildren(ctx context.Context, cmd RestoreNod
 				return ErrNotFound
 			}
 			if errors.Is(err, repository.ErrConflict) {
-				return ErrConflict
+				return errNodeNameAlreadyExists
 			}
 			if errors.Is(err, repository.ErrInvalidState) {
 				return fmt.Errorf("%w: invalid node restore request", ErrInvalidArgument)

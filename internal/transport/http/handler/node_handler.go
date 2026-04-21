@@ -39,14 +39,15 @@ type libraryRootURI struct {
 }
 
 type createNodeRequest struct {
-	Name       string `json:"name" binding:"required"`
-	Ext        string `json:"ext"`
-	MIMEType   string `json:"mimeType"`
-	FileSize   int64  `json:"fileSize"`
-	StorageKey string `json:"storageKey"`
-	Type       int    `json:"type"`
-	ParentID   uint64 `json:"parentId"`
-	LibraryID  uint64 `json:"libraryId" binding:"required"`
+	Name           string `json:"name" binding:"required"`
+	Ext            string `json:"ext"`
+	MIMEType       string `json:"mimeType"`
+	FileSize       int64  `json:"fileSize"`
+	StorageKey     string `json:"storageKey"`
+	Type           int    `json:"type"`
+	ParentID       uint64 `json:"parentId"`
+	LibraryID      uint64 `json:"libraryId" binding:"required"`
+	ConflictPolicy string `json:"conflictPolicy"`
 }
 
 type searchNodesRequest struct {

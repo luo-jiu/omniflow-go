@@ -33,16 +33,17 @@ func (h *NodeHandler) CreateNode(ctx *gin.Context) {
 	}
 
 	created, err := h.nodeUseCase.Create(ctx.Request.Context(), usecase.CreateNodeCommand{
-		Actor:      actorFromContext(ctx),
-		Name:       req.Name,
-		Type:       nodeType,
-		ParentID:   req.ParentID,
-		LibraryID:  req.LibraryID,
-		Ext:        strings.TrimSpace(req.Ext),
-		MIMEType:   strings.TrimSpace(req.MIMEType),
-		FileSize:   req.FileSize,
-		StorageKey: strings.TrimSpace(req.StorageKey),
-		DryRun:     dryRun,
+		Actor:          actorFromContext(ctx),
+		Name:           req.Name,
+		Type:           nodeType,
+		ParentID:       req.ParentID,
+		LibraryID:      req.LibraryID,
+		Ext:            strings.TrimSpace(req.Ext),
+		MIMEType:       strings.TrimSpace(req.MIMEType),
+		FileSize:       req.FileSize,
+		StorageKey:     strings.TrimSpace(req.StorageKey),
+		ConflictPolicy: usecase.NodeNameConflictPolicy(req.ConflictPolicy),
+		DryRun:         dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

@@ -138,14 +138,16 @@ CLI 硬规则：
 - 常规后端改动至少执行：
 
 ```bash
-go test ./...
+GOCACHE=/tmp/go-build go test ./...
 ```
 
 - CLI 改动额外执行：
 
 ```bash
-go build -o ./bin/of ./cmd/cli
+GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ```
+
+- 本地执行 Go 命令时，默认使用 `GOCACHE=/tmp/go-build`，避免把 `.gocache/` 写回仓库目录。
 
 - 新增能力至少覆盖一条成功路径和一条失败路径。
 - 写链路必须覆盖 `dry-run` 与真实执行的关键差异。

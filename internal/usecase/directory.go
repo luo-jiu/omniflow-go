@@ -23,13 +23,14 @@ import (
 )
 
 type UploadFileCommand struct {
-	Actor       actor.Actor
-	LibraryID   uint64
-	ParentID    uint64
-	FileName    string
-	FileSize    int64
-	ContentType string
-	Content     io.Reader
+	Actor          actor.Actor
+	LibraryID      uint64
+	ParentID       uint64
+	FileName       string
+	FileSize       int64
+	ContentType    string
+	Content        io.Reader
+	ConflictPolicy NodeNameConflictPolicy
 }
 
 type GetFileLinkQuery struct {
@@ -118,15 +119,16 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 	}
 
 	node, err := u.nodes.Create(ctx, CreateNodeCommand{
-		Actor:      cmd.Actor,
-		Name:       name,
-		Type:       domainnode.TypeFile,
-		ParentID:   cmd.ParentID,
-		LibraryID:  cmd.LibraryID,
-		Ext:        ext,
-		MIMEType:   contentType,
-		FileSize:   cmd.FileSize,
-		StorageKey: storageKey,
+		Actor:          cmd.Actor,
+		Name:           name,
+		Type:           domainnode.TypeFile,
+		ParentID:       cmd.ParentID,
+		LibraryID:      cmd.LibraryID,
+		Ext:            ext,
+		MIMEType:       contentType,
+		FileSize:       cmd.FileSize,
+		StorageKey:     storageKey,
+		ConflictPolicy: cmd.ConflictPolicy,
 	})
 	if err != nil {
 		_ = u.storage.Delete(ctx, storageKey)
@@ -138,7 +140,7 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		"library_id":  cmd.LibraryID,
 		"parent_id":   cmd.ParentID,
 		"node_id":     node.ID,
-		"name":        name,
+		"name":        node.Name,
 		"storage_key": storageKey,
 		"size":        cmd.FileSize,
 		"mime_type":   contentType,

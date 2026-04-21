@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strings"
 	"time"
 
 	"omniflow-go/internal/usecase"
@@ -44,6 +45,10 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	if !ok {
 		return
 	}
+	conflictPolicy := strings.TrimSpace(ctx.PostForm("conflictPolicy"))
+	if conflictPolicy == "" {
+		conflictPolicy = strings.TrimSpace(ctx.PostForm("conflict_policy"))
+	}
 
 	if h.directoryUseCase == nil {
 		InternalError(ctx, "directory service not configured")
@@ -58,13 +63,14 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	defer file.Close()
 
 	node, err := h.directoryUseCase.UploadAndCreateNode(ctx.Request.Context(), usecase.UploadFileCommand{
-		Actor:       actorFromContext(ctx),
-		LibraryID:   libraryID,
-		ParentID:    parentID,
-		FileName:    fileHeader.Filename,
-		FileSize:    fileHeader.Size,
-		ContentType: fileHeader.Header.Get("Content-Type"),
-		Content:     file,
+		Actor:          actorFromContext(ctx),
+		LibraryID:      libraryID,
+		ParentID:       parentID,
+		FileName:       fileHeader.Filename,
+		FileSize:       fileHeader.Size,
+		ContentType:    fileHeader.Header.Get("Content-Type"),
+		Content:        file,
+		ConflictPolicy: usecase.NodeNameConflictPolicy(conflictPolicy),
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

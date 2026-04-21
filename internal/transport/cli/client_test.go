@@ -114,6 +114,53 @@ func TestBatchSetArchiveChildrenBuiltInTypeWithoutDryRun(t *testing.T) {
 	}
 }
 
+func TestCreateNodeIncludesConflictPolicy(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		bodyText := string(body)
+		if !strings.Contains(bodyText, `"conflictPolicy":"auto_rename"`) {
+			t.Fatalf("expected conflictPolicy in request body, got %s", bodyText)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"id":9,"name":"docs (1)","type":"dir","parentId":0,"libraryId":1},"request_id":"req-node-create"}`)),
+		}, nil
+	})
+
+	created, err := client.CreateNode(context.Background(), CreateNodeRequest{
+		Name:           "docs",
+		Type:           0,
+		LibraryID:      1,
+		ConflictPolicy: "auto_rename",
+	}, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if created.Name != "docs (1)" {
+		t.Fatalf("expected renamed node name, got %q", created.Name)
+	}
+}
+
 func TestClearRecycleBin(t *testing.T) {
 	t.Parallel()
 

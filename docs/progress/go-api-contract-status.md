@@ -54,6 +54,10 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - `PATCH /api/v1/nodes/:nodeId/archive/built-in-type/batch-set`
 - Browser file mapping 与 browser bookmark 相关接口
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约
+- 节点创建与目录上传支持可选 `conflictPolicy`：
+  - 默认或 `error`：同一目录下重名时返回 `409`，message 为“同一目录下已存在同名节点”。
+  - `auto_rename`：系统插入场景可让后端自动追加序号，规则为 `name`、`name (1)`、`name (2)`；文件扩展名单独保存，序号只追加到文件名主体。
+  - 手动重命名和移动仍保持重名即 `409`，不自动改名。
 
 ## 5. 建议持续回归
 

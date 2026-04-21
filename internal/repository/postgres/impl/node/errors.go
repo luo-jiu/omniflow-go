@@ -5,6 +5,7 @@ import (
 
 	"omniflow-go/internal/repository/repoerr"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -20,6 +21,18 @@ func mapDBError(err error) error {
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
+	}
+	var pgErr interface{ SQLState() string }
+	if errors.As(err, &pgErr) && pgErr.SQLState() == "23505" {
+		var typed *pgconn.PgError
+		if errors.As(err, &typed) && typed.ConstraintName == "uq_nodes_live_sibling_visible_name" {
+			return ErrConflict
+		}
+		return err
+	}
+	var typed *pgconn.PgError
+	if errors.As(err, &typed) && typed.ConstraintName == "uq_nodes_live_sibling_visible_name" {
+		return ErrConflict
 	}
 	return err
 }

@@ -19,6 +19,26 @@ var (
 	ErrUnsupportedStorage = errors.New("unsupported object storage implementation")
 )
 
+type clientMessageError struct {
+	cause   error
+	message string
+}
+
+func (e clientMessageError) Error() string {
+	return e.message
+}
+
+func (e clientMessageError) Unwrap() error {
+	return e.cause
+}
+
+func newClientMessageError(cause error, message string) error {
+	return clientMessageError{
+		cause:   cause,
+		message: message,
+	}
+}
+
 func actorIDToUint64(principal actor.Actor) (uint64, error) {
 	id := strings.TrimSpace(principal.ID)
 	if id == "" {
