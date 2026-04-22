@@ -19,6 +19,7 @@ type Config struct {
 	Redis    Redis    `yaml:"redis"`
 	Storage  Storage  `yaml:"storage"`
 	MinIO    MinIO    `yaml:"minio"`
+	Upload   Upload   `yaml:"upload"`
 }
 
 type App struct {
@@ -77,6 +78,12 @@ type Redis struct {
 
 type Storage struct {
 	Provider string `yaml:"provider"`
+}
+
+// Upload 分片上传相关配置。
+type Upload struct {
+	ChunkSizeBytes int64         `yaml:"chunk_size_bytes"`
+	SessionTTL     time.Duration `yaml:"session_ttl"`
 }
 
 type MinIO struct {
@@ -173,6 +180,10 @@ func defaultConfig() *Config {
 			UseSSL:    false,
 			Bucket:    "my-bucket",
 		},
+		Upload: Upload{
+			ChunkSizeBytes: 10 * 1024 * 1024,
+			SessionTTL:     24 * time.Hour,
+		},
 	}
 }
 
@@ -262,6 +273,13 @@ func (c *Config) applyDefaults() error {
 
 	if c.MinIO.Bucket == "" {
 		c.MinIO.Bucket = "my-bucket"
+	}
+
+	if c.Upload.ChunkSizeBytes < 5*1024*1024 {
+		c.Upload.ChunkSizeBytes = 10 * 1024 * 1024
+	}
+	if c.Upload.SessionTTL <= 0 {
+		c.Upload.SessionTTL = 24 * time.Hour
 	}
 	return nil
 }

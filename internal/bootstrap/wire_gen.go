@@ -57,6 +57,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	libraryUseCase := usecase.NewLibraryUseCase(libraryRepository, transactor, allowAll, logSink)
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, objectStorage, allowAll, logSink)
+	multipartUploadUseCase, multipartUploadCleanup := usecase.NewMultipartUploadUseCase(nodeUseCase, objectStorage, allowAll, logSink, cfg)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
 	tagUseCase := usecase.NewTagUseCase(tagRepository, transactor)
 	browserBookmarkUseCase := usecase.NewBrowserBookmarkUseCase(browserBookmarkRepository, transactor, logSink)
@@ -68,16 +69,18 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	libraryHandler := httpHandler.NewLibraryHandler(libraryUseCase)
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
 	directoryHandler := httpHandler.NewDirectoryHandler(directoryUseCase)
+	multipartUploadHandler := httpHandler.NewMultipartUploadHandler(multipartUploadUseCase)
 	fileHandler := httpHandler.NewFileHandler(fileUseCase)
 	tagHandler := httpHandler.NewTagHandler(tagUseCase)
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(browserBookmarkUseCase)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(browserFileMappingUseCase)
 
-	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler)
+	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, multipartUploadHandler)
 	httpServer := server.NewHTTPServer(cfg, engine, logger)
 	application := app.New(cfg, logger, httpServer)
 
 	cleanup := func() {
+		multipartUploadCleanup()
 		objectStorageCleanup()
 		redisCleanup()
 		databaseCleanup()

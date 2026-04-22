@@ -57,3 +57,7 @@ minio:
   secret_key: admin123
   use_ssl: false
   bucket: my-bucket
+
+upload:
+  chunk_size_bytes: 10485760  # 10MB
+  session_ttl: 24h
