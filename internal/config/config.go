@@ -174,7 +174,7 @@ func defaultConfig() *Config {
 			Provider: "minio",
 		},
 		MinIO: MinIO{
-			Endpoint:  "localhost:9000",
+			Endpoint:  "192.168.1.10:9000",
 			AccessKey: "admin",
 			SecretKey: "admin123",
 			UseSSL:    false,
