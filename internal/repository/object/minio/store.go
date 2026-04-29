@@ -25,13 +25,24 @@ type Store struct {
 }
 
 func NewStore(cfg *config.Config) (storage.ObjectStorage, func(), error) {
-	endpoint, secure, err := normalizeMinIOEndpoint(cfg.MinIO.Endpoint, cfg.MinIO.UseSSL)
+	return NewStoreFromConfig("legacy", config.ProviderConfig{
+		Endpoint:  cfg.MinIO.Endpoint,
+		AccessKey: cfg.MinIO.AccessKey,
+		SecretKey: cfg.MinIO.SecretKey,
+		UseSSL:    cfg.MinIO.UseSSL,
+		Bucket:    cfg.MinIO.Bucket,
+	})
+}
+
+// NewStoreFromConfig 根据 ProviderConfig 创建 MinIO 存储实例。
+func NewStoreFromConfig(_ string, pcfg config.ProviderConfig) (storage.ObjectStorage, func(), error) {
+	endpoint, secure, err := normalizeMinIOEndpoint(pcfg.Endpoint, pcfg.UseSSL)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(cfg.MinIO.AccessKey, cfg.MinIO.SecretKey, ""),
+		Creds:  credentials.NewStaticV4(pcfg.AccessKey, pcfg.SecretKey, ""),
 		Secure: secure,
 	})
 	if err != nil {
@@ -41,7 +52,7 @@ func NewStore(cfg *config.Config) (storage.ObjectStorage, func(), error) {
 	return &Store{
 		client: client,
 		core:   minio.Core{Client: client},
-		bucket: cfg.MinIO.Bucket,
+		bucket: pcfg.Bucket,
 	}, func() {}, nil
 }
 

@@ -49,6 +49,7 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	if conflictPolicy == "" {
 		conflictPolicy = strings.TrimSpace(ctx.PostForm("conflict_policy"))
 	}
+	storageProvider := PostFormString(ctx, "storage_provider", "storageProvider")
 
 	if h.directoryUseCase == nil {
 		InternalError(ctx, "directory service not configured")
@@ -70,7 +71,8 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 		FileSize:       fileHeader.Size,
 		ContentType:    fileHeader.Header.Get("Content-Type"),
 		Content:        file,
-		ConflictPolicy: usecase.NodeNameConflictPolicy(conflictPolicy),
+		ConflictPolicy:  usecase.NodeNameConflictPolicy(conflictPolicy),
+		StorageProvider: storageProvider,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

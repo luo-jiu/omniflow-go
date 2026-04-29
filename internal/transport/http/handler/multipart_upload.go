@@ -20,12 +20,13 @@ func NewMultipartUploadHandler(uc *usecase.MultipartUploadUseCase) *MultipartUpl
 }
 
 type initiateMultipartRequest struct {
-	LibraryID      uint64 `json:"libraryId" binding:"required"`
-	ParentID       uint64 `json:"parentId"`
-	FileName       string `json:"fileName" binding:"required"`
-	FileSize       int64  `json:"fileSize" binding:"required,min=1"`
-	ContentType    string `json:"contentType"`
-	ConflictPolicy string `json:"conflictPolicy"`
+	LibraryID       uint64 `json:"libraryId" binding:"required"`
+	ParentID        uint64 `json:"parentId"`
+	FileName        string `json:"fileName" binding:"required"`
+	FileSize        int64  `json:"fileSize" binding:"required,min=1"`
+	ContentType     string `json:"contentType"`
+	ConflictPolicy  string `json:"conflictPolicy"`
+	StorageProvider string `json:"storageProvider"`
 }
 
 type completeMultipartRequest struct {
@@ -51,7 +52,8 @@ func (h *MultipartUploadHandler) InitiateUpload(ctx *gin.Context) {
 		FileName:       req.FileName,
 		FileSize:       req.FileSize,
 		ContentType:    req.ContentType,
-		ConflictPolicy: usecase.NodeNameConflictPolicy(req.ConflictPolicy),
+		ConflictPolicy:  usecase.NodeNameConflictPolicy(req.ConflictPolicy),
+		StorageProvider: req.StorageProvider,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

@@ -42,17 +42,19 @@ type NodePath struct {
 }
 
 type CreateNodeCommand struct {
-	Actor          actor.Actor
-	Name           string
-	Type           domainnode.Type
-	ParentID       uint64
-	LibraryID      uint64
-	Ext            string
-	MIMEType       string
-	FileSize       int64
-	StorageKey     string
-	ConflictPolicy NodeNameConflictPolicy
-	DryRun         bool
+	Actor           actor.Actor
+	Name            string
+	Type            domainnode.Type
+	ParentID        uint64
+	LibraryID       uint64
+	Ext             string
+	MIMEType        string
+	FileSize        int64
+	StorageKey      string
+	StorageProvider string
+	StorageBucket   string
+	ConflictPolicy  NodeNameConflictPolicy
+	DryRun          bool
 }
 
 type UpdateNodeCommand struct {
@@ -166,11 +168,7 @@ func NewNodeUseCase(
 	}
 }
 
-const (
-	defaultStorageProvider = "MINIO"
-	defaultStorageBucket   = "my-bucket"
-	maxNodeExtLength       = 32
-)
+const maxNodeExtLength = 32
 
 var (
 	errNodeRepositoryNotConfigured = errors.New("node repository is not configured")
@@ -220,8 +218,8 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 			StorageKey:      strings.TrimSpace(cmd.StorageKey),
 			BuiltInType:     "DEF",
 			ArchiveMode:     false,
-			StorageProvider: defaultStorageProvider,
-			StorageBucket:   defaultStorageBucket,
+			StorageProvider: cmd.StorageProvider,
+			StorageBucket:   cmd.StorageBucket,
 		})
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {

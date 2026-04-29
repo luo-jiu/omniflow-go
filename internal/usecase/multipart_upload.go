@@ -33,19 +33,21 @@ type multipartSession struct {
 	ChunkSize      int64
 	TotalParts     int
 	ConflictPolicy NodeNameConflictPolicy
+	ProviderAlias  string
 	Actor          actor.Actor
 	CreatedAt      time.Time
 }
 
 // InitiateMultipartUploadCommand 发起分片上传的参数。
 type InitiateMultipartUploadCommand struct {
-	Actor          actor.Actor
-	LibraryID      uint64
-	ParentID       uint64
-	FileName       string
-	FileSize       int64
-	ContentType    string
-	ConflictPolicy NodeNameConflictPolicy
+	Actor           actor.Actor
+	LibraryID       uint64
+	ParentID        uint64
+	FileName        string
+	FileSize        int64
+	ContentType     string
+	ConflictPolicy  NodeNameConflictPolicy
+	StorageProvider string
 }
 
 // InitiateMultipartUploadResult 发起分片上传的返回值。
@@ -96,7 +98,7 @@ type MultipartUploadUseCase struct {
 	mu         sync.RWMutex
 	sessions   map[string]*multipartSession
 	nodes      *NodeUseCase
-	storage    storage.ObjectStorage
+	registry   *storage.StorageRegistry
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
 	cfg        *config.Config
@@ -106,7 +108,7 @@ type MultipartUploadUseCase struct {
 // NewMultipartUploadUseCase 创建分片上传 UseCase，启动后台过期会话清理。
 func NewMultipartUploadUseCase(
 	nodes *NodeUseCase,
-	st storage.ObjectStorage,
+	registry *storage.StorageRegistry,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
 	cfg *config.Config,
@@ -114,7 +116,7 @@ func NewMultipartUploadUseCase(
 	uc := &MultipartUploadUseCase{
 		sessions:   make(map[string]*multipartSession),
 		nodes:      nodes,
-		storage:    st,
+		registry:   registry,
 		authorizer: authorizer,
 		auditLog:   auditLog,
 		cfg:        cfg,
@@ -153,7 +155,17 @@ func (u *MultipartUploadUseCase) cleanupExpired() {
 
 	for _, s := range expired {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		if err := u.storage.AbortMultipartUpload(ctx, s.StorageKey, s.UploadID); err != nil {
+		store, err := u.registry.Get(s.ProviderAlias)
+		if err != nil {
+			slog.Warn("multipart_upload.sweep.provider_not_found",
+				"upload_id", s.UploadID,
+				"provider", s.ProviderAlias,
+				"error", err,
+			)
+			cancel()
+			continue
+		}
+		if err := store.AbortMultipartUpload(ctx, s.StorageKey, s.UploadID); err != nil {
 			slog.Warn("multipart_upload.sweep.abort_failed",
 				"upload_id", s.UploadID,
 				"error", err,
@@ -179,7 +191,7 @@ func (u *MultipartUploadUseCase) Initiate(
 			"%w: file size must be > 0", ErrInvalidArgument,
 		)
 	}
-	if u.storage == nil {
+	if u.registry == nil {
 		return InitiateMultipartUploadResult{}, fmt.Errorf(
 			"%w: object storage not configured", ErrInvalidArgument,
 		)
@@ -190,6 +202,7 @@ func (u *MultipartUploadUseCase) Initiate(
 
 	base := extractUploadBaseName(fileName)
 	extWithDot := path.Ext(base)
+	ext := strings.TrimPrefix(extWithDot, ".")
 
 	contentType := strings.TrimSpace(cmd.ContentType)
 	if contentType == "" || strings.EqualFold(contentType, defaultUploadContentType) {
@@ -202,11 +215,30 @@ func (u *MultipartUploadUseCase) Initiate(
 		contentType = defaultUploadContentType
 	}
 
+	// 解析目标 provider
+	var (
+		store         storage.ObjectStorage
+		providerAlias string
+		resolveErr    error
+	)
+	if override := strings.TrimSpace(cmd.StorageProvider); override != "" {
+		store, resolveErr = u.registry.Get(override)
+		if resolveErr != nil {
+			return InitiateMultipartUploadResult{}, fmt.Errorf("%w: storage provider %q: %v", ErrInvalidArgument, override, resolveErr)
+		}
+		providerAlias = override
+	} else {
+		store, providerAlias, resolveErr = u.registry.Resolve(cmd.FileSize, ext, contentType)
+		if resolveErr != nil {
+			return InitiateMultipartUploadResult{}, resolveErr
+		}
+	}
+
 	storageKey := fmt.Sprintf("libraries/%d/%s%s", cmd.LibraryID, uuid.NewString(), extWithDot)
 	chunkSize := u.cfg.Upload.ChunkSizeBytes
 	totalParts := int(math.Ceil(float64(cmd.FileSize) / float64(chunkSize)))
 
-	uploadID, err := u.storage.InitiateMultipartUpload(ctx, storageKey, contentType)
+	uploadID, err := store.InitiateMultipartUpload(ctx, storageKey, contentType)
 	if err != nil {
 		return InitiateMultipartUploadResult{}, err
 	}
@@ -222,6 +254,7 @@ func (u *MultipartUploadUseCase) Initiate(
 		ChunkSize:      chunkSize,
 		TotalParts:     totalParts,
 		ConflictPolicy: cmd.ConflictPolicy,
+		ProviderAlias:  providerAlias,
 		Actor:          cmd.Actor,
 		CreatedAt:      time.Now(),
 	}
@@ -262,7 +295,12 @@ func (u *MultipartUploadUseCase) UploadPart(
 		)
 	}
 
-	etag, err := u.storage.UploadPart(
+	store, storeErr := u.registry.Get(session.ProviderAlias)
+	if storeErr != nil {
+		return UploadPartResult{}, fmt.Errorf("storage provider %q: %w", session.ProviderAlias, storeErr)
+	}
+
+	etag, err := store.UploadPart(
 		ctx, session.StorageKey, session.UploadID, cmd.PartNumber, cmd.Body, cmd.Size,
 	)
 	if err != nil {
@@ -293,7 +331,12 @@ func (u *MultipartUploadUseCase) Complete(
 		}
 	}
 
-	if err := u.storage.CompleteMultipartUpload(
+	store, storeErr := u.registry.Get(session.ProviderAlias)
+	if storeErr != nil {
+		return domainnode.Node{}, fmt.Errorf("storage provider %q: %w", session.ProviderAlias, storeErr)
+	}
+
+	if err := store.CompleteMultipartUpload(
 		ctx, session.StorageKey, session.UploadID, storageParts,
 	); err != nil {
 		return domainnode.Node{}, err
@@ -308,19 +351,21 @@ func (u *MultipartUploadUseCase) Complete(
 	ext := strings.TrimPrefix(extWithDot, ".")
 
 	node, err := u.nodes.Create(ctx, CreateNodeCommand{
-		Actor:          session.Actor,
-		Name:           name,
-		Type:           domainnode.TypeFile,
-		ParentID:       session.ParentID,
-		LibraryID:      session.LibraryID,
-		Ext:            ext,
-		MIMEType:       session.ContentType,
-		FileSize:       session.FileSize,
-		StorageKey:     session.StorageKey,
-		ConflictPolicy: session.ConflictPolicy,
+		Actor:           session.Actor,
+		Name:            name,
+		Type:            domainnode.TypeFile,
+		ParentID:        session.ParentID,
+		LibraryID:       session.LibraryID,
+		Ext:             ext,
+		MIMEType:        session.ContentType,
+		FileSize:        session.FileSize,
+		StorageKey:      session.StorageKey,
+		StorageProvider: session.ProviderAlias,
+		StorageBucket:   store.Bucket(),
+		ConflictPolicy:  session.ConflictPolicy,
 	})
 	if err != nil {
-		_ = u.storage.Delete(ctx, session.StorageKey)
+		_ = store.Delete(ctx, session.StorageKey)
 		return domainnode.Node{}, err
 	}
 
@@ -358,7 +403,11 @@ func (u *MultipartUploadUseCase) Abort(
 		return err
 	}
 
-	if err := u.storage.AbortMultipartUpload(ctx, session.StorageKey, session.UploadID); err != nil {
+	store, storeErr := u.registry.Get(session.ProviderAlias)
+	if storeErr != nil {
+		return fmt.Errorf("storage provider %q: %w", session.ProviderAlias, storeErr)
+	}
+	if err := store.AbortMultipartUpload(ctx, session.StorageKey, session.UploadID); err != nil {
 		return err
 	}
 
@@ -384,7 +433,12 @@ func (u *MultipartUploadUseCase) ListParts(
 		return nil, err
 	}
 
-	parts, err := u.storage.ListParts(ctx, session.StorageKey, session.UploadID)
+	store, storeErr := u.registry.Get(session.ProviderAlias)
+	if storeErr != nil {
+		return nil, fmt.Errorf("storage provider %q: %w", session.ProviderAlias, storeErr)
+	}
+
+	parts, err := store.ListParts(ctx, session.StorageKey, session.UploadID)
 	if err != nil {
 		return nil, err
 	}

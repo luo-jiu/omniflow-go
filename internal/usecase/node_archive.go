@@ -413,3 +413,56 @@ func (u *NodeUseCase) ListFileStorageKeysByNodeIDs(
 	}
 	return u.nodes.ListStorageKeysByNodeIDs(ctx, libraryID, normalized)
 }
+
+// FileStorageInfo 文件节点的存储位置信息。
+type FileStorageInfo struct {
+	NodeID        uint64
+	StorageKey    string
+	ProviderAlias string
+}
+
+// GetFileStorageProvider 查询单个文件节点的 provider alias。
+func (u *NodeUseCase) GetFileStorageProvider(ctx context.Context, nodeID, libraryID uint64) (string, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return "", err
+	}
+	return u.nodes.GetStorageProviderByNodeID(ctx, nodeID, libraryID)
+}
+
+// ListFileStorageInfo 批量查询文件节点的存储位置信息。
+func (u *NodeUseCase) ListFileStorageInfo(
+	ctx context.Context,
+	principal actor.Actor,
+	libraryID uint64,
+	nodeIDs []uint64,
+) ([]FileStorageInfo, error) {
+	if libraryID == 0 {
+		return nil, fmt.Errorf("%w: library id is required", ErrInvalidArgument)
+	}
+	if len(nodeIDs) == 0 {
+		return []FileStorageInfo{}, nil
+	}
+	if err := u.AuthorizeRead(ctx, principal, libraryID); err != nil {
+		return nil, err
+	}
+
+	normalized := normalizePositiveUint64List(nodeIDs)
+	if len(normalized) == 0 {
+		return []FileStorageInfo{}, nil
+	}
+
+	rows, err := u.nodes.ListStorageInfoByNodeIDs(ctx, libraryID, normalized)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]FileStorageInfo, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, FileStorageInfo{
+			NodeID:        uint64(row.NodeID),
+			StorageKey:    row.StorageKey,
+			ProviderAlias: row.ProviderAlias,
+		})
+	}
+	return result, nil
+}

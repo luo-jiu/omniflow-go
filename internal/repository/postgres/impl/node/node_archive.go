@@ -26,6 +26,13 @@ type storageKeyRow struct {
 	StorageKey string `gorm:"column:storage_key"`
 }
 
+// StorageInfoRow 文件节点的存储位置信息。
+type StorageInfoRow struct {
+	NodeID        int64  `gorm:"column:node_id"`
+	StorageKey    string `gorm:"column:storage_key"`
+	ProviderAlias string `gorm:"column:provider_alias"`
+}
+
 var archiveImageExtensions = []string{
 	"jpg",
 	"jpeg",
@@ -91,6 +98,25 @@ const sqlListStorageKeysByNodeIDs = `
 SELECT
     nf.file_id AS node_id,
     so.object_key AS storage_key
+FROM node_files nf
+JOIN nodes n
+  ON n.id = nf.file_id
+ AND n.library_id = nf.library_id
+ AND n.deleted_at IS NULL
+ AND n.node_type = 1
+JOIN storage_objects so
+  ON so.id = nf.storage_object_id
+ AND so.library_id = nf.library_id
+ AND so.deleted_at IS NULL
+WHERE nf.library_id = ?
+  AND nf.file_id IN ?
+`
+
+const sqlListStorageInfoByNodeIDs = `
+SELECT
+    nf.file_id AS node_id,
+    so.object_key AS storage_key,
+    so.provider AS provider_alias
 FROM node_files nf
 JOIN nodes n
   ON n.id = nf.file_id
@@ -304,6 +330,47 @@ func (r *NodeRepository) ListStorageKeysByNodeIDs(
 	return lo.SliceToMap(filtered, func(row storageKeyRow) (uint64, string) {
 		return toDomainUint64(row.NodeID), strings.TrimSpace(row.StorageKey)
 	}), nil
+}
+
+// ListStorageInfoByNodeIDs 批量查询文件节点的 storageKey + providerAlias。
+func (r *NodeRepository) ListStorageInfoByNodeIDs(
+	ctx context.Context,
+	libraryID uint64,
+	nodeIDs []uint64,
+) ([]StorageInfoRow, error) {
+	if len(nodeIDs) == 0 {
+		return []StorageInfoRow{}, nil
+	}
+
+	rows := make([]StorageInfoRow, 0, len(nodeIDs))
+	if err := r.scanRaw(
+		ctx,
+		&rows,
+		sqlListStorageInfoByNodeIDs,
+		toPGInt64(libraryID),
+		toPGInt64Slice(nodeIDs),
+	); err != nil {
+		return nil, err
+	}
+
+	return lo.Filter(rows, func(row StorageInfoRow, _ int) bool {
+		return toDomainUint64(row.NodeID) > 0 && strings.TrimSpace(row.StorageKey) != ""
+	}), nil
+}
+
+// GetStorageProviderByNodeID 查询单个文件节点的 provider alias。
+func (r *NodeRepository) GetStorageProviderByNodeID(
+	ctx context.Context,
+	nodeID, libraryID uint64,
+) (string, error) {
+	rows, err := r.ListStorageInfoByNodeIDs(ctx, libraryID, []uint64{nodeID})
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return "", ErrNotFound
+	}
+	return strings.TrimSpace(rows[0].ProviderAlias), nil
 }
 
 func (r *NodeRepository) ListDirectChildDirectoryNodesByBuiltInType(

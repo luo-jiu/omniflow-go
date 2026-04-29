@@ -23,14 +23,15 @@ import (
 )
 
 type UploadFileCommand struct {
-	Actor          actor.Actor
-	LibraryID      uint64
-	ParentID       uint64
-	FileName       string
-	FileSize       int64
-	ContentType    string
-	Content        io.Reader
-	ConflictPolicy NodeNameConflictPolicy
+	Actor           actor.Actor
+	LibraryID       uint64
+	ParentID        uint64
+	FileName        string
+	FileSize        int64
+	ContentType     string
+	Content         io.Reader
+	ConflictPolicy  NodeNameConflictPolicy
+	StorageProvider string
 }
 
 type GetFileLinkQuery struct {
@@ -54,7 +55,7 @@ type BatchFileLinkItem struct {
 
 type DirectoryUseCase struct {
 	nodes      *NodeUseCase
-	storage    storage.ObjectStorage
+	registry   *storage.StorageRegistry
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
 }
@@ -63,13 +64,13 @@ const defaultUploadContentType = "application/octet-stream"
 
 func NewDirectoryUseCase(
 	nodes *NodeUseCase,
-	storage storage.ObjectStorage,
+	registry *storage.StorageRegistry,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
 ) *DirectoryUseCase {
 	return &DirectoryUseCase{
 		nodes:      nodes,
-		storage:    storage,
+		registry:   registry,
 		authorizer: authorizer,
 		auditLog:   auditLog,
 	}
@@ -93,7 +94,7 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		)
 		return domainnode.Node{}, fmt.Errorf("%w: file size must be >= 0", ErrInvalidArgument)
 	}
-	if u.storage == nil {
+	if u.registry == nil {
 		return domainnode.Node{}, fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
 	}
 	if err := u.authorize(ctx, cmd.Actor, cmd.LibraryID, authz.ActionUpload); err != nil {
@@ -113,25 +114,43 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		return domainnode.Node{}, fmt.Errorf("%w: resolve upload content type failed", ErrInvalidArgument)
 	}
 
+	// 1. 解析目标 provider：优先使用显式指定，否则走路由规则
+	var store storage.ObjectStorage
+	var providerAlias string
+	if override := strings.TrimSpace(cmd.StorageProvider); override != "" {
+		store, err = u.registry.Get(override)
+		if err != nil {
+			return domainnode.Node{}, fmt.Errorf("%w: storage provider %q: %v", ErrInvalidArgument, override, err)
+		}
+		providerAlias = override
+	} else {
+		store, providerAlias, err = u.registry.Resolve(cmd.FileSize, ext, contentType)
+		if err != nil {
+			return domainnode.Node{}, err
+		}
+	}
+
 	storageKey := fmt.Sprintf("libraries/%d/%s%s", cmd.LibraryID, uuid.NewString(), extWithDot)
-	if err := u.storage.Upload(ctx, storageKey, contentReader, cmd.FileSize, contentType); err != nil {
+	if err := store.Upload(ctx, storageKey, contentReader, cmd.FileSize, contentType); err != nil {
 		return domainnode.Node{}, err
 	}
 
 	node, err := u.nodes.Create(ctx, CreateNodeCommand{
-		Actor:          cmd.Actor,
-		Name:           name,
-		Type:           domainnode.TypeFile,
-		ParentID:       cmd.ParentID,
-		LibraryID:      cmd.LibraryID,
-		Ext:            ext,
-		MIMEType:       contentType,
-		FileSize:       cmd.FileSize,
-		StorageKey:     storageKey,
-		ConflictPolicy: cmd.ConflictPolicy,
+		Actor:           cmd.Actor,
+		Name:            name,
+		Type:            domainnode.TypeFile,
+		ParentID:        cmd.ParentID,
+		LibraryID:       cmd.LibraryID,
+		Ext:             ext,
+		MIMEType:        contentType,
+		FileSize:        cmd.FileSize,
+		StorageKey:      storageKey,
+		StorageProvider: providerAlias,
+		StorageBucket:   store.Bucket(),
+		ConflictPolicy:  cmd.ConflictPolicy,
 	})
 	if err != nil {
-		_ = u.storage.Delete(ctx, storageKey)
+		_ = store.Delete(ctx, storageKey)
 		return domainnode.Node{}, err
 	}
 
@@ -217,7 +236,7 @@ func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLin
 		)
 		return "", fmt.Errorf("%w: library id and node id are required", ErrInvalidArgument)
 	}
-	if u.storage == nil {
+	if u.registry == nil {
 		return "", fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
 	}
 	if err := u.authorize(ctx, query.Actor, query.LibraryID, authz.ActionRead); err != nil {
@@ -235,12 +254,22 @@ func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLin
 		return "", ErrNotFound
 	}
 
+	// 根据 DB 中记录的 provider alias 查找对应的存储实例
+	providerAlias, providerErr := u.nodes.GetFileStorageProvider(ctx, query.NodeID, query.LibraryID)
+	if providerErr != nil {
+		return "", fmt.Errorf("resolve storage provider for node %d: %w", query.NodeID, providerErr)
+	}
+	store, storeErr := u.registry.Get(providerAlias)
+	if storeErr != nil {
+		return "", fmt.Errorf("storage provider %q not available: %w", providerAlias, storeErr)
+	}
+
 	expiry := query.Expiry
 	if expiry <= 0 {
 		expiry = 60 * time.Minute
 	}
 
-	url, err := u.storage.GetPresignedURL(ctx, node.StorageKey, expiry)
+	url, err := store.GetPresignedURL(ctx, node.StorageKey, expiry)
 	if err != nil {
 		return "", err
 	}
@@ -267,7 +296,7 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 	if len(query.NodeIDs) == 0 {
 		return []BatchFileLinkItem{}, nil
 	}
-	if u.storage == nil {
+	if u.registry == nil {
 		return []BatchFileLinkItem{}, fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
 	}
 
@@ -281,26 +310,41 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 		return []BatchFileLinkItem{}, nil
 	}
 
-	storageKeys, err := u.nodes.ListFileStorageKeysByNodeIDs(ctx, query.Actor, query.LibraryID, nodeIDs)
+	// 批量查询 storageKey + providerAlias
+	storageInfos, err := u.nodes.ListFileStorageInfo(ctx, query.Actor, query.LibraryID, nodeIDs)
 	if err != nil {
 		return nil, err
 	}
-	if len(storageKeys) == 0 {
+	if len(storageInfos) == 0 {
 		return []BatchFileLinkItem{}, nil
 	}
 
-	result := make([]BatchFileLinkItem, 0, len(storageKeys))
-	for _, nodeID := range nodeIDs {
-		storageKey := strings.TrimSpace(storageKeys[nodeID])
-		if storageKey == "" {
+	// 按 provider 分组生成 presigned URL
+	result := make([]BatchFileLinkItem, 0, len(storageInfos))
+	for _, info := range storageInfos {
+		if strings.TrimSpace(info.StorageKey) == "" {
 			continue
 		}
-		url, urlErr := u.storage.GetPresignedURL(ctx, storageKey, expiry)
+		store, storeErr := u.registry.Get(info.ProviderAlias)
+		if storeErr != nil {
+			slog.WarnContext(ctx, "directory.links.batch.provider_unavailable",
+				"node_id", info.NodeID,
+				"provider", info.ProviderAlias,
+				"error", storeErr,
+			)
+			continue
+		}
+		url, urlErr := store.GetPresignedURL(ctx, info.StorageKey, expiry)
 		if urlErr != nil {
-			return nil, fmt.Errorf("generate presigned url for node %d: %w", nodeID, urlErr)
+			slog.WarnContext(ctx, "directory.links.batch.presigned_url_failed",
+				"node_id", info.NodeID,
+				"provider", info.ProviderAlias,
+				"error", urlErr,
+			)
+			continue
 		}
 		result = append(result, BatchFileLinkItem{
-			NodeID: nodeID,
+			NodeID: info.NodeID,
 			URL:    url,
 		})
 	}
