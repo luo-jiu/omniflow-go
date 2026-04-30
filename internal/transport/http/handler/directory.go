@@ -29,6 +29,12 @@ type batchFileLinkRequest struct {
 	Expiry    int      `json:"expiry"`
 }
 
+type updateFileContentRequest struct {
+	LibraryID   uint64  `json:"libraryId" binding:"required"`
+	Content     *string `json:"content" binding:"required"`
+	ContentType string  `json:"contentType"`
+}
+
 // UploadFile 上传文件并在目录下创建对应文件节点。
 func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	fileHeader, err := ctx.FormFile("file")
@@ -64,13 +70,13 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 	defer file.Close()
 
 	node, err := h.directoryUseCase.UploadAndCreateNode(ctx.Request.Context(), usecase.UploadFileCommand{
-		Actor:          actorFromContext(ctx),
-		LibraryID:      libraryID,
-		ParentID:       parentID,
-		FileName:       fileHeader.Filename,
-		FileSize:       fileHeader.Size,
-		ContentType:    fileHeader.Header.Get("Content-Type"),
-		Content:        file,
+		Actor:           actorFromContext(ctx),
+		LibraryID:       libraryID,
+		ParentID:        parentID,
+		FileName:        fileHeader.Filename,
+		FileSize:        fileHeader.Size,
+		ContentType:     fileHeader.Header.Get("Content-Type"),
+		Content:         file,
 		ConflictPolicy:  usecase.NodeNameConflictPolicy(conflictPolicy),
 		StorageProvider: storageProvider,
 	})
@@ -164,4 +170,48 @@ func (h *DirectoryHandler) BatchGetFileLinks(ctx *gin.Context) {
 		return
 	}
 	Success(ctx, items)
+}
+
+// UpdateFileContent 按节点 ID 更新文件内容，保留节点身份不变。
+func (h *DirectoryHandler) UpdateFileContent(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+	MarkDryRunHeader(ctx, dryRun)
+
+	var uri nodeURI
+	if !BindURI(ctx, &uri) {
+		return
+	}
+
+	var req updateFileContentRequest
+	if !BindJSON(ctx, &req) {
+		return
+	}
+	if req.Content == nil {
+		BadRequest(ctx, "content is required")
+		return
+	}
+
+	if h.directoryUseCase == nil {
+		InternalError(ctx, "directory service not configured")
+		return
+	}
+
+	contentBytes := []byte(*req.Content)
+	node, err := h.directoryUseCase.UpdateFileContent(ctx.Request.Context(), usecase.UpdateFileContentCommand{
+		Actor:       actorFromContext(ctx),
+		LibraryID:   req.LibraryID,
+		NodeID:      uri.NodeID,
+		FileSize:    int64(len(contentBytes)),
+		ContentType: req.ContentType,
+		Content:     strings.NewReader(*req.Content),
+		DryRun:      dryRun,
+	})
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	SuccessWithDryRun(ctx, dryRun, node)
 }

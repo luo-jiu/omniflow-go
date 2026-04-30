@@ -54,6 +54,16 @@ type BatchFileLinkItem struct {
 	URL    string `json:"url"`
 }
 
+type UpdateFileContentCommand struct {
+	Actor       actor.Actor
+	LibraryID   uint64
+	NodeID      uint64
+	FileSize    int64
+	ContentType string
+	Content     io.Reader
+	DryRun      bool
+}
+
 type DirectoryUseCase struct {
 	nodes      *NodeUseCase
 	registry   *storage.StorageRegistry
@@ -371,6 +381,120 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 		"result_count", len(result),
 	)
 	return result, nil
+}
+
+// UpdateFileContent 按节点 ID 原地替换文件内容，保留节点身份和目录位置。
+func (u *DirectoryUseCase) UpdateFileContent(
+	ctx context.Context,
+	cmd UpdateFileContentCommand,
+) (domainnode.Node, error) {
+	if cmd.LibraryID == 0 || cmd.NodeID == 0 || cmd.Content == nil {
+		return domainnode.Node{}, fmt.Errorf("%w: library id, node id and content are required", ErrInvalidArgument)
+	}
+	if cmd.FileSize < 0 {
+		return domainnode.Node{}, fmt.Errorf("%w: file size must be >= 0", ErrInvalidArgument)
+	}
+	if u.registry == nil {
+		return domainnode.Node{}, fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
+	}
+	if u.nodes == nil {
+		return domainnode.Node{}, errNodeRepositoryNotConfigured
+	}
+
+	node, err := u.nodes.GetNodeDetail(ctx, cmd.Actor, cmd.NodeID)
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+	if node.LibraryID != cmd.LibraryID {
+		return domainnode.Node{}, fmt.Errorf(
+			"%w: node %d is not in library %d",
+			ErrInvalidArgument,
+			cmd.NodeID,
+			cmd.LibraryID,
+		)
+	}
+	if node.Type != domainnode.TypeFile {
+		return domainnode.Node{}, fmt.Errorf("%w: node is not a file", ErrInvalidArgument)
+	}
+	if strings.TrimSpace(node.StorageKey) == "" {
+		return domainnode.Node{}, ErrNotFound
+	}
+	if err := u.nodes.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
+		return domainnode.Node{}, err
+	}
+
+	providerAlias, err := u.nodes.GetFileStorageProvider(ctx, cmd.NodeID, cmd.LibraryID)
+	if err != nil {
+		return domainnode.Node{}, fmt.Errorf("resolve storage provider for node %d: %w", cmd.NodeID, err)
+	}
+	store, err := u.registry.Get(providerAlias)
+	if err != nil {
+		return domainnode.Node{}, fmt.Errorf("storage provider %q not available: %w", providerAlias, err)
+	}
+
+	extWithDot := ""
+	if ext := strings.TrimSpace(node.Ext); ext != "" {
+		extWithDot = "." + strings.TrimPrefix(ext, ".")
+	}
+	contentReader, contentType, err := resolveUploadContentType(cmd.Content, cmd.ContentType, extWithDot)
+	if err != nil {
+		return domainnode.Node{}, fmt.Errorf("%w: resolve upload content type failed", ErrInvalidArgument)
+	}
+
+	if cmd.DryRun {
+		_ = u.writeAudit(ctx, cmd.Actor, "directory.file_content.update", true, map[string]any{
+			"library_id": cmd.LibraryID,
+			"node_id":    cmd.NodeID,
+			"size":       cmd.FileSize,
+			"mime_type":  contentType,
+			"mode":       resolveMutationMode(cmd.DryRun),
+			"dry_run":    cmd.DryRun,
+		})
+		return node, nil
+	}
+
+	newStorageKey := fmt.Sprintf("libraries/%d/%s%s", cmd.LibraryID, uuid.NewString(), extWithDot)
+	if err := store.Upload(ctx, newStorageKey, contentReader, cmd.FileSize, contentType); err != nil {
+		return domainnode.Node{}, err
+	}
+
+	oldKey, err := u.nodes.ReplaceFileStorage(ctx, cmd.NodeID, cmd.LibraryID, repository.ReplaceFileStorageInput{
+		NewObjectKey:   newStorageKey,
+		NewFileSize:    cmd.FileSize,
+		NewContentType: contentType,
+		NewProvider:    u.registry.ProviderType(providerAlias),
+		NewBucket:      store.Bucket(),
+	})
+	if err != nil {
+		_ = store.Delete(ctx, newStorageKey)
+		return domainnode.Node{}, fmt.Errorf("replace file storage: %w", err)
+	}
+
+	if oldKey != "" && oldKey != newStorageKey {
+		_ = store.Delete(ctx, oldKey)
+	}
+
+	updated, err := u.nodes.findNodeView(ctx, cmd.NodeID, cmd.LibraryID)
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+
+	_ = u.writeAudit(ctx, cmd.Actor, "directory.file_content.update", true, map[string]any{
+		"library_id":      cmd.LibraryID,
+		"node_id":         cmd.NodeID,
+		"new_storage_key": newStorageKey,
+		"old_storage_key": oldKey,
+		"size":            cmd.FileSize,
+		"mime_type":       contentType,
+		"mode":            resolveMutationMode(cmd.DryRun),
+		"dry_run":         cmd.DryRun,
+	})
+	slog.InfoContext(ctx, "directory.file_content.update.completed",
+		"library_id", cmd.LibraryID,
+		"node_id", cmd.NodeID,
+		"size", cmd.FileSize,
+	)
+	return updated, nil
 }
 
 // tryReplaceExistingFile 尝试替换同名文件节点的存储内容。

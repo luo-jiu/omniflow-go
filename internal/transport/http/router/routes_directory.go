@@ -11,6 +11,7 @@ func registerDirectoryRoutes(api *gin.RouterGroup, directoryHandler *handler.Dir
 	upload := api.Group("/directory")
 	upload.Use(extendUploadTimeout())
 	upload.POST("/upload", directoryHandler.UploadFile)
+	api.PUT("/nodes/:nodeId/content", directoryHandler.UpdateFileContent)
 	api.GET("/directory/link", directoryHandler.GetFileLink)
 	api.POST("/directory/links/batch", directoryHandler.BatchGetFileLinks)
 }
