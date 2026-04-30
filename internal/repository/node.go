@@ -12,6 +12,7 @@ type DeleteNodeTreeResult = nodepg.DeleteNodeTreeResult
 type CreateNodeInput = nodepg.CreateNodeInput
 type MoveNodeInput = nodepg.MoveNodeInput
 type SearchNodesInput = nodepg.SearchNodesInput
+type ReplaceFileStorageInput = nodepg.ReplaceFileStorageInput
 
 func NewNodeRepository(db *gorm.DB) *NodeRepository {
 	return nodepg.NewNodeRepository(db)

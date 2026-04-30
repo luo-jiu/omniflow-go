@@ -16,6 +16,7 @@ import (
 	"omniflow-go/internal/audit"
 	"omniflow-go/internal/authz"
 	domainnode "omniflow-go/internal/domain/node"
+	"omniflow-go/internal/repository"
 	"omniflow-go/internal/storage"
 
 	"github.com/google/uuid"
@@ -135,6 +136,22 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		return domainnode.Node{}, err
 	}
 
+	// replace 策略：查找同名文件节点，替换其存储内容
+	conflictPolicy := NodeNameConflictPolicy(strings.ToLower(strings.TrimSpace(string(cmd.ConflictPolicy))))
+	if conflictPolicy == NodeNameConflictReplace {
+		replaced, replaceErr := u.tryReplaceExistingFile(ctx, cmd, name, storageKey, contentType, providerAlias, store)
+		if replaceErr == nil && replaced.ID > 0 {
+			return replaced, nil
+		}
+		if replaceErr != nil {
+			slog.WarnContext(ctx, "directory.upload.replace_fallback",
+				"library_id", cmd.LibraryID,
+				"name", name,
+				"error", replaceErr,
+			)
+		}
+	}
+
 	node, err := u.nodes.Create(ctx, CreateNodeCommand{
 		Actor:           cmd.Actor,
 		Name:            name,
@@ -145,7 +162,7 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		MIMEType:        contentType,
 		FileSize:        cmd.FileSize,
 		StorageKey:      storageKey,
-		StorageProvider: providerAlias,
+		StorageProvider: u.registry.ProviderType(providerAlias),
 		StorageBucket:   store.Bucket(),
 		ConflictPolicy:  cmd.ConflictPolicy,
 	})
@@ -354,6 +371,58 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 		"result_count", len(result),
 	)
 	return result, nil
+}
+
+// tryReplaceExistingFile 尝试替换同名文件节点的存储内容。
+// 未找到同名节点时返回零值 Node（ID == 0）。
+func (u *DirectoryUseCase) tryReplaceExistingFile(
+	ctx context.Context,
+	cmd UploadFileCommand,
+	name, newStorageKey, contentType, providerAlias string,
+	store storage.ObjectStorage,
+) (domainnode.Node, error) {
+	parentID := cmd.ParentID
+	existing, err := u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name)
+	if err != nil {
+		return domainnode.Node{}, fmt.Errorf("find existing file: %w", err)
+	}
+	if existing.ID == 0 {
+		return domainnode.Node{}, nil
+	}
+
+	oldKey, err := u.nodes.ReplaceFileStorage(ctx, existing.ID, cmd.LibraryID, repository.ReplaceFileStorageInput{
+		NewObjectKey:   newStorageKey,
+		NewFileSize:    cmd.FileSize,
+		NewContentType: contentType,
+		NewProvider:    u.registry.ProviderType(providerAlias),
+		NewBucket:      store.Bucket(),
+	})
+	if err != nil {
+		return domainnode.Node{}, fmt.Errorf("replace file storage: %w", err)
+	}
+
+	if oldKey != "" && oldKey != newStorageKey {
+		_ = store.Delete(ctx, oldKey)
+	}
+
+	_ = u.writeAudit(ctx, cmd.Actor, "directory.upload.replace", true, map[string]any{
+		"library_id":      cmd.LibraryID,
+		"parent_id":       cmd.ParentID,
+		"node_id":         existing.ID,
+		"name":            name,
+		"new_storage_key": newStorageKey,
+		"old_storage_key": oldKey,
+		"size":            cmd.FileSize,
+		"mime_type":       contentType,
+	})
+	slog.InfoContext(ctx, "directory.upload.replace.completed",
+		"library_id", cmd.LibraryID,
+		"node_id", existing.ID,
+		"name", name,
+		"size", cmd.FileSize,
+	)
+
+	return u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name)
 }
 
 func normalizePositiveNodeIDs(nodeIDs []uint64) []uint64 {

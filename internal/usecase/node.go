@@ -1465,3 +1465,27 @@ func normalizePositiveUint64List(values []uint64) []uint64 {
 		return value > 0
 	}))
 }
+
+// FindFileByNameInParent 在同级目录中按名称查找文件节点。
+// 未找到时返回零值 Node（ID == 0）而非 error。
+func (u *NodeUseCase) FindFileByNameInParent(ctx context.Context, parentID, libraryID uint64, name string) (domainnode.Node, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return domainnode.Node{}, err
+	}
+	row, err := u.nodes.FindFileByNameInParent(ctx, parentID, libraryID, name)
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+	if row == nil {
+		return domainnode.Node{}, nil
+	}
+	return u.findNodeView(ctx, uint64(row.ID), libraryID)
+}
+
+// ReplaceFileStorage 替换文件节点的存储绑定，返回旧的 object_key 用于存储清理。
+func (u *NodeUseCase) ReplaceFileStorage(ctx context.Context, nodeID, libraryID uint64, input repository.ReplaceFileStorageInput) (string, error) {
+	if err := u.ensureNodesConfigured(); err != nil {
+		return "", err
+	}
+	return u.nodes.ReplaceFileStorage(ctx, nodeID, libraryID, input)
+}

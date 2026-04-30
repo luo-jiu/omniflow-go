@@ -22,7 +22,8 @@ func TestNormalizeNodeNameConflictPolicy(t *testing.T) {
 		{name: "explicit error", input: "error", want: NodeNameConflictError},
 		{name: "auto rename", input: "auto_rename", want: NodeNameConflictAutoRename},
 		{name: "auto rename dash alias", input: "auto-rename", want: NodeNameConflictAutoRename},
-		{name: "invalid policy", input: "replace", wantErr: true},
+		{name: "replace", input: "replace", want: NodeNameConflictReplace},
+		{name: "invalid policy", input: "bogus", wantErr: true},
 	}
 
 	for _, test := range tests {

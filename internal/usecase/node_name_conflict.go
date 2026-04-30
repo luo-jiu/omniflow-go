@@ -17,6 +17,8 @@ const (
 	NodeNameConflictError NodeNameConflictPolicy = "error"
 	// NodeNameConflictAutoRename 表示重名时自动追加序号。
 	NodeNameConflictAutoRename NodeNameConflictPolicy = "auto_rename"
+	// NodeNameConflictReplace 表示重名时替换已有文件的存储内容（仅限文件节点）。
+	NodeNameConflictReplace NodeNameConflictPolicy = "replace"
 
 	maxNodeNameLength             = 255
 	maxAutoRenameCandidateAttempt = 10000
@@ -28,8 +30,10 @@ func normalizeNodeNameConflictPolicy(input NodeNameConflictPolicy) (NodeNameConf
 		return NodeNameConflictError, nil
 	case string(NodeNameConflictAutoRename), "auto-rename", "autorename":
 		return NodeNameConflictAutoRename, nil
+	case string(NodeNameConflictReplace):
+		return NodeNameConflictReplace, nil
 	default:
-		return "", fmt.Errorf("%w: conflictPolicy only supports error or auto_rename", ErrInvalidArgument)
+		return "", fmt.Errorf("%w: conflictPolicy only supports error, auto_rename, or replace", ErrInvalidArgument)
 	}
 }
 

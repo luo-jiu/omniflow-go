@@ -378,6 +378,114 @@ func (r *NodeRepository) isDescendant(ctx context.Context, nodeID, targetID, lib
 	return count > 0, nil
 }
 
+// ReplaceFileStorageInput 文件存储替换参数。
+type ReplaceFileStorageInput struct {
+	NewObjectKey   string
+	NewFileSize    int64
+	NewContentType string
+	NewProvider    string
+	NewBucket      string
+}
+
+// FindFileByNameInParent 在同级目录中按名称查找文件节点（不含已删除）。
+func (r *NodeRepository) FindFileByNameInParent(
+	ctx context.Context,
+	parentID, libraryID uint64,
+	name string,
+) (*pgmodel.Node, error) {
+	q := r.query(ctx)
+	query := q.Node.WithContext(ctx).
+		Where(
+			q.Node.Name.Eq(name),
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.NodeType.Eq(nodeTypeFile),
+		)
+	query = r.applyParentCondition(query, q, parentID)
+	row, err := query.First()
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return row, nil
+}
+
+// ReplaceFileStorage 替换文件节点的存储绑定，返回旧的 object_key 用于清理。
+func (r *NodeRepository) ReplaceFileStorage(
+	ctx context.Context,
+	nodeID, libraryID uint64,
+	input ReplaceFileStorageInput,
+) (string, error) {
+	q := r.query(ctx)
+	now := time.Now().UTC()
+
+	// 1. 查找 node_files 记录
+	nodeFile, err := q.NodeFile.WithContext(ctx).
+		Where(
+			q.NodeFile.FileID.Eq(toPGInt64(nodeID)),
+			q.NodeFile.LibraryID.Eq(toPGInt64(libraryID)),
+		).
+		First()
+	if err != nil {
+		return "", fmt.Errorf("find node_files: %w", mapDBError(err))
+	}
+
+	// 2. 查找 storage_objects 记录，获取旧 object_key
+	storageObj, err := q.StorageObject.WithContext(ctx).
+		Where(q.StorageObject.ID.Eq(nodeFile.StorageObjectID)).
+		First()
+	if err != nil {
+		return "", fmt.Errorf("find storage_object: %w", mapDBError(err))
+	}
+	oldObjectKey := storageObj.ObjectKey
+
+	// 3. 更新 storage_objects
+	_, err = q.StorageObject.WithContext(ctx).
+		Where(q.StorageObject.ID.Eq(storageObj.ID)).
+		Updates(map[string]any{
+			"object_key":     strings.TrimSpace(input.NewObjectKey),
+			"content_length": input.NewFileSize,
+			"content_type":   nullableString(strings.TrimSpace(input.NewContentType)),
+			"provider":       strings.TrimSpace(input.NewProvider),
+			"bucket":         strings.TrimSpace(input.NewBucket),
+			"updated_at":     now,
+		})
+	if err != nil {
+		return "", fmt.Errorf("update storage_object: %w", mapDBError(err))
+	}
+
+	// 4. 更新 node_files
+	_, err = q.NodeFile.WithContext(ctx).
+		Where(
+			q.NodeFile.FileID.Eq(toPGInt64(nodeID)),
+			q.NodeFile.LibraryID.Eq(toPGInt64(libraryID)),
+		).
+		Updates(map[string]any{
+			"file_size":  input.NewFileSize,
+			"mime_type":  nullableString(strings.TrimSpace(input.NewContentType)),
+			"updated_at": now,
+		})
+	if err != nil {
+		return "", fmt.Errorf("update node_files: %w", mapDBError(err))
+	}
+
+	// 5. 更新节点的 updated_at
+	_, err = q.Node.WithContext(ctx).
+		Where(
+			q.Node.ID.Eq(toPGInt64(nodeID)),
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+		).
+		Updates(map[string]any{
+			"updated_at": now,
+		})
+	if err != nil {
+		return "", fmt.Errorf("update node: %w", mapDBError(err))
+	}
+
+	return oldObjectKey, nil
+}
+
 func nodeTypeCode(t domainnode.Type) int16 {
 	if t == domainnode.TypeFile {
 		return nodeTypeFile

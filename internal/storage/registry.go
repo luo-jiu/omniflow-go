@@ -28,7 +28,8 @@ func NewStorageRegistry() *StorageRegistry {
 	}
 }
 
-// Get 获取指定别名的 provider。精确匹配失败时做大小写不敏感回退。
+// Get 获取指定别名的 provider。依次尝试：精确别名、大小写不敏感别名、按 provider 类型匹配。
+// 按类型匹配是为了兼容 storage_objects.provider 列存储的是标准类型值（如 MINIO）而非别名。
 func (r *StorageRegistry) Get(alias string) (ObjectStorage, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -43,6 +44,17 @@ func (r *StorageRegistry) Get(alias string) (ObjectStorage, error) {
 			slog.Warn("storage provider alias case-insensitive fallback (consider migrating DB data)",
 				"requested", alias, "matched", k)
 			return store, nil
+		}
+	}
+
+	// 按 provider 类型回退：DB 中存的可能是类型（如 MINIO）而非别名（如 local-minio）
+	if r.storageCfg != nil {
+		for k, pcfg := range r.storageCfg.Providers {
+			if strings.EqualFold(pcfg.Type, alias) {
+				if store, ok := r.providers[k]; ok {
+					return store, nil
+				}
+			}
 		}
 	}
 
@@ -207,6 +219,27 @@ func (r *StorageRegistry) RawStorageConfig() *config.StorageConfig {
 	maps.Copy(providers, cp.Providers)
 	cp.Providers = providers
 	return &cp
+}
+
+// ProviderType 返回指定别名对应的 provider 类型（大写，如 MINIO、S3、LOCAL）。
+// 用于写入 storage_objects.provider 列，该列有 CHECK 约束只允许标准类型值。
+func (r *StorageRegistry) ProviderType(alias string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if r.storageCfg == nil {
+		return strings.ToUpper(alias)
+	}
+	if pcfg, ok := r.storageCfg.Providers[alias]; ok {
+		return strings.ToUpper(strings.TrimSpace(pcfg.Type))
+	}
+	lower := strings.ToLower(alias)
+	for k, pcfg := range r.storageCfg.Providers {
+		if strings.ToLower(k) == lower {
+			return strings.ToUpper(strings.TrimSpace(pcfg.Type))
+		}
+	}
+	return strings.ToUpper(alias)
 }
 
 // Close 关闭所有 provider 连接。
