@@ -51,6 +51,7 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - `PUT /api/v1/nodes/:nodeId/content`
   - 按节点 ID 原地替换文件内容，请求体使用 `libraryId`、`content`、可选 `contentType`。
   - 后端生成新对象并更新 `storage_objects` / `node_files`，保留节点 ID、目录位置和文件名不变。
+  - 若文件节点来自右键新建、尚未绑定 `node_files` / `storage_objects`，首次写入会初始化空文件对象，之后可正常获取预签名链接。
   - 支持 `dryRun` 查询参数，dry-run 只做校验，不写对象存储和数据库。
 - `GET /api/v1/nodes/:nodeId/archive/cards`
   - 当前支持 `COMIC` / `ASMR` / `VIDEO` 归档卡片查询

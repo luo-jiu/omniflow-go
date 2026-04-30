@@ -420,7 +420,7 @@ func (r *NodeRepository) ReplaceFileStorage(
 	q := r.query(ctx)
 	now := time.Now().UTC()
 
-	// 1. 查找 node_files 记录
+	// 1. 查找 node_files 记录；历史上右键新建文件可能只有节点元数据，没有存储绑定。
 	nodeFile, err := q.NodeFile.WithContext(ctx).
 		Where(
 			q.NodeFile.FileID.Eq(toPGInt64(nodeID)),
@@ -428,6 +428,9 @@ func (r *NodeRepository) ReplaceFileStorage(
 		).
 		First()
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return r.attachFileStorage(ctx, nodeID, libraryID, input, now)
+		}
 		return "", fmt.Errorf("find node_files: %w", mapDBError(err))
 	}
 
@@ -484,6 +487,67 @@ func (r *NodeRepository) ReplaceFileStorage(
 	}
 
 	return oldObjectKey, nil
+}
+
+func (r *NodeRepository) attachFileStorage(
+	ctx context.Context,
+	nodeID, libraryID uint64,
+	input ReplaceFileStorageInput,
+	now time.Time,
+) (string, error) {
+	q := r.query(ctx)
+	node, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.ID.Eq(toPGInt64(nodeID)),
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+		).
+		First()
+	if err != nil {
+		return "", fmt.Errorf("find node: %w", mapDBError(err))
+	}
+	if node.NodeType != nodeTypeFile {
+		return "", fmt.Errorf("%w: node is not a file", ErrInvalidState)
+	}
+
+	storageRow := &pgmodel.StorageObject{
+		LibraryID:     toPGInt64(libraryID),
+		Provider:      strings.TrimSpace(input.NewProvider),
+		Bucket:        strings.TrimSpace(input.NewBucket),
+		ObjectKey:     strings.TrimSpace(input.NewObjectKey),
+		ContentLength: input.NewFileSize,
+		ContentType:   nullableString(strings.TrimSpace(input.NewContentType)),
+		Extra:         "{}",
+	}
+	if err := q.StorageObject.WithContext(ctx).Create(storageRow); err != nil {
+		return "", fmt.Errorf("create storage_object: %w", mapDBError(err))
+	}
+
+	fileRow := &pgmodel.NodeFile{
+		FileID:          toPGInt64(nodeID),
+		LibraryID:       toPGInt64(libraryID),
+		StorageObjectID: storageRow.ID,
+		MimeType:        nullableString(strings.TrimSpace(input.NewContentType)),
+		FileSize:        input.NewFileSize,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := q.NodeFile.WithContext(ctx).Create(fileRow); err != nil {
+		return "", fmt.Errorf("create node_files: %w", mapDBError(err))
+	}
+
+	_, err = q.Node.WithContext(ctx).
+		Where(
+			q.Node.ID.Eq(toPGInt64(nodeID)),
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+		).
+		Updates(map[string]any{
+			"updated_at": now,
+		})
+	if err != nil {
+		return "", fmt.Errorf("update node: %w", mapDBError(err))
+	}
+
+	return "", nil
 }
 
 func nodeTypeCode(t domainnode.Type) int16 {

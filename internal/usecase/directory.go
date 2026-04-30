@@ -416,20 +416,8 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	if node.Type != domainnode.TypeFile {
 		return domainnode.Node{}, fmt.Errorf("%w: node is not a file", ErrInvalidArgument)
 	}
-	if strings.TrimSpace(node.StorageKey) == "" {
-		return domainnode.Node{}, ErrNotFound
-	}
 	if err := u.nodes.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
 		return domainnode.Node{}, err
-	}
-
-	providerAlias, err := u.nodes.GetFileStorageProvider(ctx, cmd.NodeID, cmd.LibraryID)
-	if err != nil {
-		return domainnode.Node{}, fmt.Errorf("resolve storage provider for node %d: %w", cmd.NodeID, err)
-	}
-	store, err := u.registry.Get(providerAlias)
-	if err != nil {
-		return domainnode.Node{}, fmt.Errorf("storage provider %q not available: %w", providerAlias, err)
 	}
 
 	extWithDot := ""
@@ -439,6 +427,25 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	contentReader, contentType, err := resolveUploadContentType(cmd.Content, cmd.ContentType, extWithDot)
 	if err != nil {
 		return domainnode.Node{}, fmt.Errorf("%w: resolve upload content type failed", ErrInvalidArgument)
+	}
+
+	var store storage.ObjectStorage
+	var providerAlias string
+	if strings.TrimSpace(node.StorageKey) == "" {
+		ext := strings.TrimPrefix(extWithDot, ".")
+		store, providerAlias, err = u.registry.Resolve(cmd.FileSize, ext, contentType)
+		if err != nil {
+			return domainnode.Node{}, err
+		}
+	} else {
+		providerAlias, err = u.nodes.GetFileStorageProvider(ctx, cmd.NodeID, cmd.LibraryID)
+		if err != nil {
+			return domainnode.Node{}, fmt.Errorf("resolve storage provider for node %d: %w", cmd.NodeID, err)
+		}
+		store, err = u.registry.Get(providerAlias)
+		if err != nil {
+			return domainnode.Node{}, fmt.Errorf("storage provider %q not available: %w", providerAlias, err)
+		}
 	}
 
 	if cmd.DryRun {
