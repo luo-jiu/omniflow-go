@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"sort"
+	"strings"
 
 	domainnode "omniflow-go/internal/domain/node"
 	pgmodel "omniflow-go/internal/repository/postgres/model"
@@ -238,6 +239,8 @@ func (r *NodeRepository) loadNodesWithFileMeta(ctx context.Context, libraryID ui
 		item.Node.FileSize = fileRow.FileSize
 		if storage, ok := storageByID[toDomainUint64(fileRow.StorageObjectID)]; ok {
 			item.Node.StorageKey = storage.ObjectKey
+			item.Node.StorageProvider = strings.TrimSpace(storage.Provider)
+			item.Node.StorageBucket = strings.TrimSpace(storage.Bucket)
 		}
 		assembled[nodeID] = item
 	}

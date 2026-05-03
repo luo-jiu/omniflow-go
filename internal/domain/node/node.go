@@ -10,18 +10,23 @@ const (
 )
 
 type Node struct {
-	ID          uint64 `json:"id"`
-	Name        string `json:"name"`
-	Type        Type   `json:"type"`
-	ParentID    uint64 `json:"parentId"`
-	LibraryID   uint64 `json:"libraryId"`
-	Ext         string `json:"ext,omitempty"`
-	MIMEType    string `json:"mimeType,omitempty"`
-	FileSize    int64  `json:"fileSize,omitempty"`
-	StorageKey  string `json:"storageKey,omitempty"`
-	BuiltInType string `json:"builtInType,omitempty"`
-	ArchiveMode int    `json:"archiveMode,omitempty"`
-	ViewMeta    string `json:"viewMeta,omitempty"`
+	ID                   uint64 `json:"id"`
+	Name                 string `json:"name"`
+	Type                 Type   `json:"type"`
+	ParentID             uint64 `json:"parentId"`
+	LibraryID            uint64 `json:"libraryId"`
+	Ext                  string `json:"ext,omitempty"`
+	MIMEType             string `json:"mimeType,omitempty"`
+	FileSize             int64  `json:"fileSize,omitempty"`
+	StorageKey           string `json:"storageKey,omitempty"`
+	StorageProvider      string `json:"storageProvider,omitempty"`
+	StorageProviderType  string `json:"storageProviderType,omitempty"`
+	StorageProviderLabel string `json:"storageProviderLabel,omitempty"`
+	StorageEndpoint      string `json:"storageEndpoint,omitempty"`
+	StorageBucket        string `json:"storageBucket,omitempty"`
+	BuiltInType          string `json:"builtInType,omitempty"`
+	ArchiveMode          int    `json:"archiveMode,omitempty"`
+	ViewMeta             string `json:"viewMeta,omitempty"`
 }
 
 type RecycleItem struct {

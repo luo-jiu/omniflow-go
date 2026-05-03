@@ -149,7 +149,7 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 	// replace 策略：查找同名文件节点，替换其存储内容
 	conflictPolicy := NodeNameConflictPolicy(strings.ToLower(strings.TrimSpace(string(cmd.ConflictPolicy))))
 	if conflictPolicy == NodeNameConflictReplace {
-		replaced, replaceErr := u.tryReplaceExistingFile(ctx, cmd, name, storageKey, contentType, providerAlias, store)
+		replaced, replaceErr := u.tryReplaceExistingFile(ctx, cmd, name, ext, storageKey, contentType, providerAlias, store)
 		if replaceErr == nil && replaced.ID > 0 {
 			return replaced, nil
 		}
@@ -172,7 +172,7 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 		MIMEType:        contentType,
 		FileSize:        cmd.FileSize,
 		StorageKey:      storageKey,
-		StorageProvider: u.registry.ProviderType(providerAlias),
+		StorageProvider: providerAlias,
 		StorageBucket:   store.Bucket(),
 		ConflictPolicy:  cmd.ConflictPolicy,
 	})
@@ -469,7 +469,7 @@ func (u *DirectoryUseCase) UpdateFileContent(
 		NewObjectKey:   newStorageKey,
 		NewFileSize:    cmd.FileSize,
 		NewContentType: contentType,
-		NewProvider:    u.registry.ProviderType(providerAlias),
+		NewProvider:    providerAlias,
 		NewBucket:      store.Bucket(),
 	})
 	if err != nil {
@@ -509,11 +509,11 @@ func (u *DirectoryUseCase) UpdateFileContent(
 func (u *DirectoryUseCase) tryReplaceExistingFile(
 	ctx context.Context,
 	cmd UploadFileCommand,
-	name, newStorageKey, contentType, providerAlias string,
+	name, ext, newStorageKey, contentType, providerAlias string,
 	store storage.ObjectStorage,
 ) (domainnode.Node, error) {
 	parentID := cmd.ParentID
-	existing, err := u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name)
+	existing, err := u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name, ext)
 	if err != nil {
 		return domainnode.Node{}, fmt.Errorf("find existing file: %w", err)
 	}
@@ -525,7 +525,7 @@ func (u *DirectoryUseCase) tryReplaceExistingFile(
 		NewObjectKey:   newStorageKey,
 		NewFileSize:    cmd.FileSize,
 		NewContentType: contentType,
-		NewProvider:    u.registry.ProviderType(providerAlias),
+		NewProvider:    providerAlias,
 		NewBucket:      store.Bucket(),
 	})
 	if err != nil {
@@ -553,7 +553,7 @@ func (u *DirectoryUseCase) tryReplaceExistingFile(
 		"size", cmd.FileSize,
 	)
 
-	return u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name)
+	return u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name, ext)
 }
 
 func normalizePositiveNodeIDs(nodeIDs []uint64) []uint64 {

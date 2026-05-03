@@ -42,6 +42,8 @@ func (u *NodeUseCase) resolveCreateNodeName(
 	parentID uint64,
 	libraryID uint64,
 	name string,
+	ext string,
+	nodeType domainnode.Type,
 	policy NodeNameConflictPolicy,
 ) (string, error) {
 	normalizedPolicy, err := normalizeNodeNameConflictPolicy(policy)
@@ -56,26 +58,41 @@ func (u *NodeUseCase) resolveCreateNodeName(
 	if err != nil {
 		return "", err
 	}
-	return resolveAutoRenamedNodeName(name, children)
+	return resolveAutoRenamedNodeName(name, ext, nodeType, children)
 }
 
-func resolveAutoRenamedNodeName(name string, siblings []domainnode.Node) (string, error) {
+func resolveAutoRenamedNodeName(
+	name string,
+	ext string,
+	nodeType domainnode.Type,
+	siblings []domainnode.Node,
+) (string, error) {
 	existingNames := make(map[string]struct{}, len(siblings))
 	for _, sibling := range siblings {
-		existingNames[sibling.Name] = struct{}{}
+		existingNames[nodeVisibleName(sibling.Name, sibling.Ext, sibling.Type)] = struct{}{}
 	}
 
-	if _, exists := existingNames[name]; !exists {
+	originalVisibleName := nodeVisibleName(name, ext, nodeType)
+	if _, exists := existingNames[originalVisibleName]; !exists {
 		return name, nil
 	}
 	for index := 1; index <= maxAutoRenameCandidateAttempt; index++ {
 		suffix := fmt.Sprintf(" (%d)", index)
 		candidate := truncateNodeNameForSuffix(name, suffix) + suffix
-		if _, exists := existingNames[candidate]; !exists {
+		if _, exists := existingNames[nodeVisibleName(candidate, ext, nodeType)]; !exists {
 			return candidate, nil
 		}
 	}
 	return "", fmt.Errorf("%w: no available node name after auto rename", ErrConflict)
+}
+
+func nodeVisibleName(name string, ext string, nodeType domainnode.Type) string {
+	trimmedName := strings.TrimSpace(name)
+	normalizedExt := normalizeNodeExt(ext)
+	if nodeType == domainnode.TypeFile && normalizedExt != "" {
+		return trimmedName + "." + normalizedExt
+	}
+	return trimmedName
 }
 
 func truncateNodeNameForSuffix(name string, suffix string) string {

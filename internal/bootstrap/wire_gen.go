@@ -63,7 +63,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	authUseCase := usecase.NewAuthUseCase(userRepository, sessionRepository, logSink)
 	userUseCase := usecase.NewUserUseCase(userRepository, objectStorage, transactor, logSink)
 	libraryUseCase := usecase.NewLibraryUseCase(libraryRepository, transactor, allowAll, logSink)
-	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink)
+	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink, storageRegistry)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink)
 	multipartUploadUseCase, multipartUploadCleanup := usecase.NewMultipartUploadUseCase(nodeUseCase, storageRegistry, allowAll, logSink, cfg)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)

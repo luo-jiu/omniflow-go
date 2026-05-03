@@ -60,10 +60,17 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - Browser file mapping 与 browser bookmark 相关接口
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约
 - 节点创建与目录上传支持可选 `conflictPolicy`：
-  - 默认或 `error`：同一目录下重名时返回 `409`，message 为“同一目录下已存在同名节点”。
-  - `auto_rename`：系统插入场景可让后端自动追加序号，规则为 `name`、`name (1)`、`name (2)`；文件扩展名单独保存，序号只追加到文件名主体。
-  - `replace`：同名文件已存在时，替换其存储内容（更新 `storage_objects` 和 `node_files`），保留原节点 ID 不变；若未找到同名节点则回退为新建。用于兼容旧上传替换链路；文档编辑器保存优先使用 `PUT /api/v1/nodes/:nodeId/content`。
-  - 手动重命名和移动仍保持重名即 `409`，不自动改名。
+  - “同名”按用户可见名称判断：目录为 `name`，文件为 `name.ext`（无后缀文件仍为 `name`）。因此同一目录允许 `demo.txt` 与 `demo.md` 共存，但不允许两个 `demo.txt`。
+  - 默认或 `error`：同一目录下可见名称重复时返回 `409`，message 为“同一目录下已存在同名节点”。
+  - `auto_rename`：系统插入场景可让后端自动追加序号，规则为 `name`、`name (1)`、`name (2)`；文件扩展名单独保存，序号只追加到文件名主体，并只针对同一可见文件名冲突生效。
+  - `replace`：同名同后缀文件已存在时，替换其存储内容（更新 `storage_objects` 和 `node_files`），保留原节点 ID 不变；若未找到同名同后缀文件则回退为新建。用于兼容旧上传替换链路；文档编辑器保存优先使用 `PUT /api/v1/nodes/:nodeId/content`。
+  - 手动重命名和移动仍保持可见名称重复即 `409`，不自动改名。
+  - 数据库唯一索引也必须按同一可见名称语义维护，不能只用 `name` 判断文件节点冲突；迁移脚本见 `docs/schema/2026-05-03-node-visible-name-and-storage-provider.sql`。
+- `GET /api/v1/nodes/:nodeId`
+  - 文件节点详情会返回物理存储位置：`storageProvider`、`storageProviderType`、`storageProviderLabel`、`storageEndpoint`、`storageBucket`、`storageKey`。
+  - `storageProvider` 持久化 provider 别名（例如 `local-minio`、`win-minio`），用于区分同为 MinIO 的不同机器或不同桶，也用于后续 S3 / OSS 等多存储位置的无感切换；历史类型值（如 `MINIO`）仅保留兼容读取能力。
+  - `storageEndpoint` 来自当前 `configs/storage.yaml` 快照，不在数据库中重复持久化；密钥不通过节点详情接口返回。
+  - 若历史 `storage_objects.provider` 存的是标准类型值，必须先人工确认该类型只对应一个真实 provider 后再显式迁移到 alias；服务启动过程不会自动把历史类型值改写为默认 alias，避免误指向错误对象存储。
 
 ## 5. 建议持续回归
 

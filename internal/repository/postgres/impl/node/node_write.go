@@ -62,14 +62,6 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 		}
 	}
 
-	duplicate, err := r.hasDuplicateName(ctx, name, input.ParentID, input.LibraryID, 0)
-	if err != nil {
-		return domainnode.Node{}, err
-	}
-	if duplicate {
-		return domainnode.Node{}, ErrConflict
-	}
-
 	maxSort, err := r.maxSortOrder(ctx, input.LibraryID, input.ParentID)
 	if err != nil {
 		return domainnode.Node{}, err
@@ -86,6 +78,22 @@ func (r *NodeRepository) CreateNode(ctx context.Context, input CreateNodeInput) 
 			return domainnode.Node{}, fmt.Errorf("%w: file size must be >= 0", ErrInvalidState)
 		}
 		createStorageBinding = strings.TrimSpace(input.StorageKey) != ""
+	}
+
+	duplicate, err := r.hasDuplicateVisibleName(
+		ctx,
+		name,
+		derefString(ext),
+		input.Type,
+		input.ParentID,
+		input.LibraryID,
+		0,
+	)
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+	if duplicate {
+		return domainnode.Node{}, ErrConflict
 	}
 
 	builtInType := strings.TrimSpace(input.BuiltInType)
@@ -192,25 +200,35 @@ func (r *NodeRepository) RenameNode(ctx context.Context, nodeID, libraryID uint6
 		return err
 	}
 
-	duplicate, err := r.hasDuplicateName(ctx, name, parentIDValue(current.ParentID), libraryID, nodeID)
-	if err != nil {
-		return err
-	}
-	if duplicate {
-		return ErrConflict
-	}
-
 	updates := map[string]any{
 		"name":       name,
 		"updated_at": updatedAt,
 	}
+	nextExt := derefString(current.Ext)
 	if current.NodeType == nodeTypeFile && ext != nil {
 		trimmedExt := strings.TrimSpace(*ext)
+		nextExt = trimmedExt
 		if trimmedExt == "" {
 			updates["ext"] = nil
 		} else {
 			updates["ext"] = trimmedExt
 		}
+	}
+
+	duplicate, err := r.hasDuplicateVisibleName(
+		ctx,
+		name,
+		nextExt,
+		domainTypeCode(current.NodeType),
+		parentIDValue(current.ParentID),
+		libraryID,
+		nodeID,
+	)
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return ErrConflict
 	}
 
 	updated, err := r.UpdateNodeFields(ctx, nodeID, libraryID, updates)
@@ -263,7 +281,15 @@ func (r *NodeRepository) MoveNode(ctx context.Context, input MoveNodeInput) erro
 	if strings.TrimSpace(name) == "" {
 		name = node.Name
 	}
-	duplicate, err := r.hasDuplicateName(ctx, name, input.NewParentID, input.LibraryID, input.NodeID)
+	duplicate, err := r.hasDuplicateVisibleName(
+		ctx,
+		name,
+		derefString(node.Ext),
+		domainTypeCode(node.NodeType),
+		input.NewParentID,
+		input.LibraryID,
+		input.NodeID,
+	)
 	if err != nil {
 		return err
 	}
@@ -332,23 +358,34 @@ func (r *NodeRepository) resolveMoveSortOrder(ctx context.Context, input MoveNod
 	return maxSort + moveSortStep, nil
 }
 
-func (r *NodeRepository) hasDuplicateName(ctx context.Context, name string, parentID, libraryID, excludeID uint64) (bool, error) {
-	q := r.query(ctx)
-	query := q.Node.WithContext(ctx).
+func (r *NodeRepository) hasDuplicateVisibleName(
+	ctx context.Context,
+	name string,
+	ext string,
+	nodeType domainnode.Type,
+	parentID, libraryID, excludeID uint64,
+) (bool, error) {
+	visibleName := buildVisibleName(name, ext, nodeTypeCode(nodeType))
+	query := r.dbWithContext(ctx).
+		Model(&pgmodel.Node{}).
+		Where("library_id = ?", toPGInt64(libraryID)).
 		Where(
-			q.Node.Name.Eq(name),
-			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			"CASE WHEN node_type = ? AND COALESCE(ext, '') <> '' THEN name || '.' || ext ELSE name END = ?",
+			nodeTypeFile,
+			visibleName,
 		)
-	query = r.applyParentCondition(query, q, parentID)
+	if parentID == 0 {
+		query = query.Where("parent_id IS NULL")
+	} else {
+		query = query.Where("parent_id = ?", toPGInt64(parentID))
+	}
 	if excludeID > 0 {
-		query = query.Where(q.Node.ID.Neq(toPGInt64(excludeID)))
+		query = query.Where("id <> ?", toPGInt64(excludeID))
 	}
 
-	count, err := query.Count()
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
+	var count int64
+	err := query.Count(&count).Error
+	return count > 0, err
 }
 
 func (r *NodeRepository) maxSortOrder(ctx context.Context, libraryID, parentID uint64) (int, error) {
@@ -387,28 +424,42 @@ type ReplaceFileStorageInput struct {
 	NewBucket      string
 }
 
-// FindFileByNameInParent 在同级目录中按名称查找文件节点（不含已删除）。
+// FindFileByNameInParent 在同级目录中按文件名主体与扩展名查找文件节点（不含已删除）。
 func (r *NodeRepository) FindFileByNameInParent(
 	ctx context.Context,
 	parentID, libraryID uint64,
 	name string,
+	ext string,
 ) (*pgmodel.Node, error) {
-	q := r.query(ctx)
-	query := q.Node.WithContext(ctx).
+	query := r.dbWithContext(ctx).
+		Model(&pgmodel.Node{}).
 		Where(
-			q.Node.Name.Eq(name),
-			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
-			q.Node.NodeType.Eq(nodeTypeFile),
+			"name = ? AND library_id = ? AND node_type = ?",
+			name,
+			toPGInt64(libraryID),
+			nodeTypeFile,
 		)
-	query = r.applyParentCondition(query, q, parentID)
-	row, err := query.First()
+	normalizedExt := strings.TrimPrefix(strings.TrimSpace(ext), ".")
+	if normalizedExt == "" {
+		query = query.Where("(ext IS NULL OR ext = '')")
+	} else {
+		query = query.Where("ext = ?", normalizedExt)
+	}
+	if parentID == 0 {
+		query = query.Where("parent_id IS NULL")
+	} else {
+		query = query.Where("parent_id = ?", toPGInt64(parentID))
+	}
+
+	var row pgmodel.Node
+	err := query.First(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return row, nil
+	return &row, nil
 }
 
 // ReplaceFileStorage 替换文件节点的存储绑定，返回旧的 object_key 用于清理。
@@ -555,6 +606,22 @@ func nodeTypeCode(t domainnode.Type) int16 {
 		return nodeTypeFile
 	}
 	return nodeTypeDirectory
+}
+
+func domainTypeCode(t int16) domainnode.Type {
+	if t == nodeTypeFile {
+		return domainnode.TypeFile
+	}
+	return domainnode.TypeDirectory
+}
+
+func buildVisibleName(name string, ext string, nodeType int16) string {
+	trimmedName := strings.TrimSpace(name)
+	normalizedExt := strings.TrimPrefix(strings.TrimSpace(ext), ".")
+	if nodeType == nodeTypeFile && normalizedExt != "" {
+		return trimmedName + "." + normalizedExt
+	}
+	return trimmedName
 }
 
 func (r *NodeRepository) resolveMoveBeforeRange(

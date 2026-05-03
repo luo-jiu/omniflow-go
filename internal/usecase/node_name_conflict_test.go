@@ -89,7 +89,7 @@ func TestResolveAutoRenamedNodeName(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := resolveAutoRenamedNodeName(test.input, test.siblings)
+			got, err := resolveAutoRenamedNodeName(test.input, "", domainnode.TypeDirectory, test.siblings)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -104,7 +104,12 @@ func TestResolveAutoRenamedNodeNameTruncatesBeforeSuffix(t *testing.T) {
 	t.Parallel()
 
 	longName := strings.Repeat("漫", maxNodeNameLength)
-	got, err := resolveAutoRenamedNodeName(longName, []domainnode.Node{{Name: longName}})
+	got, err := resolveAutoRenamedNodeName(
+		longName,
+		"",
+		domainnode.TypeDirectory,
+		[]domainnode.Node{{Name: longName, Type: domainnode.TypeDirectory}},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -113,6 +118,72 @@ func TestResolveAutoRenamedNodeNameTruncatesBeforeSuffix(t *testing.T) {
 	}
 	if utf8.RuneCountInString(got) != maxNodeNameLength {
 		t.Fatalf("expected %d runes, got %d", maxNodeNameLength, utf8.RuneCountInString(got))
+	}
+}
+
+func TestResolveAutoRenamedNodeNameUsesVisibleFileName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		ext      string
+		siblings []domainnode.Node
+		want     string
+	}{
+		{
+			name:  "same base with different extension keeps original",
+			input: "demo",
+			ext:   "txt",
+			siblings: []domainnode.Node{
+				{Name: "demo", Ext: "md", Type: domainnode.TypeFile},
+			},
+			want: "demo",
+		},
+		{
+			name:  "same base and same extension gets numeric suffix",
+			input: "demo",
+			ext:   "txt",
+			siblings: []domainnode.Node{
+				{Name: "demo", Ext: "txt", Type: domainnode.TypeFile},
+				{Name: "demo (1)", Ext: "txt", Type: domainnode.TypeFile},
+				{Name: "demo", Ext: "md", Type: domainnode.TypeFile},
+			},
+			want: "demo (2)",
+		},
+		{
+			name:  "file with extension does not conflict with directory base",
+			input: "demo",
+			ext:   "txt",
+			siblings: []domainnode.Node{
+				{Name: "demo", Type: domainnode.TypeDirectory},
+			},
+			want: "demo",
+		},
+		{
+			name:  "extensionless file conflicts with directory base",
+			input: "demo",
+			ext:   "",
+			siblings: []domainnode.Node{
+				{Name: "demo", Type: domainnode.TypeDirectory},
+			},
+			want: "demo (1)",
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := resolveAutoRenamedNodeName(test.input, test.ext, domainnode.TypeFile, test.siblings)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("unexpected name: got %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

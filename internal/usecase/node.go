@@ -16,6 +16,7 @@ import (
 	"omniflow-go/internal/authz"
 	domainnode "omniflow-go/internal/domain/node"
 	"omniflow-go/internal/repository"
+	"omniflow-go/internal/storage"
 
 	"github.com/samber/lo"
 )
@@ -152,6 +153,7 @@ type NodeUseCase struct {
 	tx         repository.Transactor
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
+	registry   *storage.StorageRegistry
 }
 
 func NewNodeUseCase(
@@ -159,12 +161,18 @@ func NewNodeUseCase(
 	tx repository.Transactor,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
+	registries ...*storage.StorageRegistry,
 ) *NodeUseCase {
+	var registry *storage.StorageRegistry
+	if len(registries) > 0 {
+		registry = registries[0]
+	}
 	return &NodeUseCase{
 		nodes:      nodes,
 		tx:         tx,
 		authorizer: authorizer,
 		auditLog:   auditLog,
+		registry:   registry,
 	}
 }
 
@@ -202,7 +210,15 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		if err := u.nodes.LockSiblingNameScope(txCtx, cmd.LibraryID, parentID); err != nil {
 			return err
 		}
-		resolvedName, err := u.resolveCreateNodeName(txCtx, parentID, cmd.LibraryID, name, cmd.ConflictPolicy)
+		resolvedName, err := u.resolveCreateNodeName(
+			txCtx,
+			parentID,
+			cmd.LibraryID,
+			name,
+			normalizedExt,
+			cmd.Type,
+			cmd.ConflictPolicy,
+		)
 		if err != nil {
 			return err
 		}
@@ -457,7 +473,27 @@ func (u *NodeUseCase) GetNodeDetail(ctx context.Context, principal actor.Actor, 
 		"library_id", row.LibraryID,
 		"type", row.Type,
 	)
-	return row, nil
+	return u.enrichStorageMetadata(row), nil
+}
+
+func (u *NodeUseCase) enrichStorageMetadata(row domainnode.Node) domainnode.Node {
+	if u.registry == nil || strings.TrimSpace(row.StorageProvider) == "" {
+		return row
+	}
+
+	pcfg, alias, ok := u.registry.ProviderConfigByAlias(row.StorageProvider)
+	if !ok {
+		return row
+	}
+
+	row.StorageProvider = alias
+	row.StorageProviderType = strings.TrimSpace(pcfg.Type)
+	row.StorageProviderLabel = strings.TrimSpace(pcfg.Label)
+	row.StorageEndpoint = strings.TrimSpace(pcfg.Endpoint)
+	if strings.TrimSpace(row.StorageBucket) == "" {
+		row.StorageBucket = strings.TrimSpace(pcfg.Bucket)
+	}
+	return row
 }
 
 func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeCommand) error {
@@ -1466,13 +1502,18 @@ func normalizePositiveUint64List(values []uint64) []uint64 {
 	}))
 }
 
-// FindFileByNameInParent 在同级目录中按名称查找文件节点。
+// FindFileByNameInParent 在同级目录中按文件名主体与扩展名查找文件节点。
 // 未找到时返回零值 Node（ID == 0）而非 error。
-func (u *NodeUseCase) FindFileByNameInParent(ctx context.Context, parentID, libraryID uint64, name string) (domainnode.Node, error) {
+func (u *NodeUseCase) FindFileByNameInParent(
+	ctx context.Context,
+	parentID, libraryID uint64,
+	name string,
+	ext string,
+) (domainnode.Node, error) {
 	if err := u.ensureNodesConfigured(); err != nil {
 		return domainnode.Node{}, err
 	}
-	row, err := u.nodes.FindFileByNameInParent(ctx, parentID, libraryID, name)
+	row, err := u.nodes.FindFileByNameInParent(ctx, parentID, libraryID, name, ext)
 	if err != nil {
 		return domainnode.Node{}, err
 	}

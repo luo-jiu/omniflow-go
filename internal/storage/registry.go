@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"sort"
 	"strings"
 	"sync"
 
@@ -28,6 +29,50 @@ func NewStorageRegistry() *StorageRegistry {
 	}
 }
 
+// ProviderConfigByAlias 返回 provider 配置及最终匹配到的别名。
+// 优先按别名精确匹配，其次大小写不敏感匹配；仅当 provider 类型唯一时才按类型兼容旧数据。
+func (r *StorageRegistry) ProviderConfigByAlias(alias string) (config.ProviderConfig, string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if r.storageCfg == nil {
+		return config.ProviderConfig{}, "", false
+	}
+
+	if pcfg, ok := r.storageCfg.Providers[alias]; ok {
+		return pcfg, alias, true
+	}
+
+	lower := strings.ToLower(strings.TrimSpace(alias))
+	if lower == "" {
+		return config.ProviderConfig{}, "", false
+	}
+
+	for _, key := range sortedProviderAliases(r.storageCfg.Providers) {
+		if strings.ToLower(key) == lower {
+			return r.storageCfg.Providers[key], key, true
+		}
+	}
+
+	var matchedAlias string
+	var matchedCfg config.ProviderConfig
+	for _, key := range sortedProviderAliases(r.storageCfg.Providers) {
+		pcfg := r.storageCfg.Providers[key]
+		if !strings.EqualFold(pcfg.Type, alias) {
+			continue
+		}
+		if matchedAlias != "" {
+			return config.ProviderConfig{}, "", false
+		}
+		matchedAlias = key
+		matchedCfg = pcfg
+	}
+	if matchedAlias == "" {
+		return config.ProviderConfig{}, "", false
+	}
+	return matchedCfg, matchedAlias, true
+}
+
 // Get 获取指定别名的 provider。依次尝试：精确别名、大小写不敏感别名、按 provider 类型匹配。
 // 按类型匹配是为了兼容 storage_objects.provider 列存储的是标准类型值（如 MINIO）而非别名。
 func (r *StorageRegistry) Get(alias string) (ObjectStorage, error) {
@@ -39,8 +84,12 @@ func (r *StorageRegistry) Get(alias string) (ObjectStorage, error) {
 	}
 
 	lower := strings.ToLower(alias)
-	for k, store := range r.providers {
+	for _, k := range sortedObjectStorageAliases(r.providers) {
 		if strings.ToLower(k) == lower {
+			store, ok := r.providers[k]
+			if !ok {
+				continue
+			}
 			slog.Warn("storage provider alias case-insensitive fallback (consider migrating DB data)",
 				"requested", alias, "matched", k)
 			return store, nil
@@ -49,12 +98,25 @@ func (r *StorageRegistry) Get(alias string) (ObjectStorage, error) {
 
 	// 按 provider 类型回退：DB 中存的可能是类型（如 MINIO）而非别名（如 local-minio）
 	if r.storageCfg != nil {
-		for k, pcfg := range r.storageCfg.Providers {
-			if strings.EqualFold(pcfg.Type, alias) {
-				if store, ok := r.providers[k]; ok {
-					return store, nil
-				}
+		var matchedAlias string
+		var matchedStore ObjectStorage
+		for _, k := range sortedProviderAliases(r.storageCfg.Providers) {
+			pcfg := r.storageCfg.Providers[k]
+			if !strings.EqualFold(pcfg.Type, alias) {
+				continue
 			}
+			store, ok := r.providers[k]
+			if !ok {
+				continue
+			}
+			if matchedAlias != "" {
+				return nil, fmt.Errorf("%w: ambiguous provider type %s", ErrProviderUnknown, alias)
+			}
+			matchedAlias = k
+			matchedStore = store
+		}
+		if matchedStore != nil {
+			return matchedStore, nil
 		}
 	}
 
@@ -264,4 +326,22 @@ func providerConfigEqual(a, b config.ProviderConfig) bool {
 		a.UseSSL == b.UseSSL &&
 		a.Bucket == b.Bucket &&
 		a.Region == b.Region
+}
+
+func sortedProviderAliases(providers map[string]config.ProviderConfig) []string {
+	aliases := make([]string, 0, len(providers))
+	for alias := range providers {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	return aliases
+}
+
+func sortedObjectStorageAliases(providers map[string]ObjectStorage) []string {
+	aliases := make([]string, 0, len(providers))
+	for alias := range providers {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	return aliases
 }

@@ -128,9 +128,11 @@ func (r *NodeRepository) RestoreTree(ctx context.Context, nodeID, libraryID uint
 			continue
 		}
 
-		duplicate, dupErr := r.hasDuplicateName(
+		duplicate, dupErr := r.hasDuplicateVisibleName(
 			ctx,
 			row.Name,
+			derefString(row.Ext),
+			domainTypeCode(row.NodeType),
 			parentID,
 			libraryID,
 			toDomainUint64(row.ID),
