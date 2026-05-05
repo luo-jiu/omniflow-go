@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	pgmodel "omniflow-go/internal/repository/postgres/model"
@@ -10,20 +11,13 @@ import (
 )
 
 type ArchiveUnitRow struct {
-	ID        uint64
-	Name      string
-	SortOrder int
-	ViewMeta  string
-}
-
-type archiveFirstImageRow struct {
-	ParentID int64 `gorm:"column:parent_id"`
-	NodeID   int64 `gorm:"column:node_id"`
-}
-
-type storageKeyRow struct {
-	NodeID     int64  `gorm:"column:node_id"`
-	StorageKey string `gorm:"column:storage_key"`
+	ID            uint64
+	Name          string
+	SortOrder     int
+	ViewMeta      string
+	MediaNodeID   uint64
+	CoverNodeID   uint64
+	SubtitleCount int
 }
 
 // StorageInfoRow 文件节点的存储位置信息。
@@ -68,111 +62,32 @@ var archiveVideoExtensions = []string{
 	"3gp",
 }
 
-const sqlDetectFirstImageChildrenByParentIDs = `
-WITH ranked AS (
-    SELECT
-        n.parent_id,
-        n.id AS node_id,
-        ROW_NUMBER() OVER (PARTITION BY n.parent_id ORDER BY n.sort_order ASC, n.id ASC) AS rn
-    FROM nodes n
-    LEFT JOIN node_files nf
-        ON nf.file_id = n.id
-       AND nf.library_id = n.library_id
-    WHERE n.library_id = ?
-      AND n.parent_id IN ?
-      AND n.node_type = 1
-      AND n.deleted_at IS NULL
-      AND n.name NOT LIKE '.%%'
-      AND NOT (COALESCE(n.name, '') = '' AND COALESCE(n.ext, '') <> '')
-      AND (
-            LOWER(COALESCE(nf.mime_type, '')) LIKE 'image/%%'
-         OR LOWER(COALESCE(n.ext, '')) IN ?
-      )
+var archiveAudioExtensions = []string{
+	"mp3",
+	"wav",
+	"aac",
+	"flac",
+	"m4a",
+	"ogg",
+	"oga",
+	"opus",
+}
+
+var archiveSubtitleExtensions = []string{
+	"lrc",
+	"srt",
+	"vtt",
+	"ass",
+	"ssa",
+}
+
+type archiveMediaKind string
+
+const (
+	archiveMediaKindImage archiveMediaKind = "image"
+	archiveMediaKindVideo archiveMediaKind = "video"
+	archiveMediaKindAudio archiveMediaKind = "audio"
 )
-SELECT parent_id, node_id
-FROM ranked
-WHERE rn = 1
-`
-
-const sqlListStorageKeysByNodeIDs = `
-SELECT
-    nf.file_id AS node_id,
-    so.object_key AS storage_key
-FROM node_files nf
-JOIN nodes n
-  ON n.id = nf.file_id
- AND n.library_id = nf.library_id
- AND n.deleted_at IS NULL
- AND n.node_type = 1
-JOIN storage_objects so
-  ON so.id = nf.storage_object_id
- AND so.library_id = nf.library_id
- AND so.deleted_at IS NULL
-WHERE nf.library_id = ?
-  AND nf.file_id IN ?
-`
-
-const sqlListStorageInfoByNodeIDs = `
-SELECT
-    nf.file_id AS node_id,
-    so.object_key AS storage_key,
-    so.provider AS provider_alias
-FROM node_files nf
-JOIN nodes n
-  ON n.id = nf.file_id
- AND n.library_id = nf.library_id
- AND n.deleted_at IS NULL
- AND n.node_type = 1
-JOIN storage_objects so
-  ON so.id = nf.storage_object_id
- AND so.library_id = nf.library_id
- AND so.deleted_at IS NULL
-WHERE nf.library_id = ?
-  AND nf.file_id IN ?
-`
-
-const sqlCountVideoArchiveUnitsByParentID = `
-SELECT COUNT(1)
-FROM nodes n
-LEFT JOIN node_files nf
-  ON nf.file_id = n.id
- AND nf.library_id = n.library_id
-WHERE n.library_id = ?
-  AND n.parent_id = ?
-  AND n.node_type = 1
-  AND n.deleted_at IS NULL
-  AND n.name NOT LIKE '.%%'
-  AND NOT (COALESCE(n.name, '') = '' AND COALESCE(n.ext, '') <> '')
-  AND (
-        LOWER(COALESCE(nf.mime_type, '')) LIKE 'video/%%'
-     OR LOWER(COALESCE(n.ext, '')) IN ?
-  )
-`
-
-const sqlListVideoArchiveUnitsByParentID = `
-SELECT
-    n.id,
-    n.name,
-    n.sort_order,
-    n.view_meta
-FROM nodes n
-LEFT JOIN node_files nf
-  ON nf.file_id = n.id
- AND nf.library_id = n.library_id
-WHERE n.library_id = ?
-  AND n.parent_id = ?
-  AND n.node_type = 1
-  AND n.deleted_at IS NULL
-  AND n.name NOT LIKE '.%%'
-  AND NOT (COALESCE(n.name, '') = '' AND COALESCE(n.ext, '') <> '')
-  AND (
-        LOWER(COALESCE(nf.mime_type, '')) LIKE 'video/%%'
-     OR LOWER(COALESCE(n.ext, '')) IN ?
-  )
-ORDER BY n.sort_order ASC, n.id ASC
-OFFSET ?
-LIMIT ?
-`
 
 func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	ctx context.Context,
@@ -188,6 +103,9 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	}
 	if normalizedType == "VIDEO" {
 		return r.listVideoArchiveUnits(ctx, parentNodeID, libraryID, offset, limit)
+	}
+	if normalizedType == "AUDIO" {
+		return r.listAudioArchiveUnits(ctx, parentNodeID, libraryID, offset, limit)
 	}
 
 	q := r.query(ctx)
@@ -232,6 +150,294 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	return result, int(totalCount), nil
 }
 
+func archiveUnitFromNode(row *pgmodel.Node) ArchiveUnitRow {
+	if row == nil {
+		return ArchiveUnitRow{}
+	}
+	return ArchiveUnitRow{
+		ID:        toDomainUint64(row.ID),
+		Name:      row.Name,
+		SortOrder: int(row.SortOrder),
+		ViewMeta:  row.ViewMeta,
+	}
+}
+
+func normalizeArchiveNodeExt(row *pgmodel.Node) string {
+	if row == nil || row.Ext == nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(strings.TrimSpace(*row.Ext)), ".")
+}
+
+func isVisibleArchiveFileNode(row *pgmodel.Node) bool {
+	if row == nil || row.NodeType != nodeTypeFile {
+		return false
+	}
+	name := strings.TrimSpace(row.Name)
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	return !(name == "" && normalizeArchiveNodeExt(row) != "")
+}
+
+func archiveExtMatches(kind archiveMediaKind, ext string) bool {
+	switch kind {
+	case archiveMediaKindImage:
+		return lo.Contains(archiveImageExtensions, ext)
+	case archiveMediaKindVideo:
+		return lo.Contains(archiveVideoExtensions, ext)
+	case archiveMediaKindAudio:
+		return lo.Contains(archiveAudioExtensions, ext)
+	default:
+		return false
+	}
+}
+
+func archiveMimeMatches(kind archiveMediaKind, mimeType string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(mimeType))
+	if normalized == "" {
+		return false
+	}
+	return strings.HasPrefix(normalized, string(kind)+"/")
+}
+
+func isArchiveMediaNode(row *pgmodel.Node, mimeTypes map[uint64]string, kind archiveMediaKind) bool {
+	if !isVisibleArchiveFileNode(row) {
+		return false
+	}
+	nodeID := toDomainUint64(row.ID)
+	if archiveMimeMatches(kind, mimeTypes[nodeID]) {
+		return true
+	}
+	return archiveExtMatches(kind, normalizeArchiveNodeExt(row))
+}
+
+func isArchiveSubtitleNode(row *pgmodel.Node) bool {
+	if !isVisibleArchiveFileNode(row) {
+		return false
+	}
+	return lo.Contains(archiveSubtitleExtensions, normalizeArchiveNodeExt(row))
+}
+
+func sortArchiveUnits(units []ArchiveUnitRow) {
+	sort.SliceStable(units, func(i, j int) bool {
+		if units[i].SortOrder != units[j].SortOrder {
+			return units[i].SortOrder < units[j].SortOrder
+		}
+		return units[i].ID < units[j].ID
+	})
+}
+
+func paginateArchiveUnits(units []ArchiveUnitRow, offset int, limit int) []ArchiveUnitRow {
+	if offset >= len(units) {
+		return []ArchiveUnitRow{}
+	}
+	end := offset + limit
+	if end > len(units) {
+		end = len(units)
+	}
+	return units[offset:end]
+}
+
+func collectNodeIDs(rows []*pgmodel.Node) []uint64 {
+	result := make([]uint64, 0, len(rows))
+	for _, row := range rows {
+		nodeID := toDomainUint64(row.ID)
+		if nodeID > 0 {
+			result = append(result, nodeID)
+		}
+	}
+	return result
+}
+
+func (r *NodeRepository) listMimeTypesByNodeIDs(
+	ctx context.Context,
+	libraryID uint64,
+	nodeIDs []uint64,
+) (map[uint64]string, error) {
+	if len(nodeIDs) == 0 {
+		return map[uint64]string{}, nil
+	}
+
+	q := r.query(ctx)
+	rows, err := q.NodeFile.WithContext(ctx).
+		Select(q.NodeFile.FileID, q.NodeFile.MimeType).
+		Where(
+			q.NodeFile.LibraryID.Eq(toPGInt64(libraryID)),
+			q.NodeFile.FileID.In(toPGInt64Slice(nodeIDs)...),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[uint64]string, len(rows))
+	for _, row := range rows {
+		nodeID := toDomainUint64(row.FileID)
+		if nodeID == 0 {
+			continue
+		}
+		result[nodeID] = strings.TrimSpace(derefString(row.MimeType))
+	}
+	return result, nil
+}
+
+func (r *NodeRepository) listLiveFileNodeIDsByIDs(
+	ctx context.Context,
+	libraryID uint64,
+	nodeIDs []uint64,
+) ([]uint64, error) {
+	if len(nodeIDs) == 0 {
+		return []uint64{}, nil
+	}
+
+	q := r.query(ctx)
+	rows, err := q.Node.WithContext(ctx).
+		Select(q.Node.ID).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ID.In(toPGInt64Slice(nodeIDs)...),
+			q.Node.NodeType.Eq(nodeTypeFile),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+	return collectNodeIDs(rows), nil
+}
+
+func (r *NodeRepository) listDirectChildFileArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+	kind archiveMediaKind,
+) ([]ArchiveUnitRow, error) {
+	q := r.query(ctx)
+	rows, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
+			q.Node.NodeType.Eq(nodeTypeFile),
+		).
+		Order(
+			q.Node.SortOrder.Asc(),
+			q.Node.ID.Asc(),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return []ArchiveUnitRow{}, nil
+	}
+
+	mimeTypes, err := r.listMimeTypesByNodeIDs(ctx, libraryID, collectNodeIDs(rows))
+	if err != nil {
+		return nil, err
+	}
+
+	units := make([]ArchiveUnitRow, 0, len(rows))
+	for _, row := range rows {
+		if !isArchiveMediaNode(row, mimeTypes, kind) {
+			continue
+		}
+		unit := archiveUnitFromNode(row)
+		unit.MediaNodeID = unit.ID
+		units = append(units, unit)
+	}
+	return units, nil
+}
+
+func (r *NodeRepository) listDirectChildVideoDirectoryArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+) ([]ArchiveUnitRow, error) {
+	q := r.query(ctx)
+	directories, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
+			q.Node.NodeType.Eq(nodeTypeDirectory),
+			q.Node.ArchiveMode.Is(false),
+			q.Node.BuiltInType.Eq("VIDEO"),
+		).
+		Order(
+			q.Node.SortOrder.Asc(),
+			q.Node.ID.Asc(),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(directories) == 0 {
+		return []ArchiveUnitRow{}, nil
+	}
+
+	directoryIDs := collectNodeIDs(directories)
+	children, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.In(toPGInt64Slice(directoryIDs)...),
+			q.Node.NodeType.Eq(nodeTypeFile),
+		).
+		Order(
+			q.Node.ParentID.Asc(),
+			q.Node.SortOrder.Asc(),
+			q.Node.ID.Asc(),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(children) == 0 {
+		return []ArchiveUnitRow{}, nil
+	}
+
+	mimeTypes, err := r.listMimeTypesByNodeIDs(ctx, libraryID, collectNodeIDs(children))
+	if err != nil {
+		return nil, err
+	}
+
+	unitByDirectoryID := make(map[uint64]ArchiveUnitRow, len(directories))
+	for _, directory := range directories {
+		unit := archiveUnitFromNode(directory)
+		unitByDirectoryID[unit.ID] = unit
+	}
+
+	for _, child := range children {
+		if child.ParentID == nil {
+			continue
+		}
+		parentID := toDomainUint64(*child.ParentID)
+		unit, ok := unitByDirectoryID[parentID]
+		if !ok {
+			continue
+		}
+		if unit.MediaNodeID == 0 && isArchiveMediaNode(child, mimeTypes, archiveMediaKindVideo) {
+			unit.MediaNodeID = toDomainUint64(child.ID)
+		}
+		if unit.CoverNodeID == 0 && isArchiveMediaNode(child, mimeTypes, archiveMediaKindImage) {
+			unit.CoverNodeID = toDomainUint64(child.ID)
+		}
+		if isArchiveSubtitleNode(child) {
+			unit.SubtitleCount++
+		}
+		unitByDirectoryID[parentID] = unit
+	}
+
+	units := make([]ArchiveUnitRow, 0, len(directories))
+	for _, directory := range directories {
+		nodeID := toDomainUint64(directory.ID)
+		unit := unitByDirectoryID[nodeID]
+		if unit.MediaNodeID == 0 {
+			continue
+		}
+		units = append(units, unit)
+	}
+	return units, nil
+}
+
 func (r *NodeRepository) listVideoArchiveUnits(
 	ctx context.Context,
 	parentNodeID uint64,
@@ -239,35 +445,40 @@ func (r *NodeRepository) listVideoArchiveUnits(
 	offset int,
 	limit int,
 ) ([]ArchiveUnitRow, int, error) {
-	var totalCount int64
-	if err := r.scanRaw(
-		ctx,
-		&totalCount,
-		sqlCountVideoArchiveUnitsByParentID,
-		toPGInt64(libraryID),
-		toPGInt64(parentNodeID),
-		archiveVideoExtensions,
-	); err != nil {
+	fileUnits, err := r.listDirectChildFileArchiveUnits(ctx, parentNodeID, libraryID, archiveMediaKindVideo)
+	if err != nil {
 		return nil, 0, err
 	}
-	if totalCount == 0 {
-		return []ArchiveUnitRow{}, 0, nil
+	directoryUnits, err := r.listDirectChildVideoDirectoryArchiveUnits(ctx, parentNodeID, libraryID)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	rows := make([]ArchiveUnitRow, 0, limit)
-	if err := r.scanRaw(
-		ctx,
-		&rows,
-		sqlListVideoArchiveUnitsByParentID,
-		toPGInt64(libraryID),
-		toPGInt64(parentNodeID),
-		archiveVideoExtensions,
-		offset,
-		limit,
-	); err != nil {
+	units := append(fileUnits, directoryUnits...)
+	sortArchiveUnits(units)
+	total := len(units)
+	if total == 0 {
+		return []ArchiveUnitRow{}, 0, nil
+	}
+	return paginateArchiveUnits(units, offset, limit), total, nil
+}
+
+func (r *NodeRepository) listAudioArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+	offset int,
+	limit int,
+) ([]ArchiveUnitRow, int, error) {
+	units, err := r.listDirectChildFileArchiveUnits(ctx, parentNodeID, libraryID, archiveMediaKindAudio)
+	if err != nil {
 		return nil, 0, err
 	}
-	return rows, int(totalCount), nil
+	total := len(units)
+	if total == 0 {
+		return []ArchiveUnitRow{}, 0, nil
+	}
+	return paginateArchiveUnits(units, offset, limit), total, nil
 }
 
 func (r *NodeRepository) DetectFirstImageChildrenByParentIDs(
@@ -279,27 +490,43 @@ func (r *NodeRepository) DetectFirstImageChildrenByParentIDs(
 		return map[uint64]uint64{}, nil
 	}
 
-	parentIDs := toPGInt64Slice(parentNodeIDs)
-	rows := make([]archiveFirstImageRow, 0, len(parentNodeIDs))
-	if err := r.scanRaw(
-		ctx,
-		&rows,
-		sqlDetectFirstImageChildrenByParentIDs,
-		toPGInt64(libraryID),
-		parentIDs,
-		archiveImageExtensions,
-	); err != nil {
+	q := r.query(ctx)
+	rows, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.In(toPGInt64Slice(parentNodeIDs)...),
+			q.Node.NodeType.Eq(nodeTypeFile),
+		).
+		Order(
+			q.Node.ParentID.Asc(),
+			q.Node.SortOrder.Asc(),
+			q.Node.ID.Asc(),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return map[uint64]uint64{}, nil
+	}
+	mimeTypes, err := r.listMimeTypesByNodeIDs(ctx, libraryID, collectNodeIDs(rows))
+	if err != nil {
 		return nil, err
 	}
 
-	result := make(map[uint64]uint64, len(rows))
+	result := make(map[uint64]uint64, len(parentNodeIDs))
 	for _, row := range rows {
-		parentID := toDomainUint64(row.ParentID)
-		nodeID := toDomainUint64(row.NodeID)
-		if parentID == 0 || nodeID == 0 {
+		if row.ParentID == nil || !isArchiveMediaNode(row, mimeTypes, archiveMediaKindImage) {
 			continue
 		}
-		result[parentID] = nodeID
+		parentID := toDomainUint64(*row.ParentID)
+		if parentID == 0 {
+			continue
+		}
+		if _, exists := result[parentID]; exists {
+			continue
+		}
+		result[parentID] = toDomainUint64(row.ID)
 	}
 	return result, nil
 }
@@ -313,23 +540,69 @@ func (r *NodeRepository) ListStorageKeysByNodeIDs(
 		return map[uint64]string{}, nil
 	}
 
-	rows := make([]storageKeyRow, 0, len(nodeIDs))
-	if err := r.scanRaw(
-		ctx,
-		&rows,
-		sqlListStorageKeysByNodeIDs,
-		toPGInt64(libraryID),
-		toPGInt64Slice(nodeIDs),
-	); err != nil {
+	liveNodeIDs, err := r.listLiveFileNodeIDsByIDs(ctx, libraryID, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(liveNodeIDs) == 0 {
+		return map[uint64]string{}, nil
+	}
+
+	q := r.query(ctx)
+	fileRows, err := q.NodeFile.WithContext(ctx).
+		Select(q.NodeFile.FileID, q.NodeFile.StorageObjectID).
+		Where(
+			q.NodeFile.LibraryID.Eq(toPGInt64(libraryID)),
+			q.NodeFile.FileID.In(toPGInt64Slice(liveNodeIDs)...),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(fileRows) == 0 {
+		return map[uint64]string{}, nil
+	}
+
+	storageIDs := make([]int64, 0, len(fileRows))
+	fileIDsByStorageID := make(map[int64][]uint64, len(fileRows))
+	for _, row := range fileRows {
+		nodeID := toDomainUint64(row.FileID)
+		if nodeID == 0 || row.StorageObjectID <= 0 {
+			continue
+		}
+		storageIDs = append(storageIDs, row.StorageObjectID)
+		fileIDsByStorageID[row.StorageObjectID] = append(fileIDsByStorageID[row.StorageObjectID], nodeID)
+	}
+	if len(storageIDs) == 0 {
+		return map[uint64]string{}, nil
+	}
+
+	storageRows, err := q.StorageObject.WithContext(ctx).
+		Select(q.StorageObject.ID, q.StorageObject.ObjectKey).
+		Where(
+			q.StorageObject.LibraryID.Eq(toPGInt64(libraryID)),
+			q.StorageObject.ID.In(storageIDs...),
+			q.StorageObject.ObjectKey.Neq(""),
+		).
+		Find()
+	if err != nil {
 		return nil, err
 	}
 
-	filtered := lo.Filter(rows, func(row storageKeyRow, _ int) bool {
-		return toDomainUint64(row.NodeID) > 0 && strings.TrimSpace(row.StorageKey) != ""
-	})
-	return lo.SliceToMap(filtered, func(row storageKeyRow) (uint64, string) {
-		return toDomainUint64(row.NodeID), strings.TrimSpace(row.StorageKey)
-	}), nil
+	result := make(map[uint64]string, len(storageRows))
+	for _, row := range storageRows {
+		storageKey := strings.TrimSpace(row.ObjectKey)
+		if storageKey == "" {
+			continue
+		}
+		for _, nodeID := range fileIDsByStorageID[row.ID] {
+			if nodeID == 0 {
+				continue
+			}
+			result[nodeID] = storageKey
+		}
+	}
+	return result, nil
 }
 
 // ListStorageInfoByNodeIDs 批量查询文件节点的 storageKey + providerAlias。
@@ -342,20 +615,72 @@ func (r *NodeRepository) ListStorageInfoByNodeIDs(
 		return []StorageInfoRow{}, nil
 	}
 
-	rows := make([]StorageInfoRow, 0, len(nodeIDs))
-	if err := r.scanRaw(
-		ctx,
-		&rows,
-		sqlListStorageInfoByNodeIDs,
-		toPGInt64(libraryID),
-		toPGInt64Slice(nodeIDs),
-	); err != nil {
+	liveNodeIDs, err := r.listLiveFileNodeIDsByIDs(ctx, libraryID, nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(liveNodeIDs) == 0 {
+		return []StorageInfoRow{}, nil
+	}
+
+	q := r.query(ctx)
+	fileRows, err := q.NodeFile.WithContext(ctx).
+		Select(q.NodeFile.FileID, q.NodeFile.StorageObjectID).
+		Where(
+			q.NodeFile.LibraryID.Eq(toPGInt64(libraryID)),
+			q.NodeFile.FileID.In(toPGInt64Slice(liveNodeIDs)...),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+	if len(fileRows) == 0 {
+		return []StorageInfoRow{}, nil
+	}
+
+	storageIDs := make([]int64, 0, len(fileRows))
+	fileIDsByStorageID := make(map[int64][]int64, len(fileRows))
+	for _, row := range fileRows {
+		if row.FileID <= 0 || row.StorageObjectID <= 0 {
+			continue
+		}
+		storageIDs = append(storageIDs, row.StorageObjectID)
+		fileIDsByStorageID[row.StorageObjectID] = append(fileIDsByStorageID[row.StorageObjectID], row.FileID)
+	}
+	if len(storageIDs) == 0 {
+		return []StorageInfoRow{}, nil
+	}
+
+	storageRows, err := q.StorageObject.WithContext(ctx).
+		Select(q.StorageObject.ID, q.StorageObject.ObjectKey, q.StorageObject.Provider).
+		Where(
+			q.StorageObject.LibraryID.Eq(toPGInt64(libraryID)),
+			q.StorageObject.ID.In(storageIDs...),
+			q.StorageObject.ObjectKey.Neq(""),
+		).
+		Find()
+	if err != nil {
 		return nil, err
 	}
 
-	return lo.Filter(rows, func(row StorageInfoRow, _ int) bool {
-		return toDomainUint64(row.NodeID) > 0 && strings.TrimSpace(row.StorageKey) != ""
-	}), nil
+	rows := make([]StorageInfoRow, 0, len(storageRows))
+	for _, row := range storageRows {
+		storageKey := strings.TrimSpace(row.ObjectKey)
+		if storageKey == "" {
+			continue
+		}
+		for _, nodeID := range fileIDsByStorageID[row.ID] {
+			if nodeID <= 0 {
+				continue
+			}
+			rows = append(rows, StorageInfoRow{
+				NodeID:        nodeID,
+				StorageKey:    storageKey,
+				ProviderAlias: strings.TrimSpace(row.Provider),
+			})
+		}
+	}
+	return rows, nil
 }
 
 // GetStorageProviderByNodeID 查询单个文件节点的 provider alias。

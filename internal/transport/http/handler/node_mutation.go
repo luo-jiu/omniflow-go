@@ -133,7 +133,7 @@ func (h *NodeHandler) MoveNodesBatch(ctx *gin.Context) {
 	Success(ctx, result)
 }
 
-// SortComicChildrenByName 对 COMIC 目录的直接子节点按名称重排。
+// SortComicChildrenByName 对支持名称排序的内置类型目录直接子节点按名称重排。
 func (h *NodeHandler) SortComicChildrenByName(ctx *gin.Context) {
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {

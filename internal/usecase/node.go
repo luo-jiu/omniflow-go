@@ -524,6 +524,9 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 		} else {
 			builtInType = strings.ToUpper(builtInType)
 		}
+		if (builtInType == "AUDIO" || builtInType == "VIDEO") && node.Type != domainnode.TypeDirectory {
+			return fmt.Errorf("%w: %s built-in type only supports directories", ErrInvalidArgument, builtInType)
+		}
 		updates["built_in_type"] = builtInType
 	}
 	if cmd.ArchiveMode != nil {
@@ -910,8 +913,8 @@ func (u *NodeUseCase) SortComicChildrenByName(ctx context.Context, cmd SortComic
 	if builtInType == "" {
 		builtInType = "DEF"
 	}
-	if builtInType != "COMIC" {
-		return fmt.Errorf("%w: only COMIC directories support name sorting", ErrInvalidArgument)
+	if builtInType != "COMIC" && builtInType != "AUDIO" {
+		return fmt.Errorf("%w: only COMIC or AUDIO directories support name sorting", ErrInvalidArgument)
 	}
 
 	if err := u.AuthorizeMutation(ctx, cmd.Actor, node.LibraryID); err != nil {

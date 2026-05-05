@@ -16,6 +16,7 @@ func TestNormalizeArchiveCardBuiltInType(t *testing.T) {
 		{name: "comic", input: "comic", want: "COMIC"},
 		{name: "asmr", input: " ASMR ", want: "ASMR"},
 		{name: "video", input: "video", want: "VIDEO"},
+		{name: "audio", input: "audio", want: "AUDIO"},
 		{name: "unsupported", input: "def", want: ""},
 	}
 

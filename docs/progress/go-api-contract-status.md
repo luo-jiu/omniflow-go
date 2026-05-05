@@ -1,6 +1,6 @@
 # Go API 契约状态摘要
 
-更新时间：2026-04-15  
+更新时间：2026-05-05
 状态：Go API 当前契约已收口，持续维护
 
 ## 1. 当前结论
@@ -54,8 +54,9 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 若文件节点来自右键新建、尚未绑定 `node_files` / `storage_objects`，首次写入会初始化空文件对象，之后可正常获取预签名链接。
   - 支持 `dryRun` 查询参数，dry-run 只做校验，不写对象存储和数据库。
 - `GET /api/v1/nodes/:nodeId/archive/cards`
-  - 当前支持 `COMIC` / `ASMR` / `VIDEO` 归档卡片查询
-  - `VIDEO` 当前返回归档目录下的直属视频媒体文件，不要求子文件额外设置 `built_in_type=VIDEO`
+  - 当前支持 `COMIC` / `ASMR` / `VIDEO` / `AUDIO` 归档卡片查询
+  - `VIDEO` 当前返回归档目录下的第一代视频单元：优先支持直属 `built_in_type=VIDEO` 的目录，目录内第一个视频文件作为 `mediaNodeId`，第一个图片文件作为 `coverNodeId`，字幕文件通过 `subtitleCount` 计数；历史直属视频媒体文件仍兼容返回
+  - `AUDIO` 当前返回归档目录下的直属音频媒体文件，不要求子文件额外设置 `built_in_type=AUDIO`
 - `PATCH /api/v1/nodes/:nodeId/archive/built-in-type/batch-set`
 - Browser file mapping 与 browser bookmark 相关接口
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约

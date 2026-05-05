@@ -33,11 +33,13 @@ type ListArchiveCardsQuery struct {
 }
 
 type ArchiveCardItem struct {
-	ID          uint64 `json:"id"`
-	Name        string `json:"name"`
-	SortOrder   int    `json:"sortOrder"`
-	ViewMeta    string `json:"viewMeta,omitempty"`
-	CoverNodeID uint64 `json:"coverNodeId,omitempty"`
+	ID            uint64 `json:"id"`
+	Name          string `json:"name"`
+	SortOrder     int    `json:"sortOrder"`
+	ViewMeta      string `json:"viewMeta,omitempty"`
+	CoverNodeID   uint64 `json:"coverNodeId,omitempty"`
+	MediaNodeID   uint64 `json:"mediaNodeId,omitempty"`
+	SubtitleCount int    `json:"subtitleCount,omitempty"`
 }
 
 type ListArchiveCardsResult struct {
@@ -50,7 +52,7 @@ type ListArchiveCardsResult struct {
 
 func normalizeArchiveCardBuiltInType(input string) string {
 	normalized := strings.ToUpper(strings.TrimSpace(input))
-	if normalized == "COMIC" || normalized == "ASMR" || normalized == "VIDEO" {
+	if normalized == "COMIC" || normalized == "ASMR" || normalized == "VIDEO" || normalized == "AUDIO" {
 		return normalized
 	}
 	return ""
@@ -128,7 +130,7 @@ func parsePositiveUint64(value any) uint64 {
 
 func resolveArchiveCoverNodeIDFromMeta(viewMetaRaw string, builtInType string) uint64 {
 	meta := parseJSONMap(viewMetaRaw)
-	if builtInType == "ASMR" || builtInType == "VIDEO" {
+	if builtInType == "ASMR" || builtInType == "VIDEO" || builtInType == "AUDIO" {
 		return parsePositiveUint64(meta[viewMetaCoverNodeIDKey])
 	}
 
@@ -163,7 +165,7 @@ func applyArchiveCoverNodeIDToMeta(viewMetaRaw string, builtInType string, cover
 	}
 
 	meta := parseJSONMap(viewMetaRaw)
-	if builtInType == "ASMR" || builtInType == "VIDEO" {
+	if builtInType == "ASMR" || builtInType == "VIDEO" || builtInType == "AUDIO" {
 		current := parsePositiveUint64(meta[viewMetaCoverNodeIDKey])
 		if current == coverNodeID {
 			return strings.TrimSpace(viewMetaRaw), false
@@ -216,7 +218,7 @@ func (u *NodeUseCase) warmupArchiveCoverMetaForNodes(
 	if normalizedType == "" || len(nodes) == 0 {
 		return nil
 	}
-	if normalizedType == "VIDEO" {
+	if normalizedType == "AUDIO" {
 		return nil
 	}
 
@@ -327,19 +329,24 @@ func (u *NodeUseCase) ListArchiveCards(
 	missingParentIDs := make([]uint64, 0, len(units))
 	for _, unit := range units {
 		coverNodeID := resolveArchiveCoverNodeIDFromMeta(unit.ViewMeta, builtInType)
-		if coverNodeID == 0 && builtInType != "VIDEO" {
+		if coverNodeID == 0 && unit.CoverNodeID > 0 {
+			coverNodeID = unit.CoverNodeID
+		}
+		if coverNodeID == 0 && builtInType != "AUDIO" {
 			missingParentIDs = append(missingParentIDs, unit.ID)
 		}
 		items = append(items, ArchiveCardItem{
-			ID:          unit.ID,
-			Name:        unit.Name,
-			SortOrder:   unit.SortOrder,
-			ViewMeta:    strings.TrimSpace(unit.ViewMeta),
-			CoverNodeID: coverNodeID,
+			ID:            unit.ID,
+			Name:          unit.Name,
+			SortOrder:     unit.SortOrder,
+			ViewMeta:      strings.TrimSpace(unit.ViewMeta),
+			CoverNodeID:   coverNodeID,
+			MediaNodeID:   unit.MediaNodeID,
+			SubtitleCount: unit.SubtitleCount,
 		})
 	}
 
-	if builtInType != "VIDEO" && len(missingParentIDs) > 0 {
+	if builtInType != "AUDIO" && len(missingParentIDs) > 0 {
 		coverByParentID, detectErr := u.nodes.DetectFirstImageChildrenByParentIDs(ctx, query.LibraryID, missingParentIDs)
 		if detectErr != nil {
 			return ListArchiveCardsResult{}, detectErr
