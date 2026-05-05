@@ -23,6 +23,7 @@ type ArchiveCardItem struct {
 	ID              uint64  `json:"id"`
 	Name            string  `json:"name"`
 	SortOrder       int     `json:"sortOrder"`
+	CardKind        string  `json:"cardKind"`
 	ViewMeta        string  `json:"viewMeta,omitempty"`
 	CoverNodeID     uint64  `json:"coverNodeId,omitempty"`
 	MediaNodeID     uint64  `json:"mediaNodeId,omitempty"`
@@ -54,6 +55,14 @@ func normalizeArchiveCardPageLimit(value int) int {
 		return 120
 	}
 	return value
+}
+
+func normalizeArchiveCardKind(input string) string {
+	normalized := strings.ToLower(strings.TrimSpace(input))
+	if normalized == "collection" {
+		return "collection"
+	}
+	return "media"
 }
 
 func normalizeArchiveCardOffset(value int) int {
@@ -146,6 +155,7 @@ func (u *NodeUseCase) ListArchiveCards(
 			ID:              unit.ID,
 			Name:            unit.Name,
 			SortOrder:       unit.SortOrder,
+			CardKind:        normalizeArchiveCardKind(unit.CardKind),
 			ViewMeta:        strings.TrimSpace(unit.ViewMeta),
 			CoverNodeID:     coverNodeID,
 			MediaNodeID:     unit.MediaNodeID,

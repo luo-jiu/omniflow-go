@@ -117,3 +117,17 @@ func TestSortAndPaginateArchiveUnits(t *testing.T) {
 		t.Fatalf("unexpected archive page: %#v", page)
 	}
 }
+
+func TestArchiveUnitFromNodeDefaultsToMediaCard(t *testing.T) {
+	t.Parallel()
+
+	got := archiveUnitFromNode(&pgmodel.Node{
+		ID:        21,
+		NodeType:  nodeTypeDirectory,
+		Name:      "video",
+		SortOrder: 7,
+	})
+	if got.CardKind != archiveCardKindMedia {
+		t.Fatalf("archiveUnitFromNode().CardKind = %q, want %q", got.CardKind, archiveCardKindMedia)
+	}
+}

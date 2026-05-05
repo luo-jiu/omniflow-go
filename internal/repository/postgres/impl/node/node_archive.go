@@ -14,6 +14,7 @@ type ArchiveUnitRow struct {
 	ID            uint64
 	Name          string
 	SortOrder     int
+	CardKind      string
 	ViewMeta      string
 	MediaViewMeta string
 	MediaNodeID   uint64
@@ -90,6 +91,11 @@ const (
 	archiveMediaKindAudio archiveMediaKind = "audio"
 )
 
+const (
+	archiveCardKindMedia      = "media"
+	archiveCardKindCollection = "collection"
+)
+
 func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	ctx context.Context,
 	parentNodeID uint64,
@@ -145,6 +151,7 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 			ID:        toDomainUint64(row.ID),
 			Name:      row.Name,
 			SortOrder: int(row.SortOrder),
+			CardKind:  archiveCardKindMedia,
 			ViewMeta:  row.ViewMeta,
 		}
 	})
@@ -159,6 +166,7 @@ func archiveUnitFromNode(row *pgmodel.Node) ArchiveUnitRow {
 		ID:        toDomainUint64(row.ID),
 		Name:      row.Name,
 		SortOrder: int(row.SortOrder),
+		CardKind:  archiveCardKindMedia,
 		ViewMeta:  row.ViewMeta,
 	}
 }
@@ -441,6 +449,38 @@ func (r *NodeRepository) listDirectChildVideoDirectoryArchiveUnits(
 	return units, nil
 }
 
+func (r *NodeRepository) listDirectChildVideoCollectionArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+) ([]ArchiveUnitRow, error) {
+	q := r.query(ctx)
+	rows, err := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
+			q.Node.NodeType.Eq(nodeTypeDirectory),
+			q.Node.ArchiveMode.Is(true),
+			q.Node.BuiltInType.Eq("VIDEO"),
+		).
+		Order(
+			q.Node.SortOrder.Asc(),
+			q.Node.ID.Asc(),
+		).
+		Find()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]ArchiveUnitRow, 0, len(rows))
+	for _, row := range rows {
+		unit := archiveUnitFromNode(row)
+		unit.CardKind = archiveCardKindCollection
+		result = append(result, unit)
+	}
+	return result, nil
+}
+
 func (r *NodeRepository) listVideoArchiveUnits(
 	ctx context.Context,
 	parentNodeID uint64,
@@ -456,8 +496,13 @@ func (r *NodeRepository) listVideoArchiveUnits(
 	if err != nil {
 		return nil, 0, err
 	}
+	collectionUnits, err := r.listDirectChildVideoCollectionArchiveUnits(ctx, parentNodeID, libraryID)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	units := append(fileUnits, directoryUnits...)
+	units = append(units, collectionUnits...)
 	sortArchiveUnits(units)
 	total := len(units)
 	if total == 0 {
@@ -735,6 +780,7 @@ func (r *NodeRepository) ListDirectChildDirectoryNodesByBuiltInType(
 			ID:        toDomainUint64(row.ID),
 			Name:      row.Name,
 			SortOrder: int(row.SortOrder),
+			CardKind:  archiveCardKindMedia,
 			ViewMeta:  row.ViewMeta,
 		}
 	})
@@ -769,6 +815,7 @@ func (r *NodeRepository) FindArchiveUnitByID(
 		ID:        toDomainUint64(row.ID),
 		Name:      row.Name,
 		SortOrder: int(row.SortOrder),
+		CardKind:  archiveCardKindMedia,
 		ViewMeta:  row.ViewMeta,
 	}, nil
 }

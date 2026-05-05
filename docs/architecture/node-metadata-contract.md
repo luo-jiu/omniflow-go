@@ -72,10 +72,18 @@ OmniFlow 当前还没有独立的 `node_metadata` 表，节点扩展数据统一
 
 `builtInType=VIDEO` 卡片会返回：
 
+- `cardKind`：卡片类型，`media` 表示普通视频单元，`collection` 表示直属子视频归档合集
 - `mediaNodeId`：真正的视频文件节点
 - `coverNodeId`：封面文件节点
 - `subtitleCount`：伴随字幕数量
 - `durationSeconds`：从媒体节点 `__omniflowNodeMetadataV1.media.durationSeconds` 读取的视频时长
+
+当 `cardKind=collection` 时，卡片本身是 `built_in_type=VIDEO` 且 `archive_mode=1` 的直属子目录：
+
+- 只识别当前归档目录的第一代子归档，不在后端递归展开更深层级
+- 不返回 `mediaNodeId` / `durationSeconds`
+- 封面规则与普通视频单元一致：优先读取 `view_meta.coverNodeId`，缺失时探测合集目录第一代图片文件作为 `coverNodeId`
+- 前端应把它作为“合集”入口展示，双击后继续请求该子归档的 `archive/cards`
 
 如果时长缺失，后端会在归档卡片返回后调度 best-effort warmup，不阻塞本次列表响应：
 

@@ -32,6 +32,20 @@ func TestNormalizeArchiveCardBuiltInType(t *testing.T) {
 	}
 }
 
+func TestNormalizeArchiveCardKind(t *testing.T) {
+	t.Parallel()
+
+	if got := normalizeArchiveCardKind(" collection "); got != "collection" {
+		t.Fatalf("normalizeArchiveCardKind(collection) = %q, want collection", got)
+	}
+	if got := normalizeArchiveCardKind(""); got != "media" {
+		t.Fatalf("normalizeArchiveCardKind(empty) = %q, want media", got)
+	}
+	if got := normalizeArchiveCardKind("unknown"); got != "media" {
+		t.Fatalf("normalizeArchiveCardKind(unknown) = %q, want media", got)
+	}
+}
+
 func TestResolveArchiveCoverNodeIDFromMetaSupportsVideoTopLevelCover(t *testing.T) {
 	t.Parallel()
 
