@@ -15,6 +15,7 @@ type ArchiveUnitRow struct {
 	Name          string
 	SortOrder     int
 	ViewMeta      string
+	MediaViewMeta string
 	MediaNodeID   uint64
 	CoverNodeID   uint64
 	SubtitleCount int
@@ -343,6 +344,7 @@ func (r *NodeRepository) listDirectChildFileArchiveUnits(
 		}
 		unit := archiveUnitFromNode(row)
 		unit.MediaNodeID = unit.ID
+		unit.MediaViewMeta = unit.ViewMeta
 		units = append(units, unit)
 	}
 	return units, nil
@@ -416,6 +418,7 @@ func (r *NodeRepository) listDirectChildVideoDirectoryArchiveUnits(
 		}
 		if unit.MediaNodeID == 0 && isArchiveMediaNode(child, mimeTypes, archiveMediaKindVideo) {
 			unit.MediaNodeID = toDomainUint64(child.ID)
+			unit.MediaViewMeta = child.ViewMeta
 		}
 		if unit.CoverNodeID == 0 && isArchiveMediaNode(child, mimeTypes, archiveMediaKindImage) {
 			unit.CoverNodeID = toDomainUint64(child.ID)

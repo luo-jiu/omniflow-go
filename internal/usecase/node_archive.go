@@ -2,25 +2,12 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
-	"time"
 
 	"omniflow-go/internal/actor"
 	domainnode "omniflow-go/internal/domain/node"
-)
-
-const (
-	viewMetaViewerStateKey       = "__omniflowViewerStateV1"
-	viewMetaViewerStateLegacyKey = "__omniflow_viewer_state_v1"
-	viewMetaComicArchiveCardKey  = "comicArchiveCard"
-	viewMetaComicArchiveCardOld  = "comic_archive_card"
-	viewMetaCoverNodeIDKey       = "coverNodeId"
-	viewMetaCoverNodeIDLegacyKey = "cover_node_id"
-	viewMetaUpdatedAtKey         = "updatedAt"
 )
 
 type ListArchiveCardsQuery struct {
@@ -33,13 +20,14 @@ type ListArchiveCardsQuery struct {
 }
 
 type ArchiveCardItem struct {
-	ID            uint64 `json:"id"`
-	Name          string `json:"name"`
-	SortOrder     int    `json:"sortOrder"`
-	ViewMeta      string `json:"viewMeta,omitempty"`
-	CoverNodeID   uint64 `json:"coverNodeId,omitempty"`
-	MediaNodeID   uint64 `json:"mediaNodeId,omitempty"`
-	SubtitleCount int    `json:"subtitleCount,omitempty"`
+	ID              uint64  `json:"id"`
+	Name            string  `json:"name"`
+	SortOrder       int     `json:"sortOrder"`
+	ViewMeta        string  `json:"viewMeta,omitempty"`
+	CoverNodeID     uint64  `json:"coverNodeId,omitempty"`
+	MediaNodeID     uint64  `json:"mediaNodeId,omitempty"`
+	SubtitleCount   int     `json:"subtitleCount,omitempty"`
+	DurationSeconds float64 `json:"durationSeconds,omitempty"`
 }
 
 type ListArchiveCardsResult struct {
@@ -73,195 +61,6 @@ func normalizeArchiveCardOffset(value int) int {
 		return 0
 	}
 	return value
-}
-
-func parseJSONMap(raw string) map[string]any {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return map[string]any{}
-	}
-	var result map[string]any
-	if err := json.Unmarshal([]byte(trimmed), &result); err != nil || result == nil {
-		return map[string]any{}
-	}
-	return result
-}
-
-func parsePositiveUint64(value any) uint64 {
-	switch typed := value.(type) {
-	case float64:
-		if typed <= 0 {
-			return 0
-		}
-		return uint64(typed)
-	case float32:
-		if typed <= 0 {
-			return 0
-		}
-		return uint64(typed)
-	case int:
-		if typed <= 0 {
-			return 0
-		}
-		return uint64(typed)
-	case int64:
-		if typed <= 0 {
-			return 0
-		}
-		return uint64(typed)
-	case uint64:
-		return typed
-	case uint:
-		return uint64(typed)
-	case string:
-		trimmed := strings.TrimSpace(typed)
-		if trimmed == "" {
-			return 0
-		}
-		parsed, err := strconv.ParseUint(trimmed, 10, 64)
-		if err != nil || parsed == 0 {
-			return 0
-		}
-		return parsed
-	default:
-		return 0
-	}
-}
-
-func resolveArchiveCoverNodeIDFromMeta(viewMetaRaw string, builtInType string) uint64 {
-	meta := parseJSONMap(viewMetaRaw)
-	if builtInType == "ASMR" || builtInType == "VIDEO" || builtInType == "AUDIO" {
-		return parsePositiveUint64(meta[viewMetaCoverNodeIDKey])
-	}
-
-	viewerStateCandidate, hasViewerState := meta[viewMetaViewerStateKey]
-	if !hasViewerState {
-		viewerStateCandidate = meta[viewMetaViewerStateLegacyKey]
-	}
-	viewerState, ok := viewerStateCandidate.(map[string]any)
-	if !ok {
-		return 0
-	}
-
-	comicCardCandidate, hasComicCard := viewerState[viewMetaComicArchiveCardKey]
-	if !hasComicCard {
-		comicCardCandidate = viewerState[viewMetaComicArchiveCardOld]
-	}
-	comicCard, ok := comicCardCandidate.(map[string]any)
-	if !ok {
-		return 0
-	}
-
-	coverNodeID := parsePositiveUint64(comicCard[viewMetaCoverNodeIDKey])
-	if coverNodeID > 0 {
-		return coverNodeID
-	}
-	return parsePositiveUint64(comicCard[viewMetaCoverNodeIDLegacyKey])
-}
-
-func applyArchiveCoverNodeIDToMeta(viewMetaRaw string, builtInType string, coverNodeID uint64) (string, bool) {
-	if coverNodeID == 0 {
-		return strings.TrimSpace(viewMetaRaw), false
-	}
-
-	meta := parseJSONMap(viewMetaRaw)
-	if builtInType == "ASMR" || builtInType == "VIDEO" || builtInType == "AUDIO" {
-		current := parsePositiveUint64(meta[viewMetaCoverNodeIDKey])
-		if current == coverNodeID {
-			return strings.TrimSpace(viewMetaRaw), false
-		}
-		meta[viewMetaCoverNodeIDKey] = coverNodeID
-		encoded, err := json.Marshal(meta)
-		if err != nil {
-			return strings.TrimSpace(viewMetaRaw), false
-		}
-		return string(encoded), true
-	}
-
-	viewerStateCandidate := meta[viewMetaViewerStateKey]
-	viewerState, ok := viewerStateCandidate.(map[string]any)
-	if !ok {
-		viewerState = map[string]any{}
-	}
-	comicCardCandidate := viewerState[viewMetaComicArchiveCardKey]
-	comicCard, ok := comicCardCandidate.(map[string]any)
-	if !ok {
-		comicCard = map[string]any{}
-	}
-
-	current := parsePositiveUint64(comicCard[viewMetaCoverNodeIDKey])
-	if current == coverNodeID {
-		return strings.TrimSpace(viewMetaRaw), false
-	}
-
-	comicCard[viewMetaCoverNodeIDKey] = coverNodeID
-	comicCard[viewMetaUpdatedAtKey] = time.Now().UTC().Format(time.RFC3339Nano)
-	viewerState[viewMetaComicArchiveCardKey] = comicCard
-	delete(viewerState, viewMetaComicArchiveCardOld)
-	meta[viewMetaViewerStateKey] = viewerState
-	delete(meta, viewMetaViewerStateLegacyKey)
-
-	encoded, err := json.Marshal(meta)
-	if err != nil {
-		return strings.TrimSpace(viewMetaRaw), false
-	}
-	return string(encoded), true
-}
-
-func (u *NodeUseCase) warmupArchiveCoverMetaForNodes(
-	ctx context.Context,
-	libraryID uint64,
-	builtInType string,
-	nodes []ArchiveCardItem,
-) error {
-	normalizedType := normalizeArchiveCardBuiltInType(builtInType)
-	if normalizedType == "" || len(nodes) == 0 {
-		return nil
-	}
-	if normalizedType == "AUDIO" {
-		return nil
-	}
-
-	targetParentIDs := make([]uint64, 0, len(nodes))
-	for _, item := range nodes {
-		if item.ID == 0 {
-			continue
-		}
-		if resolveArchiveCoverNodeIDFromMeta(item.ViewMeta, normalizedType) > 0 {
-			continue
-		}
-		targetParentIDs = append(targetParentIDs, item.ID)
-	}
-	if len(targetParentIDs) == 0 {
-		return nil
-	}
-
-	coverByParentID, err := u.nodes.DetectFirstImageChildrenByParentIDs(ctx, libraryID, targetParentIDs)
-	if err != nil {
-		return err
-	}
-	if len(coverByParentID) == 0 {
-		return nil
-	}
-
-	for _, item := range nodes {
-		coverNodeID := coverByParentID[item.ID]
-		if coverNodeID == 0 {
-			continue
-		}
-		nextViewMeta, changed := applyArchiveCoverNodeIDToMeta(item.ViewMeta, normalizedType, coverNodeID)
-		if !changed {
-			continue
-		}
-		_, updateErr := u.nodes.UpdateNodeFields(ctx, item.ID, libraryID, map[string]any{
-			"view_meta":  nextViewMeta,
-			"updated_at": time.Now().UTC(),
-		})
-		if updateErr != nil {
-			return updateErr
-		}
-	}
-	return nil
 }
 
 func (u *NodeUseCase) ListArchiveCards(
@@ -327,6 +126,7 @@ func (u *NodeUseCase) ListArchiveCards(
 
 	items := make([]ArchiveCardItem, 0, len(units))
 	missingParentIDs := make([]uint64, 0, len(units))
+	missingDurationCandidates := make([]archiveMediaDurationWarmupCandidate, 0, len(units))
 	for _, unit := range units {
 		coverNodeID := resolveArchiveCoverNodeIDFromMeta(unit.ViewMeta, builtInType)
 		if coverNodeID == 0 && unit.CoverNodeID > 0 {
@@ -335,14 +135,22 @@ func (u *NodeUseCase) ListArchiveCards(
 		if coverNodeID == 0 && builtInType != "AUDIO" {
 			missingParentIDs = append(missingParentIDs, unit.ID)
 		}
+		durationSeconds := resolveNodeMediaDurationFromMeta(unit.MediaViewMeta)
+		if builtInType == "VIDEO" && unit.MediaNodeID > 0 && durationSeconds <= 0 {
+			missingDurationCandidates = append(missingDurationCandidates, archiveMediaDurationWarmupCandidate{
+				MediaNodeID: unit.MediaNodeID,
+				ViewMeta:    unit.MediaViewMeta,
+			})
+		}
 		items = append(items, ArchiveCardItem{
-			ID:            unit.ID,
-			Name:          unit.Name,
-			SortOrder:     unit.SortOrder,
-			ViewMeta:      strings.TrimSpace(unit.ViewMeta),
-			CoverNodeID:   coverNodeID,
-			MediaNodeID:   unit.MediaNodeID,
-			SubtitleCount: unit.SubtitleCount,
+			ID:              unit.ID,
+			Name:            unit.Name,
+			SortOrder:       unit.SortOrder,
+			ViewMeta:        strings.TrimSpace(unit.ViewMeta),
+			CoverNodeID:     coverNodeID,
+			MediaNodeID:     unit.MediaNodeID,
+			SubtitleCount:   unit.SubtitleCount,
+			DurationSeconds: durationSeconds,
 		})
 	}
 
@@ -365,6 +173,9 @@ func (u *NodeUseCase) ListArchiveCards(
 
 	// Best-effort warmup to avoid next-round cover scans for comic/asmr archive cards.
 	_ = u.warmupArchiveCoverMetaForNodes(ctx, query.LibraryID, builtInType, items)
+	if builtInType == "VIDEO" && len(missingDurationCandidates) > 0 {
+		u.scheduleArchiveMediaDurationWarmup(ctx, query.LibraryID, missingDurationCandidates)
+	}
 
 	hasMore := (offset + len(items)) < total
 	slog.DebugContext(ctx, "node.archive.cards.listed",
