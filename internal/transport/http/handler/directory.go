@@ -56,6 +56,7 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 		conflictPolicy = strings.TrimSpace(ctx.PostForm("conflict_policy"))
 	}
 	storageProvider := PostFormString(ctx, "storage_provider", "storageProvider")
+	uploadID := PostFormString(ctx, "upload_id", "uploadId")
 
 	if h.directoryUseCase == nil {
 		InternalError(ctx, "directory service not configured")
@@ -79,6 +80,7 @@ func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
 		Content:         file,
 		ConflictPolicy:  usecase.NodeNameConflictPolicy(conflictPolicy),
 		StorageProvider: storageProvider,
+		UploadID:        uploadID,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

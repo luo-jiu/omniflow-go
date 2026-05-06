@@ -18,6 +18,7 @@ import (
 	domainnode "omniflow-go/internal/domain/node"
 	"omniflow-go/internal/repository"
 	"omniflow-go/internal/storage"
+	"omniflow-go/internal/uploadprogress"
 
 	"github.com/google/uuid"
 	"github.com/samber/lo"
@@ -33,6 +34,9 @@ type UploadFileCommand struct {
 	Content         io.Reader
 	ConflictPolicy  NodeNameConflictPolicy
 	StorageProvider string
+	// UploadID 是客户端持有的上传会话标识，用于服务端推送真进度。
+	// 为空表示该次上传不参与进度跟踪（向前兼容旧客户端）。
+	UploadID string
 }
 
 type GetFileLinkQuery struct {
@@ -69,6 +73,7 @@ type DirectoryUseCase struct {
 	registry   *storage.StorageRegistry
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
+	progress   uploadprogress.Tracker
 }
 
 const defaultUploadContentType = "application/octet-stream"
@@ -78,12 +83,14 @@ func NewDirectoryUseCase(
 	registry *storage.StorageRegistry,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
+	progress uploadprogress.Tracker,
 ) *DirectoryUseCase {
 	return &DirectoryUseCase{
 		nodes:      nodes,
 		registry:   registry,
 		authorizer: authorizer,
 		auditLog:   auditLog,
+		progress:   progress,
 	}
 }
 
@@ -124,6 +131,14 @@ func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFi
 	if err != nil {
 		return domainnode.Node{}, fmt.Errorf("%w: resolve upload content type failed", ErrInvalidArgument)
 	}
+
+	// 为整传链路登记进度跟踪：实际写入字节数由 wrapProgressReader 在 store.Upload 期间累加。
+	// uploadID 为空或 tracker 未注入时透传，整段逻辑退化为无进度行为，向前兼容旧客户端与测试。
+	if cmd.UploadID != "" && u.progress != nil {
+		u.progress.Register(cmd.UploadID, cmd.FileSize, cmd.Actor.ID)
+		defer u.progress.Done(cmd.UploadID)
+	}
+	contentReader = wrapProgressReader(contentReader, u.progress, cmd.UploadID)
 
 	// 1. 解析目标 provider：优先使用显式指定，否则走路由规则
 	var store storage.ObjectStorage

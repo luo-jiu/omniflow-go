@@ -1,6 +1,6 @@
 # Go API 契约状态摘要
 
-更新时间：2026-05-05
+更新时间：2026-05-06
 状态：Go API 当前契约已收口，持续维护
 
 ## 1. 当前结论
@@ -11,9 +11,9 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 
 | 指标 | 数量 | 说明 |
 |---|---:|---|
-| `/api/v1` 接口总数 | 46 | 以当前路由注册为准 |
-| 功能实现 | 46/46 | 含兼容 no-op 1 个 |
-| 日志 P1 接入 | 46/46 | 详见 API 与日志归档摘要 |
+| `/api/v1` 接口总数 | 47 | 以当前路由注册为准 |
+| 功能实现 | 47/47 | 含兼容 no-op 1 个 |
+| 日志 P1 接入 | 47/47 | 详见 API 与日志归档摘要 |
 | CLI 主要写链路 | 已覆盖 | 详见 CLI 进度台账 |
 
 ## 2. 保留契约
@@ -62,6 +62,13 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - `AUDIO` 当前返回归档目录下的歌曲单元：优先支持直属 `built_in_type=AUDIO` 且 `archive_mode=false` 的目录，目录内第一个音频文件作为 `mediaNodeId`，第一个图片文件作为 `coverNodeId`，字幕 / 歌词文件通过 `subtitleCount` 计数；历史直属音频媒体文件仍兼容返回且不要求设置内置类型；直属 `AUDIO + archive_mode=true` 子归档不会作为上级合集卡片返回
 - `PATCH /api/v1/nodes/:nodeId/archive/built-in-type/batch-set`
 - Browser file mapping 与 browser bookmark 相关接口
+- `GET /api/v1/upload/:uploadId/progress`
+  - Proxy 上传模式下暴露 backend → MinIO 段的真实字节进度，覆盖整传与分片。
+  - 响应字段：`uploadId / totalBytes / uploadedBytes / percentage / state(running|done)`。
+  - 鉴权：标准 actor 校验；uploadId 不存在或 actor 不匹配统一返回 404，避免 uploadId 枚举。
+  - 已知边界：单实例内存实现，进程重启丢失；切到客户端直传 MinIO 后整段下线，详见 `docs/architecture/upload-direct-upload-migration.md`。
+- 整传 `POST /api/v1/directory/upload` 新增可选 form 字段 `upload_id`（亦接受 `uploadId`）：
+  - 客户端透传 UUID，后端用作进度跟踪会话 ID；缺省时进度跟踪退化为无操作，向前兼容旧客户端。
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约
 - 节点创建与目录上传支持可选 `conflictPolicy`：
   - “同名”按用户可见名称判断：目录为 `name`，文件为 `name.ext`（无后缀文件仍为 `name`）。因此同一目录允许 `demo.txt` 与 `demo.md` 共存，但不允许两个 `demo.txt`。

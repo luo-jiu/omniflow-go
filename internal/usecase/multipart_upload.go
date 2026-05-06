@@ -18,6 +18,7 @@ import (
 	"omniflow-go/internal/config"
 	domainnode "omniflow-go/internal/domain/node"
 	"omniflow-go/internal/storage"
+	"omniflow-go/internal/uploadprogress"
 
 	"github.com/google/uuid"
 )
@@ -102,6 +103,7 @@ type MultipartUploadUseCase struct {
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
 	cfg        *config.Config
+	progress   uploadprogress.Tracker
 	stopCh     chan struct{}
 }
 
@@ -112,6 +114,7 @@ func NewMultipartUploadUseCase(
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
 	cfg *config.Config,
+	progress uploadprogress.Tracker,
 ) (*MultipartUploadUseCase, func()) {
 	uc := &MultipartUploadUseCase{
 		sessions:   make(map[string]*multipartSession),
@@ -120,6 +123,7 @@ func NewMultipartUploadUseCase(
 		authorizer: authorizer,
 		auditLog:   auditLog,
 		cfg:        cfg,
+		progress:   progress,
 		stopCh:     make(chan struct{}),
 	}
 	go uc.sweepExpiredSessions()
@@ -170,6 +174,9 @@ func (u *MultipartUploadUseCase) cleanupExpired() {
 				"upload_id", s.UploadID,
 				"error", err,
 			)
+		}
+		if u.progress != nil {
+			u.progress.Done(s.UploadID)
 		}
 		cancel()
 	}
@@ -263,6 +270,12 @@ func (u *MultipartUploadUseCase) Initiate(
 	u.sessions[uploadID] = session
 	u.mu.Unlock()
 
+	// 整个 session 的进度共用同一个 uploadID；UploadPart 在 reader 上累加，
+	// Complete / Abort / sweepExpiredSessions 收尾时调用 Done。
+	if u.progress != nil {
+		u.progress.Register(uploadID, cmd.FileSize, cmd.Actor.ID)
+	}
+
 	slog.InfoContext(ctx, "multipart_upload.initiated",
 		"upload_id", uploadID,
 		"library_id", cmd.LibraryID,
@@ -300,8 +313,9 @@ func (u *MultipartUploadUseCase) UploadPart(
 		return UploadPartResult{}, fmt.Errorf("storage provider %q: %w", session.ProviderAlias, storeErr)
 	}
 
+	body := wrapProgressReader(cmd.Body, u.progress, session.UploadID)
 	etag, err := store.UploadPart(
-		ctx, session.StorageKey, session.UploadID, cmd.PartNumber, cmd.Body, cmd.Size,
+		ctx, session.StorageKey, session.UploadID, cmd.PartNumber, body, cmd.Size,
 	)
 	if err != nil {
 		return UploadPartResult{}, err
@@ -373,6 +387,10 @@ func (u *MultipartUploadUseCase) Complete(
 	delete(u.sessions, cmd.UploadID)
 	u.mu.Unlock()
 
+	if u.progress != nil {
+		u.progress.Done(cmd.UploadID)
+	}
+
 	_ = u.writeAudit(ctx, session.Actor, "multipart_upload.completed", true, map[string]any{
 		"library_id":  session.LibraryID,
 		"parent_id":   session.ParentID,
@@ -414,6 +432,10 @@ func (u *MultipartUploadUseCase) Abort(
 	u.mu.Lock()
 	delete(u.sessions, uploadID)
 	u.mu.Unlock()
+
+	if u.progress != nil {
+		u.progress.Done(uploadID)
+	}
 
 	slog.InfoContext(ctx, "multipart_upload.aborted",
 		"upload_id", uploadID,

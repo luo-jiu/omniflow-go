@@ -50,6 +50,8 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 		return nil, nil, err
 	}
 
+	uploadProgressTracker, uploadProgressTrackerCleanup := repository.NewUploadProgressTracker()
+
 	userRepository := repository.NewUserRepository(database)
 	libraryRepository := repository.NewLibraryRepository(database)
 	nodeRepository := repository.NewNodeRepository(database)
@@ -64,8 +66,8 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	userUseCase := usecase.NewUserUseCase(userRepository, objectStorage, transactor, logSink)
 	libraryUseCase := usecase.NewLibraryUseCase(libraryRepository, transactor, allowAll, logSink)
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink, storageRegistry)
-	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink)
-	multipartUploadUseCase, multipartUploadCleanup := usecase.NewMultipartUploadUseCase(nodeUseCase, storageRegistry, allowAll, logSink, cfg)
+	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink, uploadProgressTracker)
+	multipartUploadUseCase, multipartUploadCleanup := usecase.NewMultipartUploadUseCase(nodeUseCase, storageRegistry, allowAll, logSink, cfg, uploadProgressTracker)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
 	tagUseCase := usecase.NewTagUseCase(tagRepository, transactor)
 	browserBookmarkUseCase := usecase.NewBrowserBookmarkUseCase(browserBookmarkRepository, transactor, logSink)
@@ -83,13 +85,15 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(browserBookmarkUseCase)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(browserFileMappingUseCase)
 	storageConfigHandler := httpHandler.NewStorageConfigHandler(storageRegistry, resolveStorageConfigPath(cfg))
+	uploadProgressHandler := httpHandler.NewUploadProgressHandler(uploadProgressTracker)
 
-	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, multipartUploadHandler, storageConfigHandler)
+	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, multipartUploadHandler, storageConfigHandler, uploadProgressHandler)
 	httpServer := server.NewHTTPServer(cfg, engine, logger)
 	application := app.New(cfg, logger, httpServer)
 
 	cleanup := func() {
 		multipartUploadCleanup()
+		uploadProgressTrackerCleanup()
 		storageRegistryCleanup()
 		objectStorageCleanup()
 		redisCleanup()

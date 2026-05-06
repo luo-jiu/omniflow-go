@@ -40,17 +40,17 @@ func newTestEngine() http.Handler {
 	userHandler := httpHandler.NewUserHandler(nil)
 	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, nil, authorizer, auditSink))
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
-	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink))
+	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink, nil))
 	fileHandler := httpHandler.NewFileHandler(nil)
 	tagHandler := httpHandler.NewTagHandler(nil)
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(nil)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	multipartUploadUseCase, multipartUploadCleanup := usecase.NewMultipartUploadUseCase(nodeUseCase, nil, authorizer, auditSink, cfg)
+	multipartUploadUseCase, multipartUploadCleanup := usecase.NewMultipartUploadUseCase(nodeUseCase, nil, authorizer, auditSink, cfg, nil)
 	defer multipartUploadCleanup()
 	multipartUploadHandler := httpHandler.NewMultipartUploadHandler(multipartUploadUseCase)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, multipartUploadHandler, httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, multipartUploadHandler, httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewUploadProgressHandler(nil))
 	return engine
 }
 
@@ -76,13 +76,13 @@ func TestHealthRoutes(t *testing.T) {
 	userHandler := httpHandler.NewUserHandler(nil)
 	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, nil, authorizer, auditSink))
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
-	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink))
+	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink, nil))
 	fileHandler := httpHandler.NewFileHandler(nil)
 	tagHandler := httpHandler.NewTagHandler(nil)
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(nil)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewUploadProgressHandler(nil))
 
 	testCases := []string{"/healthz", "/api/v1/health"}
 	for _, path := range testCases {
@@ -119,13 +119,13 @@ func TestProtectedRouteRequiresAuthHeaders(t *testing.T) {
 	userHandler := httpHandler.NewUserHandler(nil)
 	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, nil, authorizer, auditSink))
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
-	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink))
+	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink, nil))
 	fileHandler := httpHandler.NewFileHandler(nil)
 	tagHandler := httpHandler.NewTagHandler(nil)
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(nil)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewUploadProgressHandler(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/protected-probe", nil)
 	recorder := httptest.NewRecorder()
@@ -166,13 +166,13 @@ func TestAuthStatusRouteRequiresAuthHeaders(t *testing.T) {
 	userHandler := httpHandler.NewUserHandler(nil)
 	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, nil, authorizer, auditSink))
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
-	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink))
+	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink, nil))
 	fileHandler := httpHandler.NewFileHandler(nil)
 	tagHandler := httpHandler.NewTagHandler(nil)
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(nil)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewUploadProgressHandler(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/status?username=test&token=test", nil)
 	recorder := httptest.NewRecorder()
@@ -410,11 +410,11 @@ func newBookmarkBehaviorTestEngine(bookmarkRepo *routerTestBrowserBookmarkReposi
 	userHandler := httpHandler.NewUserHandler(nil)
 	libraryHandler := httpHandler.NewLibraryHandler(usecase.NewLibraryUseCase(nil, nil, authorizer, auditSink))
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
-	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink))
+	directoryHandler := httpHandler.NewDirectoryHandler(usecase.NewDirectoryUseCase(nodeUseCase, nil, authorizer, auditSink, nil))
 	fileHandler := httpHandler.NewFileHandler(nil)
 	tagHandler := httpHandler.NewTagHandler(nil)
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(usecase.NewBrowserBookmarkUseCase(bookmarkRepo, nil, auditSink))
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	return New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	return New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewMultipartUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewUploadProgressHandler(nil))
 }
