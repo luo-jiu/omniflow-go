@@ -22,8 +22,11 @@ var defaultTableModels = map[string]string{
 	"users":                 "User",
 	"libraries":             "Library",
 	"nodes":                 "Node",
+	"node_tag_rel":          "NodeTagRel",
 	"node_files":            "NodeFile",
 	"storage_objects":       "StorageObject",
+	"tags":                  "Tag",
+	"tag_aliases":           "TagAlias",
 }
 
 func main() {

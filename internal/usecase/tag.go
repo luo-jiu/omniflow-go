@@ -16,48 +16,76 @@ import (
 )
 
 const (
-	defaultTagColor = "#4F8CFF"
-	fileTabType     = "FILE_TAB"
+	defaultTagColor     = "#4F8CFF"
+	defaultTagScope     = "resource"
+	defaultTagDimension = "custom"
+	fileTabType         = "FILE_TAB"
+	fileTabScope        = "ui"
 )
 
 var (
 	errTagRepositoryNotConfigured = errors.New("tag repository is not configured")
-	tagTypes                      = lo.SliceToMap([]string{"ASMR", "FILE_TAB", "COMIC", "GENERAL"}, func(item string) (string, struct{}) {
+	tagScopes                     = lo.SliceToMap([]string{"resource", "ui"}, func(item string) (string, struct{}) {
 		return item, struct{}{}
 	})
-	hexColorPattern  = regexp.MustCompile(`^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
-	targetKeyPattern = regexp.MustCompile(`^[A-Z0-9_-]{1,64}$`)
+	tagDimensions = lo.SliceToMap([]string{
+		"genre",
+		"creator",
+		"character",
+		"series",
+		"source",
+		"language",
+		"region",
+		"technical",
+		"status",
+		"custom",
+	}, func(item string) (string, struct{}) {
+		return item, struct{}{}
+	})
+	hexColorPattern     = regexp.MustCompile(`^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
+	tagTypePattern      = regexp.MustCompile(`^[A-Z0-9_-]{1,64}$`)
+	resourceKindPattern = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
+	targetKeyPattern    = regexp.MustCompile(`^[A-Z0-9_-]{1,64}$`)
 )
 
 type ListTagsQuery struct {
-	Actor actor.Actor
-	Type  string
+	Actor        actor.Actor
+	Type         string
+	Scope        string
+	Dimension    string
+	ResourceKind string
 }
 
 type CreateTagCommand struct {
-	Actor       actor.Actor
-	Name        string
-	Type        string
-	TargetKey   string
-	Color       string
-	TextColor   string
-	SortOrder   *int
-	Enabled     *int
-	Description string
-	DryRun      bool
+	Actor        actor.Actor
+	Name         string
+	Type         string
+	Scope        string
+	Dimension    string
+	ResourceKind string
+	TargetKey    string
+	Color        string
+	TextColor    string
+	SortOrder    *int
+	Enabled      *int
+	Description  string
+	DryRun       bool
 }
 
 type UpdateTagCommand struct {
-	Actor       actor.Actor
-	Name        string
-	Type        string
-	TargetKey   string
-	Color       string
-	TextColor   string
-	SortOrder   *int
-	Enabled     *int
-	Description string
-	DryRun      bool
+	Actor        actor.Actor
+	Name         string
+	Type         string
+	Scope        string
+	Dimension    string
+	ResourceKind string
+	TargetKey    string
+	Color        string
+	TextColor    string
+	SortOrder    *int
+	Enabled      *int
+	Description  string
+	DryRun       bool
 }
 
 type DeleteTagCommand struct {
@@ -103,8 +131,25 @@ func (u *TagUseCase) List(ctx context.Context, query ListTagsQuery) ([]domaintag
 	if err != nil {
 		return nil, err
 	}
+	normalizedScope, err := normalizeOptionalTagScope(query.Scope)
+	if err != nil {
+		return nil, err
+	}
+	normalizedDimension, err := normalizeOptionalTagDimension(query.Dimension)
+	if err != nil {
+		return nil, err
+	}
+	normalizedResourceKind, err := normalizeOptionalResourceKind(query.ResourceKind)
+	if err != nil {
+		return nil, err
+	}
 
-	rows, err := u.tags.ListByOwnerAndType(ctx, ownerUserID, normalizedType)
+	rows, err := u.tags.ListByOwnerAndFilter(ctx, ownerUserID, repository.ListTagsFilter{
+		Type:         normalizedType,
+		Scope:        normalizedScope,
+		Dimension:    normalizedDimension,
+		ResourceKind: normalizedResourceKind,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +157,9 @@ func (u *TagUseCase) List(ctx context.Context, query ListTagsQuery) ([]domaintag
 	slog.DebugContext(ctx, "tag.list.completed",
 		"owner_user_id", ownerUserID,
 		"type_filter", query.Type,
+		"scope_filter", query.Scope,
+		"dimension_filter", query.Dimension,
+		"resource_kind_filter", query.ResourceKind,
 		"result_count", len(rows),
 	)
 	return rows, nil
@@ -132,6 +180,10 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 		return domaintag.Tag{}, err
 	}
 	tagType, err := normalizeTagType(cmd.Type, true)
+	if err != nil {
+		return domaintag.Tag{}, err
+	}
+	scope, dimension, resourceKind, err := normalizeTagClassification(cmd.Scope, cmd.Dimension, cmd.ResourceKind, *tagType)
 	if err != nil {
 		return domaintag.Tag{}, err
 	}
@@ -159,11 +211,17 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 
 	var created domaintag.Tag
 	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
-		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, name, targetKey); err != nil {
+		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, scope, dimension, resourceKind, name, targetKey); err != nil {
 			return err
 		}
 
-		exists, err := u.tags.ExistsName(txCtx, ownerUserID, *tagType, name, 0)
+		exists, err := u.tags.ExistsName(txCtx, ownerUserID, repository.TagNameScope{
+			Type:         *tagType,
+			Scope:        scope,
+			Dimension:    dimension,
+			ResourceKind: resourceKind,
+			Name:         name,
+		}, 0)
 		if err != nil {
 			return err
 		}
@@ -180,15 +238,18 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 		}
 
 		tag, err := u.tags.Create(txCtx, repository.CreateTagInput{
-			Name:        name,
-			Type:        *tagType,
-			TargetKey:   targetKey,
-			OwnerUserID: ownerUserID,
-			Color:       color,
-			TextColor:   textColor,
-			SortOrder:   sortOrder,
-			Enabled:     enabled,
-			Description: description,
+			Name:         name,
+			Type:         *tagType,
+			Scope:        scope,
+			Dimension:    dimension,
+			ResourceKind: resourceKind,
+			TargetKey:    targetKey,
+			OwnerUserID:  ownerUserID,
+			Color:        color,
+			TextColor:    textColor,
+			SortOrder:    sortOrder,
+			Enabled:      enabled,
+			Description:  description,
 		})
 		if err != nil {
 			if errors.Is(err, repository.ErrConflict) {
@@ -231,6 +292,10 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 	if err != nil {
 		return domaintag.Tag{}, err
 	}
+	scope, dimension, resourceKind, err := normalizeTagClassification(cmd.Scope, cmd.Dimension, cmd.ResourceKind, *tagType)
+	if err != nil {
+		return domaintag.Tag{}, err
+	}
 	targetKey, err := normalizeTargetKey(cmd.TargetKey, tagType)
 	if err != nil {
 		return domaintag.Tag{}, err
@@ -262,11 +327,17 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 			return err
 		}
 
-		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, name, targetKey); err != nil {
+		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, scope, dimension, resourceKind, name, targetKey); err != nil {
 			return err
 		}
 
-		exists, err := u.tags.ExistsName(txCtx, ownerUserID, *tagType, name, tagID)
+		exists, err := u.tags.ExistsName(txCtx, ownerUserID, repository.TagNameScope{
+			Type:         *tagType,
+			Scope:        scope,
+			Dimension:    dimension,
+			ResourceKind: resourceKind,
+			Name:         name,
+		}, tagID)
 		if err != nil {
 			return err
 		}
@@ -283,14 +354,17 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 		}
 
 		row, err := u.tags.UpdateOwnerByID(txCtx, tagID, ownerUserID, repository.UpdateTagInput{
-			Name:        name,
-			Type:        *tagType,
-			TargetKey:   targetKey,
-			Color:       color,
-			TextColor:   textColor,
-			SortOrder:   sortOrder,
-			Enabled:     enabled,
-			Description: description,
+			Name:         name,
+			Type:         *tagType,
+			Scope:        scope,
+			Dimension:    dimension,
+			ResourceKind: resourceKind,
+			TargetKey:    targetKey,
+			Color:        color,
+			TextColor:    textColor,
+			SortOrder:    sortOrder,
+			Enabled:      enabled,
+			Description:  description,
 		})
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -376,10 +450,97 @@ func normalizeTagType(raw string, required bool) (*string, error) {
 		tagType = "GENERAL"
 	}
 
-	if _, ok := tagTypes[tagType]; !ok {
-		return nil, fmt.Errorf("%w: unsupported tag type %s", ErrInvalidArgument, tagType)
+	if !tagTypePattern.MatchString(tagType) {
+		return nil, fmt.Errorf("%w: tag type format is invalid", ErrInvalidArgument)
 	}
 	return &tagType, nil
+}
+
+func normalizeTagClassification(rawScope, rawDimension, rawResourceKind, tagType string) (string, string, *string, error) {
+	scope := strings.ToLower(strings.TrimSpace(rawScope))
+	if scope == "" {
+		scope = defaultTagScope
+	}
+	if tagType == fileTabType {
+		scope = fileTabScope
+	}
+	if _, ok := tagScopes[scope]; !ok {
+		return "", "", nil, fmt.Errorf("%w: unsupported tag scope %s", ErrInvalidArgument, scope)
+	}
+
+	dimension := strings.ToLower(strings.TrimSpace(rawDimension))
+	if dimension == "" {
+		dimension = defaultTagDimension
+	}
+	if _, ok := tagDimensions[dimension]; !ok {
+		return "", "", nil, fmt.Errorf("%w: unsupported tag dimension %s", ErrInvalidArgument, dimension)
+	}
+
+	resourceKind, err := normalizeOptionalResourceKind(rawResourceKind)
+	if err != nil {
+		return "", "", nil, err
+	}
+	if resourceKind == nil {
+		resourceKind = inferResourceKindFromType(tagType)
+	}
+	if tagType == fileTabType {
+		resourceKind = nil
+	}
+	return scope, dimension, resourceKind, nil
+}
+
+func normalizeOptionalTagScope(raw string) (*string, error) {
+	scope := strings.ToLower(strings.TrimSpace(raw))
+	if scope == "" {
+		return nil, nil
+	}
+	if _, ok := tagScopes[scope]; !ok {
+		return nil, fmt.Errorf("%w: unsupported tag scope %s", ErrInvalidArgument, scope)
+	}
+	return &scope, nil
+}
+
+func normalizeOptionalTagDimension(raw string) (*string, error) {
+	dimension := strings.ToLower(strings.TrimSpace(raw))
+	if dimension == "" {
+		return nil, nil
+	}
+	if _, ok := tagDimensions[dimension]; !ok {
+		return nil, fmt.Errorf("%w: unsupported tag dimension %s", ErrInvalidArgument, dimension)
+	}
+	return &dimension, nil
+}
+
+func normalizeOptionalResourceKind(raw string) (*string, error) {
+	resourceKind := strings.ToLower(strings.TrimSpace(raw))
+	if resourceKind == "" {
+		return nil, nil
+	}
+	if !resourceKindPattern.MatchString(resourceKind) {
+		return nil, fmt.Errorf("%w: resourceKind format is invalid", ErrInvalidArgument)
+	}
+	return &resourceKind, nil
+}
+
+func inferResourceKindFromType(tagType string) *string {
+	switch strings.ToUpper(strings.TrimSpace(tagType)) {
+	case "ASMR":
+		return lo.ToPtr("asmr")
+	case "COMIC":
+		return lo.ToPtr("comic")
+	case "VIDEO":
+		return lo.ToPtr("video")
+	case "AUDIO":
+		return lo.ToPtr("audio")
+	case "FILE":
+		return lo.ToPtr("file")
+	case "FOLDER":
+		return lo.ToPtr("folder")
+	case "GENERAL":
+		return lo.ToPtr("general")
+	default:
+		return nil
+	}
 }
 
 func normalizeTargetKey(raw string, normalizedType *string) (*string, error) {
@@ -480,11 +641,25 @@ func (u *TagUseCase) withinMutationTx(ctx context.Context, dryRun bool, fn func(
 func (u *TagUseCase) lockTagUniqScopes(
 	ctx context.Context,
 	ownerUserID uint64,
-	tagType, name string,
+	tagType, scope, dimension string,
+	resourceKind *string,
+	name string,
 	targetKey *string,
 ) error {
+	resourceKindValue := ""
+	if resourceKind != nil {
+		resourceKindValue = *resourceKind
+	}
 	scopes := []string{
-		fmt.Sprintf("tags:name:%d:%s:%s", ownerUserID, tagType, name),
+		fmt.Sprintf(
+			"tags:name:%d:%s:%s:%s:%s:%s",
+			ownerUserID,
+			scope,
+			dimension,
+			resourceKindValue,
+			tagType,
+			name,
+		),
 	}
 	if targetKey != nil && *targetKey != "" {
 		scopes = append(scopes, fmt.Sprintf("tags:target:%d:%s:%s", ownerUserID, tagType, *targetKey))

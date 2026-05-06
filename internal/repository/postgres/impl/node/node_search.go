@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -18,7 +17,7 @@ type SearchNodesInput struct {
 	Limit        int
 }
 
-// SearchNodes 按关键字与 tagIds 组合搜索节点。
+// SearchNodes 按关键字与 node_tag_rel 标签关系组合搜索节点。
 func (r *NodeRepository) SearchNodes(ctx context.Context, input SearchNodesInput) ([]domainnode.Node, error) {
 	query := r.dbWithContext(ctx).
 		Model(&pgmodel.Node{}).
@@ -29,22 +28,31 @@ func (r *NodeRepository) SearchNodes(ctx context.Context, input SearchNodesInput
 	}
 
 	if len(input.TagIDs) > 0 {
+		tagIDs := toPGInt64Slice(input.TagIDs)
 		switch strings.ToUpper(strings.TrimSpace(input.TagMatchMode)) {
 		case "ALL":
-			for _, tagID := range input.TagIDs {
-				query = query.Where(
-					"COALESCE(view_meta->'tagIds', '[]'::jsonb) @> ?::jsonb",
-					fmt.Sprintf("[%d]", tagID),
-				)
-			}
+			query = query.Where(
+				`(
+					SELECT COUNT(DISTINCT rel.tag_id)
+					FROM node_tag_rel rel
+					WHERE rel.library_id = nodes.library_id
+					  AND rel.node_id = nodes.id
+					  AND rel.tag_id IN ?
+				) = ?`,
+				tagIDs,
+				len(tagIDs),
+			)
 		default:
-			conditions := make([]string, 0, len(input.TagIDs))
-			args := make([]any, 0, len(input.TagIDs))
-			for _, tagID := range input.TagIDs {
-				conditions = append(conditions, "COALESCE(view_meta->'tagIds', '[]'::jsonb) @> ?::jsonb")
-				args = append(args, fmt.Sprintf("[%d]", tagID))
-			}
-			query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
+			query = query.Where(
+				`EXISTS (
+					SELECT 1
+					FROM node_tag_rel rel
+					WHERE rel.library_id = nodes.library_id
+					  AND rel.node_id = nodes.id
+					  AND rel.tag_id IN ?
+				)`,
+				tagIDs,
+			)
 		}
 	}
 

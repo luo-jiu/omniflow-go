@@ -14,19 +14,22 @@ import (
 )
 
 type tagEntity struct {
-	ID          int64          `gorm:"column:id;primaryKey;autoIncrement"`
-	Name        string         `gorm:"column:name"`
-	Type        string         `gorm:"column:type"`
-	TargetKey   *string        `gorm:"column:target_key"`
-	OwnerUserID *int64         `gorm:"column:owner_user_id"`
-	Color       string         `gorm:"column:color"`
-	TextColor   *string        `gorm:"column:text_color"`
-	SortOrder   int32          `gorm:"column:sort_order"`
-	Enabled     bool           `gorm:"column:enabled"`
-	Description *string        `gorm:"column:description"`
-	DeletedAt   gorm.DeletedAt `gorm:"column:deleted_at"`
-	CreatedAt   time.Time      `gorm:"column:created_at"`
-	UpdatedAt   time.Time      `gorm:"column:updated_at"`
+	ID           int64          `gorm:"column:id;primaryKey;autoIncrement"`
+	Name         string         `gorm:"column:name"`
+	Type         string         `gorm:"column:type"`
+	Scope        string         `gorm:"column:scope"`
+	Dimension    string         `gorm:"column:dimension"`
+	ResourceKind *string        `gorm:"column:resource_kind"`
+	TargetKey    *string        `gorm:"column:target_key"`
+	OwnerUserID  *int64         `gorm:"column:owner_user_id"`
+	Color        string         `gorm:"column:color"`
+	TextColor    *string        `gorm:"column:text_color"`
+	SortOrder    int32          `gorm:"column:sort_order"`
+	Enabled      bool           `gorm:"column:enabled"`
+	Description  *string        `gorm:"column:description"`
+	DeletedAt    gorm.DeletedAt `gorm:"column:deleted_at"`
+	CreatedAt    time.Time      `gorm:"column:created_at"`
+	UpdatedAt    time.Time      `gorm:"column:updated_at"`
 }
 
 func (tagEntity) TableName() string {
@@ -34,26 +37,47 @@ func (tagEntity) TableName() string {
 }
 
 type CreateTagInput struct {
-	Name        string
-	Type        string
-	TargetKey   *string
-	OwnerUserID uint64
-	Color       string
-	TextColor   *string
-	SortOrder   int
-	Enabled     int
-	Description *string
+	Name         string
+	Type         string
+	Scope        string
+	Dimension    string
+	ResourceKind *string
+	TargetKey    *string
+	OwnerUserID  uint64
+	Color        string
+	TextColor    *string
+	SortOrder    int
+	Enabled      int
+	Description  *string
 }
 
 type UpdateTagInput struct {
-	Name        string
-	Type        string
-	TargetKey   *string
-	Color       string
-	TextColor   *string
-	SortOrder   int
-	Enabled     int
-	Description *string
+	Name         string
+	Type         string
+	Scope        string
+	Dimension    string
+	ResourceKind *string
+	TargetKey    *string
+	Color        string
+	TextColor    *string
+	SortOrder    int
+	Enabled      int
+	Description  *string
+}
+
+type ListTagsFilter struct {
+	Type         *string
+	Scope        *string
+	Dimension    *string
+	ResourceKind *string
+}
+
+type TagNameScope struct {
+	Type         string
+	Scope        string
+	Dimension    string
+	ResourceKind *string
+	Name         string
 }
 
 type TagRepository struct {
@@ -107,17 +131,29 @@ func (r *TagRepository) dbWithContext(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx)
 }
 
-func (r *TagRepository) ListByOwnerAndType(ctx context.Context, ownerUserID uint64, tagType *string) ([]domaintag.Tag, error) {
+func (r *TagRepository) ListByOwnerAndFilter(ctx context.Context, ownerUserID uint64, filter ListTagsFilter) ([]domaintag.Tag, error) {
 	db := r.dbWithContext(ctx)
 	query := db.Model(&tagEntity{}).
 		Where("(owner_user_id = ? OR owner_user_id IS NULL)", toPGInt64(ownerUserID))
-	if tagType != nil && *tagType != "" {
-		query = query.Where("type = ?", *tagType)
+	if filter.Type != nil && *filter.Type != "" {
+		query = query.Where("type = ?", *filter.Type)
+	}
+	if filter.Scope != nil && *filter.Scope != "" {
+		query = query.Where("scope = ?", *filter.Scope)
+	}
+	if filter.Dimension != nil && *filter.Dimension != "" {
+		query = query.Where("dimension = ?", *filter.Dimension)
+	}
+	if filter.ResourceKind != nil && *filter.ResourceKind != "" {
+		query = query.Where("resource_kind = ?", *filter.ResourceKind)
 	}
 
 	var rows []*tagEntity
 	if err := query.
+		Order("scope ASC").
 		Order("type ASC").
+		Order("dimension ASC").
+		Order("resource_kind ASC").
 		Order("sort_order ASC").
 		Order("target_key ASC").
 		Order("id ASC").
@@ -134,15 +170,18 @@ func (r *TagRepository) ListByOwnerAndType(ctx context.Context, ownerUserID uint
 func (r *TagRepository) Create(ctx context.Context, input CreateTagInput) (domaintag.Tag, error) {
 	owner := toPGInt64(input.OwnerUserID)
 	row := &tagEntity{
-		Name:        input.Name,
-		Type:        input.Type,
-		TargetKey:   input.TargetKey,
-		OwnerUserID: &owner,
-		Color:       input.Color,
-		TextColor:   input.TextColor,
-		SortOrder:   int32(input.SortOrder),
-		Enabled:     toDBEnabled(input.Enabled),
-		Description: input.Description,
+		Name:         input.Name,
+		Type:         input.Type,
+		Scope:        input.Scope,
+		Dimension:    input.Dimension,
+		ResourceKind: input.ResourceKind,
+		TargetKey:    input.TargetKey,
+		OwnerUserID:  &owner,
+		Color:        input.Color,
+		TextColor:    input.TextColor,
+		SortOrder:    int32(input.SortOrder),
+		Enabled:      toDBEnabled(input.Enabled),
+		Description:  input.Description,
 	}
 
 	if err := r.dbWithContext(ctx).Create(row).Error; err != nil {
@@ -161,15 +200,18 @@ func (r *TagRepository) FindOwnerByID(ctx context.Context, id, ownerUserID uint6
 
 func (r *TagRepository) UpdateOwnerByID(ctx context.Context, id, ownerUserID uint64, input UpdateTagInput) (domaintag.Tag, error) {
 	updates := map[string]any{
-		"name":        input.Name,
-		"type":        input.Type,
-		"target_key":  input.TargetKey,
-		"color":       input.Color,
-		"text_color":  input.TextColor,
-		"sort_order":  int32(input.SortOrder),
-		"enabled":     toDBEnabled(input.Enabled),
-		"description": input.Description,
-		"updated_at":  time.Now().UTC(),
+		"name":          input.Name,
+		"type":          input.Type,
+		"scope":         input.Scope,
+		"dimension":     input.Dimension,
+		"resource_kind": input.ResourceKind,
+		"target_key":    input.TargetKey,
+		"color":         input.Color,
+		"text_color":    input.TextColor,
+		"sort_order":    int32(input.SortOrder),
+		"enabled":       toDBEnabled(input.Enabled),
+		"description":   input.Description,
+		"updated_at":    time.Now().UTC(),
 	}
 
 	result := r.dbWithContext(ctx).
@@ -200,10 +242,22 @@ func (r *TagRepository) SoftDeleteOwnerByID(ctx context.Context, id, ownerUserID
 	return result.RowsAffected > 0, nil
 }
 
-func (r *TagRepository) ExistsName(ctx context.Context, ownerUserID uint64, tagType, name string, excludeID uint64) (bool, error) {
+func (r *TagRepository) ExistsName(ctx context.Context, ownerUserID uint64, scope TagNameScope, excludeID uint64) (bool, error) {
 	query := r.dbWithContext(ctx).
 		Model(&tagEntity{}).
-		Where("owner_user_id = ? AND type = ? AND name = ?", toPGInt64(ownerUserID), tagType, name)
+		Where(
+			"owner_user_id = ? AND type = ? AND scope = ? AND dimension = ? AND name = ?",
+			toPGInt64(ownerUserID),
+			scope.Type,
+			scope.Scope,
+			scope.Dimension,
+			scope.Name,
+		)
+	if scope.ResourceKind == nil || *scope.ResourceKind == "" {
+		query = query.Where("resource_kind IS NULL")
+	} else {
+		query = query.Where("resource_kind = ?", *scope.ResourceKind)
+	}
 	if excludeID > 0 {
 		query = query.Where("id <> ?", toPGInt64(excludeID))
 	}
@@ -264,18 +318,21 @@ func toDomainTag(row *tagEntity) domaintag.Tag {
 	createdAt := row.CreatedAt
 	updatedAt := row.UpdatedAt
 	return domaintag.Tag{
-		ID:          toDomainUint64(row.ID),
-		Name:        row.Name,
-		Type:        row.Type,
-		TargetKey:   row.TargetKey,
-		OwnerUserID: ownerUserID,
-		Color:       row.Color,
-		TextColor:   row.TextColor,
-		SortOrder:   int(row.SortOrder),
-		Enabled:     toAPIEnabled(row.Enabled),
-		Description: row.Description,
-		CreatedAt:   &createdAt,
-		UpdatedAt:   &updatedAt,
+		ID:           toDomainUint64(row.ID),
+		Name:         row.Name,
+		Type:         row.Type,
+		Scope:        row.Scope,
+		Dimension:    row.Dimension,
+		ResourceKind: row.ResourceKind,
+		TargetKey:    row.TargetKey,
+		OwnerUserID:  ownerUserID,
+		Color:        row.Color,
+		TextColor:    row.TextColor,
+		SortOrder:    int(row.SortOrder),
+		Enabled:      toAPIEnabled(row.Enabled),
+		Description:  row.Description,
+		CreatedAt:    &createdAt,
+		UpdatedAt:    &updatedAt,
 	}
 }
 

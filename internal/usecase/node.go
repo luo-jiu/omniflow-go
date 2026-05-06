@@ -550,8 +550,16 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 	}
 
 	nextViewMeta := node.ViewMeta
+	var nextTagIDs []uint64
+	shouldSyncTagRel := false
 	if updatedViewMeta, ok := updates["view_meta"].(string); ok {
 		nextViewMeta = updatedViewMeta
+		tagIDs, hasTagIDs, err := extractViewMetaTagIDs(updatedViewMeta)
+		if err != nil {
+			return err
+		}
+		nextTagIDs = tagIDs
+		shouldSyncTagRel = hasTagIDs
 	}
 
 	normalizedNextBuiltInType := strings.TrimSpace(node.BuiltInType)
@@ -567,7 +575,27 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 
 	updates["updated_at"] = time.Now().UTC()
 
-	ok, err := u.nodes.UpdateNodeFields(ctx, nodeID, node.LibraryID, updates)
+	ownerUserID := uint64(0)
+	if shouldSyncTagRel {
+		var err error
+		ownerUserID, err = actorIDToUint64(cmd.Actor)
+		if err != nil {
+			return err
+		}
+	}
+
+	ok := false
+	err = u.withinTx(ctx, func(txCtx context.Context) error {
+		updated, updateErr := u.nodes.UpdateNodeFields(txCtx, nodeID, node.LibraryID, updates)
+		if updateErr != nil {
+			return updateErr
+		}
+		ok = updated
+		if !ok || !shouldSyncTagRel {
+			return nil
+		}
+		return u.nodes.ReplaceNodeTagIDs(txCtx, node.LibraryID, nodeID, ownerUserID, nextTagIDs)
+	})
 	if err != nil {
 		if errors.Is(err, repository.ErrInvalidState) {
 			return fmt.Errorf("%w: invalid node update request", ErrInvalidArgument)
@@ -1446,6 +1474,26 @@ func normalizeTagMatchMode(rawMode string) string {
 		return "ALL"
 	}
 	return "ANY"
+}
+
+func extractViewMetaTagIDs(rawViewMeta string) ([]uint64, bool, error) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(rawViewMeta), &payload); err != nil {
+		return nil, false, fmt.Errorf("%w: viewMeta must be valid json", ErrInvalidArgument)
+	}
+	rawTagIDs, ok := payload["tagIds"]
+	if !ok {
+		return nil, false, nil
+	}
+	if len(rawTagIDs) == 0 || string(rawTagIDs) == "null" {
+		return []uint64{}, true, nil
+	}
+
+	var tagIDs []uint64
+	if err := json.Unmarshal(rawTagIDs, &tagIDs); err != nil {
+		return nil, false, fmt.Errorf("%w: viewMeta.tagIds must be an array of positive ids", ErrInvalidArgument)
+	}
+	return normalizePositiveUint64List(tagIDs), true, nil
 }
 
 func (u *NodeUseCase) resolveCreateParentID(ctx context.Context, libraryID, parentID uint64) (uint64, error) {

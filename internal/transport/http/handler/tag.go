@@ -26,7 +26,10 @@ func (h *TagHandler) GetSearchTypes(ctx *gin.Context) {
 }
 
 type listTagsQuery struct {
-	Type string `form:"type"`
+	Type         string `form:"type"`
+	Scope        string `form:"scope"`
+	Dimension    string `form:"dimension"`
+	ResourceKind string `form:"resourceKind"`
 }
 
 type tagIDURI struct {
@@ -34,25 +37,31 @@ type tagIDURI struct {
 }
 
 type tagCreateRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Type        string `json:"type"`
-	TargetKey   string `json:"targetKey"`
-	Color       string `json:"color"`
-	TextColor   string `json:"textColor"`
-	SortOrder   *int   `json:"sortOrder"`
-	Enabled     *int   `json:"enabled"`
-	Description string `json:"description"`
+	Name         string `json:"name" binding:"required"`
+	Type         string `json:"type"`
+	Scope        string `json:"scope"`
+	Dimension    string `json:"dimension"`
+	ResourceKind string `json:"resourceKind"`
+	TargetKey    string `json:"targetKey"`
+	Color        string `json:"color"`
+	TextColor    string `json:"textColor"`
+	SortOrder    *int   `json:"sortOrder"`
+	Enabled      *int   `json:"enabled"`
+	Description  string `json:"description"`
 }
 
 type tagUpdateRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Type        string `json:"type"`
-	TargetKey   string `json:"targetKey"`
-	Color       string `json:"color"`
-	TextColor   string `json:"textColor"`
-	SortOrder   *int   `json:"sortOrder"`
-	Enabled     *int   `json:"enabled"`
-	Description string `json:"description"`
+	Name         string `json:"name" binding:"required"`
+	Type         string `json:"type"`
+	Scope        string `json:"scope"`
+	Dimension    string `json:"dimension"`
+	ResourceKind string `json:"resourceKind"`
+	TargetKey    string `json:"targetKey"`
+	Color        string `json:"color"`
+	TextColor    string `json:"textColor"`
+	SortOrder    *int   `json:"sortOrder"`
+	Enabled      *int   `json:"enabled"`
+	Description  string `json:"description"`
 }
 
 // ListTags 查询标签（支持按 type 过滤）。
@@ -68,8 +77,11 @@ func (h *TagHandler) ListTags(ctx *gin.Context) {
 	}
 
 	tags, err := h.tagUseCase.List(ctx.Request.Context(), usecase.ListTagsQuery{
-		Actor: actorFromContext(ctx),
-		Type:  query.Type,
+		Actor:        actorFromContext(ctx),
+		Type:         query.Type,
+		Scope:        query.Scope,
+		Dimension:    query.Dimension,
+		ResourceKind: query.ResourceKind,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -100,16 +112,19 @@ func (h *TagHandler) CreateTag(ctx *gin.Context) {
 	}
 
 	tag, err := h.tagUseCase.Create(ctx.Request.Context(), usecase.CreateTagCommand{
-		Actor:       actorFromContext(ctx),
-		Name:        strings.TrimSpace(req.Name),
-		Type:        strings.TrimSpace(req.Type),
-		TargetKey:   strings.TrimSpace(req.TargetKey),
-		Color:       strings.TrimSpace(req.Color),
-		TextColor:   strings.TrimSpace(req.TextColor),
-		SortOrder:   req.SortOrder,
-		Enabled:     req.Enabled,
-		Description: strings.TrimSpace(req.Description),
-		DryRun:      dryRun,
+		Actor:        actorFromContext(ctx),
+		Name:         strings.TrimSpace(req.Name),
+		Type:         strings.TrimSpace(req.Type),
+		Scope:        strings.TrimSpace(req.Scope),
+		Dimension:    strings.TrimSpace(req.Dimension),
+		ResourceKind: strings.TrimSpace(req.ResourceKind),
+		TargetKey:    strings.TrimSpace(req.TargetKey),
+		Color:        strings.TrimSpace(req.Color),
+		TextColor:    strings.TrimSpace(req.TextColor),
+		SortOrder:    req.SortOrder,
+		Enabled:      req.Enabled,
+		Description:  strings.TrimSpace(req.Description),
+		DryRun:       dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
@@ -145,16 +160,19 @@ func (h *TagHandler) UpdateTag(ctx *gin.Context) {
 	}
 
 	tag, err := h.tagUseCase.Update(ctx.Request.Context(), uri.TagID, usecase.UpdateTagCommand{
-		Actor:       actorFromContext(ctx),
-		Name:        strings.TrimSpace(req.Name),
-		Type:        strings.TrimSpace(req.Type),
-		TargetKey:   strings.TrimSpace(req.TargetKey),
-		Color:       strings.TrimSpace(req.Color),
-		TextColor:   strings.TrimSpace(req.TextColor),
-		SortOrder:   req.SortOrder,
-		Enabled:     req.Enabled,
-		Description: strings.TrimSpace(req.Description),
-		DryRun:      dryRun,
+		Actor:        actorFromContext(ctx),
+		Name:         strings.TrimSpace(req.Name),
+		Type:         strings.TrimSpace(req.Type),
+		Scope:        strings.TrimSpace(req.Scope),
+		Dimension:    strings.TrimSpace(req.Dimension),
+		ResourceKind: strings.TrimSpace(req.ResourceKind),
+		TargetKey:    strings.TrimSpace(req.TargetKey),
+		Color:        strings.TrimSpace(req.Color),
+		TextColor:    strings.TrimSpace(req.TextColor),
+		SortOrder:    req.SortOrder,
+		Enabled:      req.Enabled,
+		Description:  strings.TrimSpace(req.Description),
+		DryRun:       dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

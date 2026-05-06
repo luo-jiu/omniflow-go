@@ -12,7 +12,7 @@ OmniFlow 当前还没有独立的 `node_metadata` 表，节点扩展数据统一
 
 - 文件固有元数据写入 `__omniflowNodeMetadataV1`
 - viewer 状态继续写入 `__omniflowViewerStateV1`
-- 业务标签等旧顶层字段暂时保持兼容，不在本轮迁移
+- 业务标签的正式关系表是 `node_tag_rel`；旧顶层字段 `tagIds` 暂时保持兼容，节点更新时会同步到关系表
 
 ## 2. 背景
 
@@ -126,4 +126,5 @@ OmniFlow 当前还没有独立的 `node_metadata` 表，节点扩展数据统一
 - 新增节点元数据 key 或 viewer state key
 - 新增元数据提取来源或后台任务
 - 将 `view_meta` 中的元数据迁移到专表
+- 下线 `view_meta.tagIds` 兼容字段
 - 修改 `archive/cards` 返回的元数据字段

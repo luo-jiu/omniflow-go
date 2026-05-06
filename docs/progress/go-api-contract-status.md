@@ -38,7 +38,7 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 | Library | scroll/create/update/delete |
 | Node | 创建、查询、树关系、路径、移动、重命名、回收站、归档批量能力 |
 | File/Directory | 上传、链接、批量链接 |
-| Tag | 类型、列表、创建、更新、删除 |
+| Tag | 类型、列表、创建、更新、删除；标签定义支持 `scope / dimension / resourceKind` 多维字段 |
 | Browser | 文件映射、书签树、匹配、导入、创建、更新、移动、删除 |
 | Health | 服务健康检查 |
 
@@ -82,6 +82,12 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - `storageProvider` 持久化 provider 别名（例如 `local-minio`、`win-minio`），用于区分同为 MinIO 的不同机器或不同桶，也用于后续 S3 / OSS 等多存储位置的无感切换；历史类型值（如 `MINIO`）仅保留兼容读取能力。
   - `storageEndpoint` 来自当前 `configs/storage.yaml` 快照，不在数据库中重复持久化；密钥不通过节点详情接口返回。
   - 若历史 `storage_objects.provider` 存的是标准类型值，必须先人工确认该类型只对应一个真实 provider 后再显式迁移到 alias；服务启动过程不会自动把历史类型值改写为默认 alias，避免误指向错误对象存储。
+- Tag 多维基座：
+  - `GET /api/v1/tags` 新增可选过滤 `scope / dimension / resourceKind`，原 `type` 过滤保持兼容。
+  - `POST /api/v1/tags` 与 `PUT /api/v1/tags/:tagId` 可接收 `scope / dimension / resourceKind`，响应同样返回这些字段。
+  - `FILE_TAB` 会归为 `scope=ui`，资源标签默认 `scope=resource`、`dimension=custom`，常见资源类型会由旧 `type` 推导。
+  - `POST /api/v1/nodes/search` 的 `tagIds / tagMatchMode` 契约不变，但实现以 `node_tag_rel` 为准；`nodes.view_meta.tagIds` 仅作为兼容输入并在节点更新时同步关系表。
+  - 数据库迁移脚本见 `docs/schema/2026-05-06-tag-foundation.sql`，长期规则见 `docs/architecture/tag-foundation.md`。
 
 ## 5. 建议持续回归
 
