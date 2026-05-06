@@ -363,6 +363,24 @@ func (r *NodeRepository) listDirectChildVideoDirectoryArchiveUnits(
 	parentNodeID uint64,
 	libraryID uint64,
 ) ([]ArchiveUnitRow, error) {
+	return r.listDirectChildMediaDirectoryArchiveUnits(ctx, parentNodeID, libraryID, "VIDEO", archiveMediaKindVideo)
+}
+
+func (r *NodeRepository) listDirectChildAudioDirectoryArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+) ([]ArchiveUnitRow, error) {
+	return r.listDirectChildMediaDirectoryArchiveUnits(ctx, parentNodeID, libraryID, "AUDIO", archiveMediaKindAudio)
+}
+
+func (r *NodeRepository) listDirectChildMediaDirectoryArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+	builtInType string,
+	mediaKind archiveMediaKind,
+) ([]ArchiveUnitRow, error) {
 	q := r.query(ctx)
 	directories, err := q.Node.WithContext(ctx).
 		Where(
@@ -370,7 +388,7 @@ func (r *NodeRepository) listDirectChildVideoDirectoryArchiveUnits(
 			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
 			q.Node.NodeType.Eq(nodeTypeDirectory),
 			q.Node.ArchiveMode.Is(false),
-			q.Node.BuiltInType.Eq("VIDEO"),
+			q.Node.BuiltInType.Eq(builtInType),
 		).
 		Order(
 			q.Node.SortOrder.Asc(),
@@ -424,7 +442,7 @@ func (r *NodeRepository) listDirectChildVideoDirectoryArchiveUnits(
 		if !ok {
 			continue
 		}
-		if unit.MediaNodeID == 0 && isArchiveMediaNode(child, mimeTypes, archiveMediaKindVideo) {
+		if unit.MediaNodeID == 0 && isArchiveMediaNode(child, mimeTypes, mediaKind) {
 			unit.MediaNodeID = toDomainUint64(child.ID)
 			unit.MediaViewMeta = child.ViewMeta
 		}
@@ -518,10 +536,17 @@ func (r *NodeRepository) listAudioArchiveUnits(
 	offset int,
 	limit int,
 ) ([]ArchiveUnitRow, int, error) {
-	units, err := r.listDirectChildFileArchiveUnits(ctx, parentNodeID, libraryID, archiveMediaKindAudio)
+	fileUnits, err := r.listDirectChildFileArchiveUnits(ctx, parentNodeID, libraryID, archiveMediaKindAudio)
 	if err != nil {
 		return nil, 0, err
 	}
+	directoryUnits, err := r.listDirectChildAudioDirectoryArchiveUnits(ctx, parentNodeID, libraryID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	units := append(fileUnits, directoryUnits...)
+	sortArchiveUnits(units)
 	total := len(units)
 	if total == 0 {
 		return []ArchiveUnitRow{}, 0, nil

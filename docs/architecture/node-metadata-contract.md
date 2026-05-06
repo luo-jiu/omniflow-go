@@ -93,6 +93,13 @@ OmniFlow 当前还没有独立的 `node_metadata` 表，节点扩展数据统一
 - 探测成功后写回媒体节点 `view_meta`
 - 探测失败不影响卡片列表返回；首次响应只返回已经存在的 `durationSeconds`
 
+`builtInType=AUDIO` 卡片会返回音频归档歌曲单元：
+
+- 直属普通音频文件会作为兼容歌曲单元返回，`mediaNodeId` 等于文件节点自身。
+- 直属 `built_in_type=AUDIO` 且 `archive_mode=false` 的目录会作为歌曲文件夹返回；目录内第一个音频文件作为 `mediaNodeId`，第一个图片文件作为 `coverNodeId`，字幕 / 歌词文件通过 `subtitleCount` 计数。
+- 直属 `built_in_type=AUDIO` 且 `archive_mode=true` 的子归档目录不会作为上级归档卡片返回；音频归档不提供视频归档那种 `collection` 合集卡片。
+- `durationSeconds` 读取媒体节点已有的 `__omniflowNodeMetadataV1.media.durationSeconds`，当前不会为音频缺失时长触发同步 warmup。
+
 ### 4.2 `PUT /api/v1/nodes/:nodeId`
 
 该接口仍允许前端整体更新 `viewMeta`，但前端写入时必须保留未知 key，不能覆盖 `__omniflowNodeMetadataV1` 或其它 viewer 状态。

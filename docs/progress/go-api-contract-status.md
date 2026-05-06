@@ -59,7 +59,7 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 当前支持 `COMIC` / `ASMR` / `VIDEO` / `AUDIO` 归档卡片查询
   - `VIDEO` 当前返回归档目录下的第一代视频单元：优先支持直属 `built_in_type=VIDEO` 且 `archive_mode=false` 的目录，目录内第一个视频文件作为 `mediaNodeId`，第一个图片文件作为 `coverNodeId`，字幕文件通过 `subtitleCount` 计数，媒体时长通过 `durationSeconds` 返回；历史直属视频媒体文件仍兼容返回
   - `VIDEO` 也会返回直属 `built_in_type=VIDEO` 且 `archive_mode=true` 的子归档目录，`cardKind=collection`，用于前端展示“合集”卡片；该规则只看亲子关系，不递归展开孙级；合集封面同样支持 `coverNodeId` 和第一代图片文件探测
-  - `AUDIO` 当前返回归档目录下的直属音频媒体文件，不要求子文件额外设置 `built_in_type=AUDIO`
+  - `AUDIO` 当前返回归档目录下的歌曲单元：优先支持直属 `built_in_type=AUDIO` 且 `archive_mode=false` 的目录，目录内第一个音频文件作为 `mediaNodeId`，第一个图片文件作为 `coverNodeId`，字幕 / 歌词文件通过 `subtitleCount` 计数；历史直属音频媒体文件仍兼容返回且不要求设置内置类型；直属 `AUDIO + archive_mode=true` 子归档不会作为上级合集卡片返回
 - `PATCH /api/v1/nodes/:nodeId/archive/built-in-type/batch-set`
 - Browser file mapping 与 browser bookmark 相关接口
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约
