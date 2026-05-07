@@ -1,13 +1,10 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
-	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -18,26 +15,10 @@ import (
 	domainnode "omniflow-go/internal/domain/node"
 	"omniflow-go/internal/repository"
 	"omniflow-go/internal/storage"
-	"omniflow-go/internal/uploadprogress"
 
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 )
-
-type UploadFileCommand struct {
-	Actor           actor.Actor
-	LibraryID       uint64
-	ParentID        uint64
-	FileName        string
-	FileSize        int64
-	ContentType     string
-	Content         io.Reader
-	ConflictPolicy  NodeNameConflictPolicy
-	StorageProvider string
-	// UploadID 是客户端持有的上传会话标识，用于服务端推送真进度。
-	// 为空表示该次上传不参与进度跟踪（向前兼容旧客户端）。
-	UploadID string
-}
 
 type GetFileLinkQuery struct {
 	Actor     actor.Actor
@@ -73,7 +54,6 @@ type DirectoryUseCase struct {
 	registry   *storage.StorageRegistry
 	authorizer authz.Authorizer
 	auditLog   audit.Sink
-	progress   uploadprogress.Tracker
 }
 
 const defaultUploadContentType = "application/octet-stream"
@@ -83,136 +63,13 @@ func NewDirectoryUseCase(
 	registry *storage.StorageRegistry,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
-	progress uploadprogress.Tracker,
 ) *DirectoryUseCase {
 	return &DirectoryUseCase{
 		nodes:      nodes,
 		registry:   registry,
 		authorizer: authorizer,
 		auditLog:   auditLog,
-		progress:   progress,
 	}
-}
-
-func (u *DirectoryUseCase) UploadAndCreateNode(ctx context.Context, cmd UploadFileCommand) (domainnode.Node, error) {
-	fileName := cmd.FileName
-	if cmd.LibraryID == 0 || strings.TrimSpace(fileName) == "" || cmd.Content == nil {
-		slog.WarnContext(ctx, "directory.upload.invalid_argument",
-			"library_id", cmd.LibraryID,
-			"file_name", strings.TrimSpace(fileName),
-			"has_content", cmd.Content != nil,
-		)
-		return domainnode.Node{}, fmt.Errorf("%w: library id, file name and content are required", ErrInvalidArgument)
-	}
-	if cmd.FileSize < 0 {
-		slog.WarnContext(ctx, "directory.upload.invalid_argument",
-			"library_id", cmd.LibraryID,
-			"file_size", cmd.FileSize,
-			"reason", "file_size_lt_zero",
-		)
-		return domainnode.Node{}, fmt.Errorf("%w: file size must be >= 0", ErrInvalidArgument)
-	}
-	if u.registry == nil {
-		return domainnode.Node{}, fmt.Errorf("%w: object storage not configured", ErrInvalidArgument)
-	}
-	if err := u.authorize(ctx, cmd.Actor, cmd.LibraryID, authz.ActionUpload); err != nil {
-		return domainnode.Node{}, err
-	}
-
-	base := extractUploadBaseName(fileName)
-	extWithDot := path.Ext(base)
-	name := strings.TrimSuffix(base, extWithDot)
-	if name == "" {
-		name = base
-	}
-	ext := strings.TrimPrefix(extWithDot, ".")
-
-	contentReader, contentType, err := resolveUploadContentType(cmd.Content, cmd.ContentType, extWithDot)
-	if err != nil {
-		return domainnode.Node{}, fmt.Errorf("%w: resolve upload content type failed", ErrInvalidArgument)
-	}
-
-	// 为整传链路登记进度跟踪：实际写入字节数由 wrapProgressReader 在 store.Upload 期间累加。
-	// uploadID 为空或 tracker 未注入时透传，整段逻辑退化为无进度行为，向前兼容旧客户端与测试。
-	if cmd.UploadID != "" && u.progress != nil {
-		u.progress.Register(cmd.UploadID, cmd.FileSize, cmd.Actor.ID)
-		defer u.progress.Done(cmd.UploadID)
-	}
-	contentReader = wrapProgressReader(contentReader, u.progress, cmd.UploadID)
-
-	// 1. 解析目标 provider：优先使用显式指定，否则走路由规则
-	var store storage.ObjectStorage
-	var providerAlias string
-	if override := strings.TrimSpace(cmd.StorageProvider); override != "" {
-		store, err = u.registry.Get(override)
-		if err != nil {
-			return domainnode.Node{}, fmt.Errorf("%w: storage provider %q: %v", ErrInvalidArgument, override, err)
-		}
-		providerAlias = override
-	} else {
-		store, providerAlias, err = u.registry.Resolve(cmd.FileSize, ext, contentType)
-		if err != nil {
-			return domainnode.Node{}, err
-		}
-	}
-
-	storageKey := fmt.Sprintf("libraries/%d/%s%s", cmd.LibraryID, uuid.NewString(), extWithDot)
-	if err := store.Upload(ctx, storageKey, contentReader, cmd.FileSize, contentType); err != nil {
-		return domainnode.Node{}, err
-	}
-
-	// replace 策略：查找同名文件节点，替换其存储内容
-	conflictPolicy := NodeNameConflictPolicy(strings.ToLower(strings.TrimSpace(string(cmd.ConflictPolicy))))
-	if conflictPolicy == NodeNameConflictReplace {
-		replaced, replaceErr := u.tryReplaceExistingFile(ctx, cmd, name, ext, storageKey, contentType, providerAlias, store)
-		if replaceErr == nil && replaced.ID > 0 {
-			return replaced, nil
-		}
-		if replaceErr != nil {
-			slog.WarnContext(ctx, "directory.upload.replace_fallback",
-				"library_id", cmd.LibraryID,
-				"name", name,
-				"error", replaceErr,
-			)
-		}
-	}
-
-	node, err := u.nodes.Create(ctx, CreateNodeCommand{
-		Actor:           cmd.Actor,
-		Name:            name,
-		Type:            domainnode.TypeFile,
-		ParentID:        cmd.ParentID,
-		LibraryID:       cmd.LibraryID,
-		Ext:             ext,
-		MIMEType:        contentType,
-		FileSize:        cmd.FileSize,
-		StorageKey:      storageKey,
-		StorageProvider: providerAlias,
-		StorageBucket:   store.Bucket(),
-		ConflictPolicy:  cmd.ConflictPolicy,
-	})
-	if err != nil {
-		_ = store.Delete(ctx, storageKey)
-		return domainnode.Node{}, err
-	}
-
-	_ = u.RecordUploadIntent(ctx, cmd)
-	_ = u.writeAudit(ctx, cmd.Actor, "directory.upload", true, map[string]any{
-		"library_id":  cmd.LibraryID,
-		"parent_id":   cmd.ParentID,
-		"node_id":     node.ID,
-		"name":        node.Name,
-		"storage_key": storageKey,
-		"size":        cmd.FileSize,
-		"mime_type":   contentType,
-	})
-	slog.InfoContext(ctx, "directory.upload.completed",
-		"library_id", cmd.LibraryID,
-		"parent_id", cmd.ParentID,
-		"node_id", node.ID,
-		"size", cmd.FileSize,
-	)
-	return node, nil
 }
 
 func extractUploadBaseName(fileName string) string {
@@ -222,52 +79,6 @@ func extractUploadBaseName(fileName string) string {
 		return fileName
 	}
 	return base
-}
-
-func resolveUploadContentType(
-	content io.Reader,
-	declaredContentType string,
-	extWithDot string,
-) (io.Reader, string, error) {
-	contentType := strings.TrimSpace(declaredContentType)
-	reader := content
-
-	if contentType == "" || strings.EqualFold(contentType, defaultUploadContentType) {
-		sniffed, replayReader, err := sniffContentType(content)
-		if err != nil {
-			return nil, "", err
-		}
-		reader = replayReader
-		if sniffed != "" && !strings.EqualFold(sniffed, defaultUploadContentType) {
-			contentType = sniffed
-		}
-	}
-
-	if contentType == "" || strings.EqualFold(contentType, defaultUploadContentType) {
-		byExt := strings.TrimSpace(mime.TypeByExtension(extWithDot))
-		if byExt != "" {
-			contentType = byExt
-		}
-	}
-
-	if contentType == "" {
-		contentType = defaultUploadContentType
-	}
-	return reader, contentType, nil
-}
-
-func sniffContentType(content io.Reader) (string, io.Reader, error) {
-	head := make([]byte, 512)
-	n, err := io.ReadFull(content, head)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		return "", nil, err
-	}
-	head = head[:n]
-	replay := io.MultiReader(bytes.NewReader(head), content)
-	if len(head) == 0 {
-		return "", replay, nil
-	}
-	return http.DetectContentType(head), replay, nil
 }
 
 func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLinkQuery) (string, error) {
@@ -296,7 +107,6 @@ func (u *DirectoryUseCase) GetPresignedURL(ctx context.Context, query GetFileLin
 		return "", ErrNotFound
 	}
 
-	// 根据 DB 中记录的 provider alias 查找对应的存储实例
 	providerAlias, providerErr := u.nodes.GetFileStorageProvider(ctx, query.NodeID, query.LibraryID)
 	if providerErr != nil {
 		return "", fmt.Errorf("resolve storage provider for node %d: %w", query.NodeID, providerErr)
@@ -352,7 +162,6 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 		return []BatchFileLinkItem{}, nil
 	}
 
-	// 批量查询 storageKey + providerAlias
 	storageInfos, err := u.nodes.ListFileStorageInfo(ctx, query.Actor, query.LibraryID, nodeIDs)
 	if err != nil {
 		return nil, err
@@ -361,7 +170,6 @@ func (u *DirectoryUseCase) BatchGetPresignedURLs(
 		return []BatchFileLinkItem{}, nil
 	}
 
-	// 按 provider 分组生成 presigned URL
 	result := make([]BatchFileLinkItem, 0, len(storageInfos))
 	for _, info := range storageInfos {
 		if strings.TrimSpace(info.StorageKey) == "" {
@@ -439,10 +247,7 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	if ext := strings.TrimSpace(node.Ext); ext != "" {
 		extWithDot = "." + strings.TrimPrefix(ext, ".")
 	}
-	contentReader, contentType, err := resolveUploadContentType(cmd.Content, cmd.ContentType, extWithDot)
-	if err != nil {
-		return domainnode.Node{}, fmt.Errorf("%w: resolve upload content type failed", ErrInvalidArgument)
-	}
+	contentType := resolveDirectUploadContentType(cmd.ContentType, extWithDot)
 
 	var store storage.ObjectStorage
 	var providerAlias string
@@ -476,7 +281,7 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	}
 
 	newStorageKey := fmt.Sprintf("libraries/%d/%s%s", cmd.LibraryID, uuid.NewString(), extWithDot)
-	if err := store.Upload(ctx, newStorageKey, contentReader, cmd.FileSize, contentType); err != nil {
+	if err := store.Upload(ctx, newStorageKey, cmd.Content, cmd.FileSize, contentType); err != nil {
 		return domainnode.Node{}, err
 	}
 
@@ -519,81 +324,10 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	return updated, nil
 }
 
-// tryReplaceExistingFile 尝试替换同名文件节点的存储内容。
-// 未找到同名节点时返回零值 Node（ID == 0）。
-func (u *DirectoryUseCase) tryReplaceExistingFile(
-	ctx context.Context,
-	cmd UploadFileCommand,
-	name, ext, newStorageKey, contentType, providerAlias string,
-	store storage.ObjectStorage,
-) (domainnode.Node, error) {
-	parentID := cmd.ParentID
-	existing, err := u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name, ext)
-	if err != nil {
-		return domainnode.Node{}, fmt.Errorf("find existing file: %w", err)
-	}
-	if existing.ID == 0 {
-		return domainnode.Node{}, nil
-	}
-
-	oldKey, err := u.nodes.ReplaceFileStorage(ctx, existing.ID, cmd.LibraryID, repository.ReplaceFileStorageInput{
-		NewObjectKey:   newStorageKey,
-		NewFileSize:    cmd.FileSize,
-		NewContentType: contentType,
-		NewProvider:    providerAlias,
-		NewBucket:      store.Bucket(),
-	})
-	if err != nil {
-		return domainnode.Node{}, fmt.Errorf("replace file storage: %w", err)
-	}
-
-	if oldKey != "" && oldKey != newStorageKey {
-		_ = store.Delete(ctx, oldKey)
-	}
-
-	_ = u.writeAudit(ctx, cmd.Actor, "directory.upload.replace", true, map[string]any{
-		"library_id":      cmd.LibraryID,
-		"parent_id":       cmd.ParentID,
-		"node_id":         existing.ID,
-		"name":            name,
-		"new_storage_key": newStorageKey,
-		"old_storage_key": oldKey,
-		"size":            cmd.FileSize,
-		"mime_type":       contentType,
-	})
-	slog.InfoContext(ctx, "directory.upload.replace.completed",
-		"library_id", cmd.LibraryID,
-		"node_id", existing.ID,
-		"name", name,
-		"size", cmd.FileSize,
-	)
-
-	return u.nodes.FindFileByNameInParent(ctx, parentID, cmd.LibraryID, name, ext)
-}
-
 func normalizePositiveNodeIDs(nodeIDs []uint64) []uint64 {
 	return lo.Uniq(lo.Filter(nodeIDs, func(nodeID uint64, _ int) bool {
 		return nodeID > 0
 	}))
-}
-
-func (u *DirectoryUseCase) RecordUploadIntent(ctx context.Context, cmd UploadFileCommand) error {
-	if u.auditLog == nil {
-		return nil
-	}
-
-	return u.auditLog.Write(ctx, audit.Event{
-		Actor:      cmd.Actor,
-		Action:     "directory.upload.intent",
-		Resource:   "library",
-		Success:    true,
-		OccurredAt: time.Now().UTC(),
-		Metadata: map[string]any{
-			"library_id": cmd.LibraryID,
-			"parent_id":  cmd.ParentID,
-			"file_name":  cmd.FileName,
-		},
-	})
 }
 
 func (u *DirectoryUseCase) authorize(ctx context.Context, principal actor.Actor, libraryID uint64, action authz.Action) error {

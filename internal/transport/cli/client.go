@@ -229,6 +229,61 @@ type BrowserFileMappingUpsertRequest struct {
 	SiteURL string `json:"siteUrl"`
 }
 
+type UploadInitRequest struct {
+	LibraryID       uint64 `json:"libraryId"`
+	ParentID        uint64 `json:"parentId,omitempty"`
+	FileName        string `json:"fileName"`
+	FileSize        int64  `json:"fileSize"`
+	ContentType     string `json:"contentType,omitempty"`
+	StorageProvider string `json:"storageProvider,omitempty"`
+}
+
+type UploadInitResult struct {
+	UploadID   string    `json:"uploadId"`
+	StorageKey string    `json:"storageKey"`
+	Mode       string    `json:"mode"`
+	PartSize   int64     `json:"partSize"`
+	TotalParts int       `json:"totalParts"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+}
+
+type UploadSignPartsRequest struct {
+	UploadID    string `json:"uploadId"`
+	PartNumbers []int  `json:"partNumbers"`
+}
+
+type SignedUploadPart struct {
+	PartNumber int       `json:"partNumber"`
+	URL        string    `json:"url"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+}
+
+type UploadSignPartsResult struct {
+	Parts     []SignedUploadPart `json:"parts"`
+	ExpiresAt time.Time          `json:"expiresAt"`
+}
+
+type UploadSessionPart struct {
+	PartNumber int    `json:"partNumber"`
+	ETag       string `json:"etag"`
+	Size       int64  `json:"size"`
+}
+
+type UploadCompletedPart struct {
+	PartNumber int    `json:"partNumber"`
+	ETag       string `json:"etag"`
+}
+
+type UploadCompleteRequest struct {
+	UploadID       string                `json:"uploadId"`
+	Parts          []UploadCompletedPart `json:"parts"`
+	ConflictPolicy string                `json:"conflictPolicy,omitempty"`
+}
+
+type UploadRenewResult struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
 func NewClient(baseURL, username, token string) *Client {
 	return &Client{
 		baseURL:  normalizeBaseURL(baseURL),
@@ -599,6 +654,100 @@ func (c *Client) HardDeleteNodeTree(ctx context.Context, nodeID, libraryID uint6
 		&out,
 	)
 	return out, err
+}
+
+func (c *Client) UploadInit(ctx context.Context, req UploadInitRequest) (UploadInitResult, error) {
+	var out UploadInitResult
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/upload/init", nil, req, true, &out)
+	return out, err
+}
+
+func (c *Client) UploadSignParts(ctx context.Context, req UploadSignPartsRequest) (UploadSignPartsResult, error) {
+	var out UploadSignPartsResult
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/upload/parts/sign", nil, req, true, &out)
+	return out, err
+}
+
+func (c *Client) UploadListParts(ctx context.Context, uploadID string) ([]UploadSessionPart, error) {
+	query := url.Values{}
+	query.Set("uploadId", uploadID)
+
+	var out struct {
+		Parts []UploadSessionPart `json:"parts"`
+	}
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/upload/parts", query, nil, true, &out)
+	return out.Parts, err
+}
+
+func (c *Client) UploadRenew(ctx context.Context, uploadID string) (UploadRenewResult, error) {
+	var out UploadRenewResult
+	err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/api/v1/upload/%s/renew", url.PathEscape(uploadID)),
+		nil,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) UploadComplete(ctx context.Context, req UploadCompleteRequest) (Node, error) {
+	var out Node
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/upload/complete", nil, req, true, &out)
+	return out, err
+}
+
+func (c *Client) UploadAbort(ctx context.Context, uploadID string) error {
+	return c.doJSON(
+		ctx,
+		http.MethodDelete,
+		fmt.Sprintf("/api/v1/upload/%s", url.PathEscape(uploadID)),
+		nil,
+		nil,
+		true,
+		nil,
+	)
+}
+
+// PresignedPut 直传单个 part 到外部 presigned URL（MinIO/S3）。
+// 不走 doJSON：presigned URL 是裸 PUT 二进制，response 在 header 里返回 ETag，body 通常是 XML（错误时）。
+// 用独立 http.Client（无 20s 超时），允许大文件长耗时上传。
+func (c *Client) PresignedPut(
+	ctx context.Context,
+	presignedURL string,
+	body io.Reader,
+	contentLength int64,
+	contentType string,
+) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, presignedURL, body)
+	if err != nil {
+		return "", fmt.Errorf("build presigned put request: %w", err)
+	}
+	req.ContentLength = contentLength
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("presigned put: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		return "", fmt.Errorf("presigned put failed: http %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	etag := strings.TrimSpace(resp.Header.Get("ETag"))
+	if etag == "" {
+		etag = strings.TrimSpace(resp.Header.Get("Etag"))
+	}
+	etag = strings.Trim(etag, "\"")
+	return etag, nil
 }
 
 func withDryRunQuery(query url.Values, dryRun bool) url.Values {

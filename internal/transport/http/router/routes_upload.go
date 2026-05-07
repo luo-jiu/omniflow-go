@@ -6,9 +6,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// registerUploadProgressRoutes 注册整传与分片共享的进度查询端点。
-// 该端点不挂在 multipart 子分组下，因为整传 uploadID 也走它；
-// 也无需 extendUploadTimeout，进度查询是短请求。
-func registerUploadProgressRoutes(api *gin.RouterGroup, h *handler.UploadProgressHandler) {
-	api.GET("/upload/:uploadId/progress", h.GetProgress)
+// registerUploadRoutes 挂载直传 MinIO 流程的 7 个端点。
+// 与 proxy 时代不同，所有字节流量直接打到 MinIO，后端只编排 init/sign/complete/abort/renew。
+func registerUploadRoutes(api *gin.RouterGroup, h *handler.UploadHandler) {
+	g := api.Group("/upload")
+	g.POST("/init", h.Init)
+	g.POST("/parts/sign", h.SignParts)
+	g.GET("/parts", h.ListParts)
+	g.POST("/:uploadId/renew", h.Renew)
+	g.POST("/complete", h.Complete)
+	g.DELETE("/:uploadId", h.Abort)
 }

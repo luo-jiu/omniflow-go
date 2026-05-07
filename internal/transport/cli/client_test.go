@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -422,8 +423,212 @@ func TestImportBrowserBookmarks(t *testing.T) {
 	}
 }
 
+func TestUploadInitSendsPayload(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/upload/init" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected auth header, got %q", got)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		text := string(body)
+		if !strings.Contains(text, `"libraryId":1`) {
+			t.Fatalf("expected libraryId in body, got %s", text)
+		}
+		if !strings.Contains(text, `"fileName":"big.bin"`) {
+			t.Fatalf("expected fileName in body, got %s", text)
+		}
+		if !strings.Contains(text, `"fileSize":1048576`) {
+			t.Fatalf("expected fileSize in body, got %s", text)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":"0","data":{"uploadId":"u-1","storageKey":"libraries/1/x.bin","mode":"single","partSize":1048576,"totalParts":1,"expiresAt":"2026-05-08T00:00:00Z"}}`,
+			)),
+		}, nil
+	})
+
+	res, err := client.UploadInit(context.Background(), UploadInitRequest{
+		LibraryID: 1,
+		FileName:  "big.bin",
+		FileSize:  1024 * 1024,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.UploadID != "u-1" || res.Mode != "single" || res.TotalParts != 1 {
+		t.Fatalf("unexpected init result: %+v", res)
+	}
+}
+
+func TestUploadSignPartsBody(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/api/v1/upload/parts/sign" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		text := string(body)
+		if !strings.Contains(text, `"uploadId":"u-1"`) {
+			t.Fatalf("expected uploadId, got %s", text)
+		}
+		if !strings.Contains(text, `"partNumbers":[1,2,3]`) {
+			t.Fatalf("expected partNumbers, got %s", text)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":"0","data":{"parts":[{"partNumber":1,"url":"http://minio/u1","expiresAt":"2026-05-07T01:00:00Z"}],"expiresAt":"2026-05-07T01:00:00Z"}}`,
+			)),
+		}, nil
+	})
+
+	res, err := client.UploadSignParts(context.Background(), UploadSignPartsRequest{
+		UploadID:    "u-1",
+		PartNumbers: []int{1, 2, 3},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.Parts) != 1 || res.Parts[0].URL != "http://minio/u1" {
+		t.Fatalf("unexpected sign result: %+v", res)
+	}
+}
+
+func TestUploadCompleteIncludesConflictPolicy(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/api/v1/upload/complete" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		text := string(body)
+		if !strings.Contains(text, `"conflictPolicy":"auto_rename"`) {
+			t.Fatalf("expected conflictPolicy in body, got %s", text)
+		}
+		if !strings.Contains(text, `"partNumber":1`) || !strings.Contains(text, `"etag":"abc"`) {
+			t.Fatalf("expected parts in body, got %s", text)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":"0","data":{"id":42,"name":"big.bin","type":"file","parentId":0,"libraryId":1,"fileSize":100}}`,
+			)),
+		}, nil
+	})
+
+	node, err := client.UploadComplete(context.Background(), UploadCompleteRequest{
+		UploadID:       "u-1",
+		Parts:          []UploadCompletedPart{{PartNumber: 1, ETag: "abc"}},
+		ConflictPolicy: "auto_rename",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if node.ID != 42 {
+		t.Fatalf("unexpected node id: %d", node.ID)
+	}
+}
+
+func TestUploadAbortPathEscaped(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/upload/u-1" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	})
+
+	if err := client.UploadAbort(context.Background(), "u-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPresignedPutReturnsETag(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	// PresignedPut uses its own http.Client so we install a server instead.
+	server := newTestPresignedServer(t)
+	defer server.close()
+
+	etag, err := client.PresignedPut(
+		context.Background(),
+		server.url,
+		strings.NewReader("hello"),
+		5,
+		"application/octet-stream",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if etag != "etag-123" {
+		t.Fatalf("expected etag-123, got %q", etag)
+	}
+	if server.method != http.MethodPut {
+		t.Fatalf("expected PUT, got %s", server.method)
+	}
+	if server.contentLength != 5 {
+		t.Fatalf("expected Content-Length=5, got %d", server.contentLength)
+	}
+	if server.contentType != "application/octet-stream" {
+		t.Fatalf("expected content type, got %q", server.contentType)
+	}
+}
+
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+type testPresignedServer struct {
+	server        *httptest.Server
+	url           string
+	method        string
+	contentLength int64
+	contentType   string
+}
+
+func (s *testPresignedServer) close() { s.server.Close() }
+
+func newTestPresignedServer(t *testing.T) *testPresignedServer {
+	t.Helper()
+
+	s := &testPresignedServer{}
+	s.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.method = r.Method
+		s.contentLength = r.ContentLength
+		s.contentType = r.Header.Get("Content-Type")
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("ETag", `"etag-123"`)
+		w.WriteHeader(http.StatusOK)
+	}))
+	s.url = s.server.URL
+	return s
 }

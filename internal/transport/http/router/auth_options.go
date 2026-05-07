@@ -16,7 +16,6 @@ func buildAuthOptions(authHandler *handler.AuthHandler) middleware.AuthOptions {
 			"GET /api/v1/user/exists",
 			"POST /api/v1/files/upload",
 			"GET /api/v1/files/link",
-			"POST /api/v1/directory/upload",
 		},
 		Authenticator: authHandler,
 	}

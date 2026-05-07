@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -129,6 +131,38 @@ func (s *Store) Delete(ctx context.Context, objectName string) error {
 	return nil
 }
 
+// PresignedPutObject 颁发 PUT 直传的预签名 URL，客户端可直接 PUT 字节到 MinIO。
+func (s *Store) PresignedPutObject(
+	ctx context.Context,
+	objectName string,
+	expiry time.Duration,
+) (string, error) {
+	if expiry <= 0 {
+		expiry = 60 * time.Minute
+	}
+	if err := s.ensureBucket(ctx); err != nil {
+		return "", err
+	}
+	u, err := s.client.PresignedPutObject(ctx, s.bucket, objectName, expiry)
+	if err != nil {
+		return "", fmt.Errorf("presigned put object: %w", err)
+	}
+	return u.String(), nil
+}
+
+// StatObject 在 single 模式 complete 阶段校验对象是否真实写入。
+func (s *Store) StatObject(ctx context.Context, objectName string) (storage.ObjectInfo, error) {
+	info, err := s.client.StatObject(ctx, s.bucket, objectName, minio.StatObjectOptions{})
+	if err != nil {
+		return storage.ObjectInfo{}, fmt.Errorf("stat object: %w", err)
+	}
+	return storage.ObjectInfo{
+		Size:        info.Size,
+		ContentType: info.ContentType,
+		ETag:        info.ETag,
+	}, nil
+}
+
 func (s *Store) InitiateMultipartUpload(
 	ctx context.Context,
 	objectName string,
@@ -184,6 +218,35 @@ func (s *Store) CompleteMultipartUpload(
 		return fmt.Errorf("complete multipart upload: %w", err)
 	}
 	return nil
+}
+
+// PresignedUploadPart 颁发分片 PUT 的预签名 URL。
+// 携带 uploadId 与 partNumber 查询参数，遵循 S3 multipart UploadPart 协议；
+// 客户端拿到 URL 后直接 PUT 该分片字节到 MinIO，响应头 ETag 用于后续 Complete。
+func (s *Store) PresignedUploadPart(
+	ctx context.Context,
+	objectName string,
+	uploadID string,
+	partNumber int,
+	expiry time.Duration,
+) (string, error) {
+	if expiry <= 0 {
+		expiry = 60 * time.Minute
+	}
+	if uploadID == "" {
+		return "", fmt.Errorf("presigned upload part: empty uploadID")
+	}
+	if partNumber < 1 {
+		return "", fmt.Errorf("presigned upload part: invalid partNumber %d", partNumber)
+	}
+	reqParams := url.Values{}
+	reqParams.Set("uploadId", uploadID)
+	reqParams.Set("partNumber", strconv.Itoa(partNumber))
+	u, err := s.client.Presign(ctx, http.MethodPut, s.bucket, objectName, expiry, reqParams)
+	if err != nil {
+		return "", fmt.Errorf("presigned upload part: %w", err)
+	}
+	return u.String(), nil
 }
 
 func (s *Store) AbortMultipartUpload(

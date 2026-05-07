@@ -62,13 +62,16 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - `AUDIO` 当前返回归档目录下的歌曲单元：优先支持直属 `built_in_type=AUDIO` 且 `archive_mode=false` 的目录，目录内第一个音频文件作为 `mediaNodeId`，第一个图片文件作为 `coverNodeId`，字幕 / 歌词文件通过 `subtitleCount` 计数；历史直属音频媒体文件仍兼容返回且不要求设置内置类型；直属 `AUDIO + archive_mode=true` 子归档不会作为上级合集卡片返回
 - `PATCH /api/v1/nodes/:nodeId/archive/built-in-type/batch-set`
 - Browser file mapping 与 browser bookmark 相关接口
-- `GET /api/v1/upload/:uploadId/progress`
-  - Proxy 上传模式下暴露 backend → MinIO 段的真实字节进度，覆盖整传与分片。
-  - 响应字段：`uploadId / totalBytes / uploadedBytes / percentage / state(running|done)`。
-  - 鉴权：标准 actor 校验；uploadId 不存在或 actor 不匹配统一返回 404，避免 uploadId 枚举。
-  - 已知边界：单实例内存实现，进程重启丢失；切到客户端直传 MinIO 后整段下线，详见 `docs/architecture/upload-direct-upload-migration.md`。
-- 整传 `POST /api/v1/directory/upload` 新增可选 form 字段 `upload_id`（亦接受 `uploadId`）：
-  - 客户端透传 UUID，后端用作进度跟踪会话 ID；缺省时进度跟踪退化为无操作，向前兼容旧客户端。
+- 直传 MinIO 流程（已替代旧 proxy 整传 / 分片整传 / 进度轮询）：
+  - `POST /api/v1/upload/init`：创建会话，返回 `uploadId / storageKey / mode(single|multipart) / partSize / totalParts / expiresAt`。`fileSize ≤ 16 MiB` 走 single；否则 multipart，partSize=16 MiB。`storageKey = libraries/{libraryId}/{uuid}.{ext}` 由后端生成，客户端不可写。
+  - `POST /api/v1/upload/parts/sign`：颁发分片预签名 PUT URL（默认 1h），顺手刷新会话 lease 至 `now + 24h`（隐式续约）。
+  - `GET /api/v1/upload/parts?uploadId=...`：透传 MinIO ListParts 返回 `partNumber / etag / size`，断点续传支持，顺手刷 lease。
+  - `POST /api/v1/upload/:uploadId/renew`：心跳续约，仅刷 lease 不签 URL。
+  - `POST /api/v1/upload/complete`：multipart 调 CompleteMultipartUpload，single 校验对象存在；落库由 `NodeUseCase.Create` 兜底，支持 `conflictPolicy=error|auto_rename|replace`。
+  - `DELETE /api/v1/upload/:uploadId`：MinIO AbortMultipartUpload + 删 session 行。
+  - 鉴权语义：actor 与 session.actor 不一致 / session 不存在统一返回 `404`（防 uploadId 枚举）；lease 过期返回 `410 Gone`。
+  - 双层 TTL：DB lease（24h，可续）与 presigned URL 签名（1h，不可改）解耦；URL 过期可重新 sign 而无需重新 init。
+  - 客户端覆盖：Electron 主进程 `http:upload:presigned-put` 走 `https.request` 流式 PUT；CLI `of upload file` 走 Go `http.Client` 直传，复用同一套后端流程。
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约
 - 节点创建与目录上传支持可选 `conflictPolicy`：
   - “同名”按用户可见名称判断：目录为 `name`，文件为 `name.ext`（无后缀文件仍为 `name`）。因此同一目录允许 `demo.txt` 与 `demo.md` 共存，但不允许两个 `demo.txt`。

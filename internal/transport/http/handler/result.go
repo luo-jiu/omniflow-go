@@ -124,6 +124,9 @@ func HandleUseCaseError(ctx *gin.Context, err error) {
 		respond(ctx, http.StatusNotFound, ClientErrorCode, err.Error(), nil)
 	case errors.Is(err, usecase.ErrConflict):
 		respond(ctx, http.StatusConflict, ClientErrorCode, err.Error(), nil)
+	case errors.Is(err, usecase.ErrExpired):
+		// 直传会话 lease 过期：客户端应重新 init 而不是重试现有 uploadId。
+		respond(ctx, http.StatusGone, ClientErrorCode, err.Error(), nil)
 	default:
 		InternalError(ctx, err.Error())
 	}

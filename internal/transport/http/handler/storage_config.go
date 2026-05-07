@@ -74,9 +74,9 @@ type setDefaultRequest struct {
 }
 
 type routingRuleDTO struct {
-	Name           string             `json:"name"`
-	Conditions     ruleConditionsDTO  `json:"conditions"`
-	TargetProvider string             `json:"targetProvider" binding:"required"`
+	Name           string            `json:"name"`
+	Conditions     ruleConditionsDTO `json:"conditions"`
+	TargetProvider string            `json:"targetProvider" binding:"required"`
 }
 
 type ruleConditionsDTO struct {

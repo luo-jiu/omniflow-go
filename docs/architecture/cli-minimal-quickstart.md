@@ -53,6 +53,7 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of browser-bookmark update --id <id> [--title <title>] [--url <url>] [--icon-url <url>] [--clear-icon] [--dry-run] [--json]
 ./bin/of browser-bookmark move --id <id> [--parent-id <id>] [--before-id <id>|--after-id <id>] [--dry-run] [--json]
 ./bin/of browser-bookmark rm --id <id> [--dry-run] [--json]
+./bin/of upload file --library-id <id> --file <path> [--parent-id <id>] [--storage-provider <id>] [--conflict-policy <error|auto_rename|replace>] [--content-type <type>] [--json]
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。

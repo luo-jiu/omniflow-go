@@ -47,6 +47,10 @@
   - 回收站操作：`recycle ls|clear|restore|hard`
   - 路径工具：`path resolve`
 - 浏览器书签命令支持结构化导入：`browser-bookmark import --file <path> [--dry-run] [--json]`
+- 上传命令直传 MinIO：`of upload file --library-id <id> --file <path> [--parent-id <id>] [--storage-provider <id>] [--conflict-policy <error|auto_rename|replace>]`
+  - 走与前端相同的 7 端点流程（`/api/v1/upload/{init,parts/sign,complete,...}`）。
+  - SIGINT/SIGTERM 时自动调 `DELETE /api/v1/upload/:uploadId` 收尾 MinIO + session。
+  - 详见 `docs/architecture/upload-direct-design.md`。
 - 路径演进策略：写命令保持 `id` 参数兼容，同时逐步增加 `path` 参数入口。
 
 ## 4. 错误与退出码约定

@@ -23,9 +23,8 @@ func New(
 	tagHandler *handler.TagHandler,
 	browserBookmarkHandler *handler.BrowserBookmarkHandler,
 	browserFileMappingHandler *handler.BrowserFileMappingHandler,
-	multipartUploadHandler *handler.MultipartUploadHandler,
+	uploadHandler *handler.UploadHandler,
 	storageConfigHandler *handler.StorageConfigHandler,
-	uploadProgressHandler *handler.UploadProgressHandler,
 ) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 
@@ -50,9 +49,8 @@ func New(
 		tagHandler,
 		browserBookmarkHandler,
 		browserFileMappingHandler,
-		multipartUploadHandler,
+		uploadHandler,
 		storageConfigHandler,
-		uploadProgressHandler,
 	)
 
 	return engine

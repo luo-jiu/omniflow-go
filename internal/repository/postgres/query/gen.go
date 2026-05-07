@@ -24,6 +24,7 @@ var (
 	StorageObject      *storageObject
 	Tag                *tag
 	TagAlias           *tagAlias
+	UploadSession      *uploadSession
 	User               *user
 )
 
@@ -38,6 +39,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	StorageObject = &Q.StorageObject
 	Tag = &Q.Tag
 	TagAlias = &Q.TagAlias
+	UploadSession = &Q.UploadSession
 	User = &Q.User
 }
 
@@ -53,6 +55,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		StorageObject:      newStorageObject(db, opts...),
 		Tag:                newTag(db, opts...),
 		TagAlias:           newTagAlias(db, opts...),
+		UploadSession:      newUploadSession(db, opts...),
 		User:               newUser(db, opts...),
 	}
 }
@@ -69,6 +72,7 @@ type Query struct {
 	StorageObject      storageObject
 	Tag                tag
 	TagAlias           tagAlias
+	UploadSession      uploadSession
 	User               user
 }
 
@@ -86,6 +90,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		StorageObject:      q.StorageObject.clone(db),
 		Tag:                q.Tag.clone(db),
 		TagAlias:           q.TagAlias.clone(db),
+		UploadSession:      q.UploadSession.clone(db),
 		User:               q.User.clone(db),
 	}
 }
@@ -110,6 +115,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		StorageObject:      q.StorageObject.replaceDB(db),
 		Tag:                q.Tag.replaceDB(db),
 		TagAlias:           q.TagAlias.replaceDB(db),
+		UploadSession:      q.UploadSession.replaceDB(db),
 		User:               q.User.replaceDB(db),
 	}
 }
@@ -124,6 +130,7 @@ type queryCtx struct {
 	StorageObject      IStorageObjectDo
 	Tag                ITagDo
 	TagAlias           ITagAliasDo
+	UploadSession      IUploadSessionDo
 	User               IUserDo
 }
 
@@ -138,6 +145,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		StorageObject:      q.StorageObject.WithContext(ctx),
 		Tag:                q.Tag.WithContext(ctx),
 		TagAlias:           q.TagAlias.WithContext(ctx),
+		UploadSession:      q.UploadSession.WithContext(ctx),
 		User:               q.User.WithContext(ctx),
 	}
 }

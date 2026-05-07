@@ -27,6 +27,7 @@ var defaultTableModels = map[string]string{
 	"storage_objects":       "StorageObject",
 	"tags":                  "Tag",
 	"tag_aliases":           "TagAlias",
+	"upload_sessions":       "UploadSession",
 }
 
 func main() {

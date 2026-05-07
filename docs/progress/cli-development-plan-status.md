@@ -37,6 +37,7 @@
 | `browser-map` | ls/resolve/create/update/rm |
 | `browser-bookmark` | tree/match/import/create/update/move/rm |
 | `config` | show |
+| `upload` | file（直传 MinIO，复用前端同一套 7 端点） |
 
 完整命令示例见 `docs/architecture/cli-minimal-quickstart.md`。
 

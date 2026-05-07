@@ -734,6 +734,35 @@ func (a *App) buildCommandTree() *command {
 	}
 	root.Children["browser-bookmark"] = browserBookmark
 
+	upload := &command{
+		Name:     "upload",
+		Summary:  "Direct upload to MinIO commands",
+		Usage:    "of upload <file> [flags]",
+		Children: map[string]*command{},
+	}
+	upload.Children["file"] = &command{
+		Name:    "file",
+		Summary: "Upload a local file directly to MinIO and create a node",
+		Usage:   "of upload file --library-id <id> --file <path> [--parent-id <id>] [--storage-provider <id>] [--conflict-policy <error|auto_rename|replace>] [--content-type <type>] [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>          library id (required)",
+			"--file <path>              local file path to upload (required)",
+			"--parent-id <id>           parent node id (default root)",
+			"--storage-provider <id>    storage provider id (optional)",
+			"--conflict-policy <p>      name conflict strategy: error / auto_rename / replace",
+			"--content-type <type>      override content type (optional)",
+			"--base-url <url>           API base URL",
+			"--json                     output JSON",
+		},
+		Examples: []string{
+			"of upload file --library-id 1 --file ./big.bin",
+			"of upload file --library-id 1 --parent-id 100 --file ./report.pdf --conflict-policy auto_rename",
+			"of upload file --library-id 1 --file ./video.mp4 --json",
+		},
+		Run: a.runUploadFile,
+	}
+	root.Children["upload"] = upload
+
 	return root
 }
 

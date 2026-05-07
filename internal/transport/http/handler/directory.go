@@ -35,60 +35,6 @@ type updateFileContentRequest struct {
 	ContentType string  `json:"contentType"`
 }
 
-// UploadFile 上传文件并在目录下创建对应文件节点。
-func (h *DirectoryHandler) UploadFile(ctx *gin.Context) {
-	fileHeader, err := ctx.FormFile("file")
-	if err != nil {
-		BadRequest(ctx, "file is required")
-		return
-	}
-
-	parentID, ok := PostFormUint64(ctx, true, "parent_id", "parentId")
-	if !ok {
-		return
-	}
-	libraryID, ok := PostFormUint64(ctx, true, "library_id", "libraryId")
-	if !ok {
-		return
-	}
-	conflictPolicy := strings.TrimSpace(ctx.PostForm("conflictPolicy"))
-	if conflictPolicy == "" {
-		conflictPolicy = strings.TrimSpace(ctx.PostForm("conflict_policy"))
-	}
-	storageProvider := PostFormString(ctx, "storage_provider", "storageProvider")
-	uploadID := PostFormString(ctx, "upload_id", "uploadId")
-
-	if h.directoryUseCase == nil {
-		InternalError(ctx, "directory service not configured")
-		return
-	}
-
-	file, err := fileHeader.Open()
-	if err != nil {
-		InternalError(ctx, "open upload file failed")
-		return
-	}
-	defer file.Close()
-
-	node, err := h.directoryUseCase.UploadAndCreateNode(ctx.Request.Context(), usecase.UploadFileCommand{
-		Actor:           actorFromContext(ctx),
-		LibraryID:       libraryID,
-		ParentID:        parentID,
-		FileName:        fileHeader.Filename,
-		FileSize:        fileHeader.Size,
-		ContentType:     fileHeader.Header.Get("Content-Type"),
-		Content:         file,
-		ConflictPolicy:  usecase.NodeNameConflictPolicy(conflictPolicy),
-		StorageProvider: storageProvider,
-		UploadID:        uploadID,
-	})
-	if err != nil {
-		HandleUseCaseError(ctx, err)
-		return
-	}
-	Success(ctx, node)
-}
-
 // GetFileLink 获取目录文件节点的预签名链接。
 func (h *DirectoryHandler) GetFileLink(ctx *gin.Context) {
 	var query fileLinkQuery

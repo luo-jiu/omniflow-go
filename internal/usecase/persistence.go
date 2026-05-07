@@ -13,6 +13,7 @@ var (
 	ErrInvalidArgument    = errors.New("invalid argument")
 	ErrNotFound           = errors.New("resource not found")
 	ErrConflict           = errors.New("resource conflict")
+	ErrExpired            = errors.New("resource expired")
 	ErrUnauthorized       = errors.New("unauthorized")
 	ErrForbidden          = errors.New("forbidden")
 	ErrInvalidCredentials = errors.New("invalid credentials")
