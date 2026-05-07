@@ -19,7 +19,7 @@ func (r *NodeRepository) ReplaceNodeTagIDs(
 	pgTagIDs := toPGInt64Slice(normalizedIDs)
 
 	if len(pgTagIDs) > 0 {
-		if err := r.ensureReadableTags(ctx, ownerUserID, pgTagIDs); err != nil {
+		if err := r.ensureBindableTags(ctx, ownerUserID, nodeID, pgTagIDs); err != nil {
 			return err
 		}
 	}
@@ -52,7 +52,7 @@ func (r *NodeRepository) ReplaceNodeTagIDs(
 	return nil
 }
 
-func (r *NodeRepository) ensureReadableTags(ctx context.Context, ownerUserID uint64, tagIDs []int64) error {
+func (r *NodeRepository) ensureBindableTags(ctx context.Context, ownerUserID, nodeID uint64, tagIDs []int64) error {
 	var count int64
 	if err := r.dbWithContext(ctx).
 		Model(&pgmodel.Tag{}).
@@ -62,6 +62,39 @@ func (r *NodeRepository) ensureReadableTags(ctx context.Context, ownerUserID uin
 		return err
 	}
 	if count != int64(len(tagIDs)) {
+		return ErrInvalidState
+	}
+
+	q := r.query(ctx)
+	nodeTarget := q.NodeResourceTarget
+	nodeTargets, err := nodeTarget.WithContext(ctx).
+		Where(nodeTarget.NodeID.Eq(toPGInt64(nodeID))).
+		Find()
+	if err != nil {
+		return err
+	}
+	nodeTargetKinds := make(map[string]struct{}, len(nodeTargets))
+	for _, row := range nodeTargets {
+		nodeTargetKinds[row.TargetKind] = struct{}{}
+	}
+	if len(nodeTargetKinds) == 0 {
+		return ErrInvalidState
+	}
+
+	policy := q.TagBindPolicy
+	policies, err := policy.WithContext(ctx).
+		Where(policy.TagID.In(tagIDs...)).
+		Find()
+	if err != nil {
+		return err
+	}
+	bindableTagIDs := make(map[int64]struct{}, len(tagIDs))
+	for _, row := range policies {
+		if _, ok := nodeTargetKinds[row.TargetKind]; ok {
+			bindableTagIDs[row.TagID] = struct{}{}
+		}
+	}
+	if len(bindableTagIDs) != len(tagIDs) {
 		return ErrInvalidState
 	}
 	return nil

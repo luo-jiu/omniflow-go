@@ -87,10 +87,12 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 若历史 `storage_objects.provider` 存的是标准类型值，必须先人工确认该类型只对应一个真实 provider 后再显式迁移到 alias；服务启动过程不会自动把历史类型值改写为默认 alias，避免误指向错误对象存储。
 - Tag 多维基座：
   - `GET /api/v1/tags` 新增可选过滤 `scope / dimension / resourceKind`，原 `type` 过滤保持兼容。
-  - `POST /api/v1/tags` 与 `PUT /api/v1/tags/:tagId` 可接收 `scope / dimension / resourceKind`，响应同样返回这些字段。
+  - `POST /api/v1/tags` 与 `PUT /api/v1/tags/:tagId` 可接收 `scope / dimension / resourceKind / targetKinds`，响应同样返回这些字段。
+  - `PUT /api/v1/tags/:tagId` 未携带 `targetKinds` 时保留原绑定策略；携带时才替换可贴对象策略。
   - `FILE_TAB` 会归为 `scope=ui`，资源标签默认 `scope=resource`、`dimension=custom`，常见资源类型会由旧 `type` 推导。
+  - `tag_target_kinds / tag_bind_policies / node_resource_targets` 已作为标签可贴对象基座；节点写入 `tagIds` 时会校验标签策略与节点资源语义是否匹配。
   - `POST /api/v1/nodes/search` 的 `tagIds / tagMatchMode` 契约不变，但实现以 `node_tag_rel` 为准；`nodes.view_meta.tagIds` 仅作为兼容输入并在节点更新时同步关系表。
-  - 数据库迁移脚本见 `docs/schema/2026-05-06-tag-foundation.sql`，长期规则见 `docs/architecture/tag-foundation.md`。
+  - 数据库迁移脚本见 `docs/schema/2026-05-06-tag-foundation.sql` 与 `docs/schema/2026-05-07-tag-target-policies.sql`，长期规则见 `docs/architecture/tag-foundation.md`。
 
 ## 5. 建议持续回归
 

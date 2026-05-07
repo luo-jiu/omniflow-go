@@ -1,14 +1,17 @@
 # 多维标签基座
 
-更新时间：2026-05-06
+更新时间：2026-05-07
 
-适用范围：`tags`、`tag_aliases`、`node_tag_rel`、标签 HTTP API、节点搜索与 `nodes.view_meta.tagIds` 兼容链路。
+适用范围：`tags`、`tag_target_kinds`、`tag_bind_policies`、`node_resource_targets`、`tag_aliases`、`node_tag_rel`、标签 HTTP API、节点搜索与 `nodes.view_meta.tagIds` 兼容链路。
 
 ## 1. 概述
 
 OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述资源、维度和展示用途的多维标签基座”。当前结论是：
 
 - `tags` 是标签定义表，继续保留 `type` 兼容旧调用方。
+- `tag_target_kinds` 是“可绑定对象”字典，例如普通文件、ASMR 作品、视频合集。
+- `tag_bind_policies` 声明每个标签允许绑定到哪些对象。
+- `node_resource_targets` 是节点当前资源语义的投影表，由数据库触发器维护，供后端校验和未来搜索过滤使用。
 - `node_tag_rel` 是节点与标签的正式关系表，后续搜索过滤以它为准。
 - `nodes.view_meta.tagIds` 只作为兼容输入，后端会在节点更新时同步到 `node_tag_rel`。
 - `tag_aliases` 预留给别名、同义词和归一化搜索，不在本轮暴露写 API。
@@ -75,6 +78,37 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
 
 `resource_kind` 可以为空；`FILE_TAB` 会保持为空。后端会根据旧 `type` 推导常见资源类型，保证旧请求不必立即修改。
 
+### 3.5 `target_kind`
+
+`target_kind` 表示标签真正能贴到的资源单位，不等同于标签业务类型：
+
+| 值 | 含义 |
+|---|---|
+| `file` | 普通文件 |
+| `folder` | 普通文件夹 |
+| `archive_root` | 开启归档模式的根目录 |
+| `asmr_work` | ASMR 作品文件夹 |
+| `comic_work` | 漫画作品文件夹 |
+| `audio_track` | 音频文件 |
+| `audio_album` | 音频专辑 / 音频归档项 |
+| `video_file` | 视频文件 |
+| `video_collection` | 视频合集 / 视频归档项 |
+
+标签定义通过 `tag_bind_policies` 绑定多个 `target_kind`。节点通过 `node_resource_targets` 投影自己当前具备的资源语义。写入 `node_tag_rel` 前必须保证标签策略和节点语义存在交集。
+
+默认策略：
+
+| 标签类型 | 默认可贴对象 |
+|---|---|
+| `GENERAL` | `file / folder / archive_root` |
+| `ASMR` | `asmr_work / archive_root / folder` |
+| `COMIC` | `comic_work / archive_root / folder` |
+| `AUDIO` | `audio_track / audio_album / folder` |
+| `VIDEO` | `video_file / video_collection / folder` |
+| `FILE` | `file` |
+| `FOLDER` | `folder` |
+| `FILE_TAB` | 无资源绑定策略 |
+
 ## 4. 契约
 
 ### 4.1 标签 API
@@ -101,9 +135,12 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
 {
   "scope": "resource",
   "dimension": "creator",
-  "resourceKind": "comic"
+  "resourceKind": "comic",
+  "targetKinds": ["comic_work", "archive_root"]
 }
 ```
+
+更新标签时，`targetKinds` 是补丁语义：请求未携带该字段时保留原有绑定策略；携带该字段时才替换 `tag_bind_policies`。`FILE_TAB` 应显式提交空数组，表示不绑定任何资源对象。
 
 响应中的 `Tag` 会返回：
 
@@ -114,7 +151,8 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
   "type": "COMIC",
   "scope": "resource",
   "dimension": "creator",
-  "resourceKind": "comic"
+  "resourceKind": "comic",
+  "targetKinds": ["comic_work", "archive_root"]
 }
 ```
 
@@ -134,6 +172,12 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
 
 同步时要求 `tagIds` 全部是当前用户可读、未删除且已启用的标签；只要存在无效或不可读 ID，节点更新会失败并回滚，避免 `viewMeta.tagIds` 与 `node_tag_rel` 分叉。
 
+同步时还会校验绑定策略：
+
+- 后端读取 `node_resource_targets` 判断当前节点可被视作哪些资源单位。
+- 后端读取 `tag_bind_policies` 判断标签允许绑定哪些资源单位。
+- 两者没有交集时拒绝保存，避免 ASMR 标签误贴到不合适的普通文件上。
+
 ### 4.3 节点搜索
 
 `POST /api/v1/nodes/search` 的 `tagIds` 与 `tagMatchMode` 契约不变，但实现改为查询 `node_tag_rel`：
@@ -146,9 +190,10 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
 ## 5. 实现约束
 
 - `transport/http` 只解析新增字段，不做标签分类规则。
-- `usecase/tag` 负责 `type / scope / dimension / resourceKind` 的归一化和默认推导。
+- `usecase/tag` 负责 `type / scope / dimension / resourceKind / targetKinds` 的归一化和默认推导。
 - `repository/postgres/impl/tag` 收敛标签定义查询与唯一性校验。
 - `repository/postgres/impl/node` 收敛 `node_tag_rel` 搜索与同步写入。
+- 新增表结构后必须先执行 schema patch，再运行 `tools/gen_postgres.sh` 生成 model/query，业务代码基于生成结果编写。
 - 节点更新里同步 `node_tag_rel` 时必须与 `view_meta` 更新同事务提交。
 - `node_tag_rel` 只保存直接标签；继承标签、自动标签、来源字段以后再扩展。
 
@@ -158,7 +203,9 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
 
 - `GOCACHE=/tmp/go-build go test ./...`
 - 创建 / 更新标签时返回新增字段。
+- 创建 / 更新标签时能保存并返回 `targetKinds`。
 - ASMR 保存 `viewMeta.tagIds` 后，`node_tag_rel` 同步更新。
+- 不匹配节点资源语义的标签写入会失败。
 - `nodes/search` 的 `ANY / ALL` 在关系表下仍能过滤。
 
 手工验证建议：
@@ -171,7 +218,7 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
 
 出现以下变化时必须更新本文档：
 
-- 新增标签维度、资源类型或 scope。
+- 新增标签维度、资源类型、scope 或 target kind。
 - 新增节点标签绑定 API。
 - `tag_aliases` 开始暴露 API 或参与搜索。
 - 引入标签继承、自动标签或标签来源字段。

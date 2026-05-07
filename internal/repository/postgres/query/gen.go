@@ -20,10 +20,13 @@ var (
 	Library            *library
 	Node               *node
 	NodeFile           *nodeFile
+	NodeResourceTarget *nodeResourceTarget
 	NodeTagRel         *nodeTagRel
 	StorageObject      *storageObject
 	Tag                *tag
 	TagAlias           *tagAlias
+	TagBindPolicy      *tagBindPolicy
+	TagTargetKind      *tagTargetKind
 	UploadSession      *uploadSession
 	User               *user
 )
@@ -35,10 +38,13 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	Library = &Q.Library
 	Node = &Q.Node
 	NodeFile = &Q.NodeFile
+	NodeResourceTarget = &Q.NodeResourceTarget
 	NodeTagRel = &Q.NodeTagRel
 	StorageObject = &Q.StorageObject
 	Tag = &Q.Tag
 	TagAlias = &Q.TagAlias
+	TagBindPolicy = &Q.TagBindPolicy
+	TagTargetKind = &Q.TagTargetKind
 	UploadSession = &Q.UploadSession
 	User = &Q.User
 }
@@ -51,10 +57,13 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		Library:            newLibrary(db, opts...),
 		Node:               newNode(db, opts...),
 		NodeFile:           newNodeFile(db, opts...),
+		NodeResourceTarget: newNodeResourceTarget(db, opts...),
 		NodeTagRel:         newNodeTagRel(db, opts...),
 		StorageObject:      newStorageObject(db, opts...),
 		Tag:                newTag(db, opts...),
 		TagAlias:           newTagAlias(db, opts...),
+		TagBindPolicy:      newTagBindPolicy(db, opts...),
+		TagTargetKind:      newTagTargetKind(db, opts...),
 		UploadSession:      newUploadSession(db, opts...),
 		User:               newUser(db, opts...),
 	}
@@ -68,10 +77,13 @@ type Query struct {
 	Library            library
 	Node               node
 	NodeFile           nodeFile
+	NodeResourceTarget nodeResourceTarget
 	NodeTagRel         nodeTagRel
 	StorageObject      storageObject
 	Tag                tag
 	TagAlias           tagAlias
+	TagBindPolicy      tagBindPolicy
+	TagTargetKind      tagTargetKind
 	UploadSession      uploadSession
 	User               user
 }
@@ -86,10 +98,13 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		Library:            q.Library.clone(db),
 		Node:               q.Node.clone(db),
 		NodeFile:           q.NodeFile.clone(db),
+		NodeResourceTarget: q.NodeResourceTarget.clone(db),
 		NodeTagRel:         q.NodeTagRel.clone(db),
 		StorageObject:      q.StorageObject.clone(db),
 		Tag:                q.Tag.clone(db),
 		TagAlias:           q.TagAlias.clone(db),
+		TagBindPolicy:      q.TagBindPolicy.clone(db),
+		TagTargetKind:      q.TagTargetKind.clone(db),
 		UploadSession:      q.UploadSession.clone(db),
 		User:               q.User.clone(db),
 	}
@@ -111,10 +126,13 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		Library:            q.Library.replaceDB(db),
 		Node:               q.Node.replaceDB(db),
 		NodeFile:           q.NodeFile.replaceDB(db),
+		NodeResourceTarget: q.NodeResourceTarget.replaceDB(db),
 		NodeTagRel:         q.NodeTagRel.replaceDB(db),
 		StorageObject:      q.StorageObject.replaceDB(db),
 		Tag:                q.Tag.replaceDB(db),
 		TagAlias:           q.TagAlias.replaceDB(db),
+		TagBindPolicy:      q.TagBindPolicy.replaceDB(db),
+		TagTargetKind:      q.TagTargetKind.replaceDB(db),
 		UploadSession:      q.UploadSession.replaceDB(db),
 		User:               q.User.replaceDB(db),
 	}
@@ -126,10 +144,13 @@ type queryCtx struct {
 	Library            ILibraryDo
 	Node               INodeDo
 	NodeFile           INodeFileDo
+	NodeResourceTarget INodeResourceTargetDo
 	NodeTagRel         INodeTagRelDo
 	StorageObject      IStorageObjectDo
 	Tag                ITagDo
 	TagAlias           ITagAliasDo
+	TagBindPolicy      ITagBindPolicyDo
+	TagTargetKind      ITagTargetKindDo
 	UploadSession      IUploadSessionDo
 	User               IUserDo
 }
@@ -141,10 +162,13 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		Library:            q.Library.WithContext(ctx),
 		Node:               q.Node.WithContext(ctx),
 		NodeFile:           q.NodeFile.WithContext(ctx),
+		NodeResourceTarget: q.NodeResourceTarget.WithContext(ctx),
 		NodeTagRel:         q.NodeTagRel.WithContext(ctx),
 		StorageObject:      q.StorageObject.WithContext(ctx),
 		Tag:                q.Tag.WithContext(ctx),
 		TagAlias:           q.TagAlias.WithContext(ctx),
+		TagBindPolicy:      q.TagBindPolicy.WithContext(ctx),
+		TagTargetKind:      q.TagTargetKind.WithContext(ctx),
 		UploadSession:      q.UploadSession.WithContext(ctx),
 		User:               q.User.WithContext(ctx),
 	}

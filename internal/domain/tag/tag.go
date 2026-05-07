@@ -9,6 +9,7 @@ type Tag struct {
 	Scope        string     `json:"scope"`
 	Dimension    string     `json:"dimension"`
 	ResourceKind *string    `json:"resourceKind"`
+	TargetKinds  []string   `json:"targetKinds"`
 	TargetKey    *string    `json:"targetKey"`
 	OwnerUserID  *uint64    `json:"ownerUserId"`
 	Color        string     `json:"color"`

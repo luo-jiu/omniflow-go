@@ -8,6 +8,8 @@ import (
 
 	domaintag "omniflow-go/internal/domain/tag"
 	pgtx "omniflow-go/internal/repository/postgres/impl/txctx"
+	pgmodel "omniflow-go/internal/repository/postgres/model"
+	pgquery "omniflow-go/internal/repository/postgres/query"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -49,6 +51,7 @@ type CreateTagInput struct {
 	SortOrder    int
 	Enabled      int
 	Description  *string
+	TargetKinds  []string
 }
 
 type UpdateTagInput struct {
@@ -63,6 +66,7 @@ type UpdateTagInput struct {
 	SortOrder    int
 	Enabled      int
 	Description  *string
+	TargetKinds  *[]string
 }
 
 type ListTagsFilter struct {
@@ -131,6 +135,10 @@ func (r *TagRepository) dbWithContext(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx)
 }
 
+func (r *TagRepository) query(ctx context.Context) *pgquery.Query {
+	return pgquery.Use(r.dbWithContext(ctx))
+}
+
 func (r *TagRepository) ListByOwnerAndFilter(ctx context.Context, ownerUserID uint64, filter ListTagsFilter) ([]domaintag.Tag, error) {
 	db := r.dbWithContext(ctx)
 	query := db.Model(&tagEntity{}).
@@ -164,6 +172,9 @@ func (r *TagRepository) ListByOwnerAndFilter(ctx context.Context, ownerUserID ui
 	result := lo.Map(rows, func(row *tagEntity, _ int) domaintag.Tag {
 		return toDomainTag(row)
 	})
+	if err := r.attachTargetKinds(ctx, result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -187,7 +198,10 @@ func (r *TagRepository) Create(ctx context.Context, input CreateTagInput) (domai
 	if err := r.dbWithContext(ctx).Create(row).Error; err != nil {
 		return domaintag.Tag{}, mapDBError(err)
 	}
-	return toDomainTag(row), nil
+	if err := r.replaceBindPolicies(ctx, toDomainUint64(row.ID), input.TargetKinds); err != nil {
+		return domaintag.Tag{}, err
+	}
+	return r.FindOwnerByID(ctx, toDomainUint64(row.ID), input.OwnerUserID)
 }
 
 func (r *TagRepository) FindOwnerByID(ctx context.Context, id, ownerUserID uint64) (domaintag.Tag, error) {
@@ -195,7 +209,7 @@ func (r *TagRepository) FindOwnerByID(ctx context.Context, id, ownerUserID uint6
 	if err != nil {
 		return domaintag.Tag{}, err
 	}
-	return toDomainTag(row), nil
+	return r.attachTargetKindsToTag(ctx, toDomainTag(row))
 }
 
 func (r *TagRepository) UpdateOwnerByID(ctx context.Context, id, ownerUserID uint64, input UpdateTagInput) (domaintag.Tag, error) {
@@ -224,6 +238,11 @@ func (r *TagRepository) UpdateOwnerByID(ctx context.Context, id, ownerUserID uin
 	if result.RowsAffected == 0 {
 		return domaintag.Tag{}, ErrNotFound
 	}
+	if input.TargetKinds != nil {
+		if err := r.replaceBindPolicies(ctx, id, *input.TargetKinds); err != nil {
+			return domaintag.Tag{}, err
+		}
+	}
 	return r.FindOwnerByID(ctx, id, ownerUserID)
 }
 
@@ -240,6 +259,25 @@ func (r *TagRepository) SoftDeleteOwnerByID(ctx context.Context, id, ownerUserID
 		return false, result.Error
 	}
 	return result.RowsAffected > 0, nil
+}
+
+// EnsureTargetKinds 校验可贴对象字典存在且已启用。
+func (r *TagRepository) EnsureTargetKinds(ctx context.Context, targetKinds []string) error {
+	if len(targetKinds) == 0 {
+		return nil
+	}
+	q := r.query(ctx)
+	target := q.TagTargetKind
+	count, err := target.WithContext(ctx).
+		Where(target.Key.In(targetKinds...), target.Enabled.Is(true)).
+		Count()
+	if err != nil {
+		return err
+	}
+	if count != int64(len(targetKinds)) {
+		return ErrInvalidState
+	}
+	return nil
 }
 
 func (r *TagRepository) ExistsName(ctx context.Context, ownerUserID uint64, scope TagNameScope, excludeID uint64) (bool, error) {
@@ -302,6 +340,78 @@ func (r *TagRepository) findOwnerTagEntityByID(ctx context.Context, id, ownerUse
 		return nil, mapDBError(err)
 	}
 	return &row, nil
+}
+
+func (r *TagRepository) replaceBindPolicies(ctx context.Context, tagID uint64, targetKinds []string) error {
+	q := r.query(ctx)
+	policy := q.TagBindPolicy
+
+	if _, err := policy.WithContext(ctx).
+		Where(policy.TagID.Eq(toPGInt64(tagID))).
+		Delete(); err != nil {
+		return err
+	}
+	if len(targetKinds) == 0 {
+		return nil
+	}
+
+	rows := lo.Map(targetKinds, func(targetKind string, _ int) *pgmodel.TagBindPolicy {
+		return &pgmodel.TagBindPolicy{
+			TagID:      toPGInt64(tagID),
+			TargetKind: targetKind,
+		}
+	})
+	if err := policy.WithContext(ctx).Create(rows...); err != nil {
+		return mapDBError(err)
+	}
+	return nil
+}
+
+func (r *TagRepository) attachTargetKinds(ctx context.Context, tags []domaintag.Tag) error {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	tagIDs := lo.FilterMap(tags, func(item domaintag.Tag, _ int) (int64, bool) {
+		if item.ID == 0 {
+			return 0, false
+		}
+		return toPGInt64(item.ID), true
+	})
+	if len(tagIDs) == 0 {
+		return nil
+	}
+
+	q := r.query(ctx)
+	policy := q.TagBindPolicy
+	rows, err := policy.WithContext(ctx).
+		Where(policy.TagID.In(tagIDs...)).
+		Order(policy.TagID, policy.TargetKind).
+		Find()
+	if err != nil {
+		return err
+	}
+
+	targetsByTagID := make(map[uint64][]string, len(tags))
+	for _, row := range rows {
+		tagID := toDomainUint64(row.TagID)
+		targetsByTagID[tagID] = append(targetsByTagID[tagID], row.TargetKind)
+	}
+	for i := range tags {
+		tags[i].TargetKinds = targetsByTagID[tags[i].ID]
+	}
+	return nil
+}
+
+func (r *TagRepository) attachTargetKindsToTag(ctx context.Context, tag domaintag.Tag) (domaintag.Tag, error) {
+	if tag.ID == 0 {
+		return tag, nil
+	}
+	tags := []domaintag.Tag{tag}
+	if err := r.attachTargetKinds(ctx, tags); err != nil {
+		return domaintag.Tag{}, err
+	}
+	return tags[0], nil
 }
 
 func toDomainTag(row *tagEntity) domaintag.Tag {

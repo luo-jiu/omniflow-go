@@ -23,10 +23,13 @@ var defaultTableModels = map[string]string{
 	"libraries":             "Library",
 	"nodes":                 "Node",
 	"node_tag_rel":          "NodeTagRel",
+	"node_resource_targets": "NodeResourceTarget",
 	"node_files":            "NodeFile",
 	"storage_objects":       "StorageObject",
 	"tags":                  "Tag",
 	"tag_aliases":           "TagAlias",
+	"tag_bind_policies":     "TagBindPolicy",
+	"tag_target_kinds":      "TagTargetKind",
 	"upload_sessions":       "UploadSession",
 }
 

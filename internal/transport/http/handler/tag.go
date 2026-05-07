@@ -37,31 +37,33 @@ type tagIDURI struct {
 }
 
 type tagCreateRequest struct {
-	Name         string `json:"name" binding:"required"`
-	Type         string `json:"type"`
-	Scope        string `json:"scope"`
-	Dimension    string `json:"dimension"`
-	ResourceKind string `json:"resourceKind"`
-	TargetKey    string `json:"targetKey"`
-	Color        string `json:"color"`
-	TextColor    string `json:"textColor"`
-	SortOrder    *int   `json:"sortOrder"`
-	Enabled      *int   `json:"enabled"`
-	Description  string `json:"description"`
+	Name         string   `json:"name" binding:"required"`
+	Type         string   `json:"type"`
+	Scope        string   `json:"scope"`
+	Dimension    string   `json:"dimension"`
+	ResourceKind string   `json:"resourceKind"`
+	TargetKinds  []string `json:"targetKinds"`
+	TargetKey    string   `json:"targetKey"`
+	Color        string   `json:"color"`
+	TextColor    string   `json:"textColor"`
+	SortOrder    *int     `json:"sortOrder"`
+	Enabled      *int     `json:"enabled"`
+	Description  string   `json:"description"`
 }
 
 type tagUpdateRequest struct {
-	Name         string `json:"name" binding:"required"`
-	Type         string `json:"type"`
-	Scope        string `json:"scope"`
-	Dimension    string `json:"dimension"`
-	ResourceKind string `json:"resourceKind"`
-	TargetKey    string `json:"targetKey"`
-	Color        string `json:"color"`
-	TextColor    string `json:"textColor"`
-	SortOrder    *int   `json:"sortOrder"`
-	Enabled      *int   `json:"enabled"`
-	Description  string `json:"description"`
+	Name         string    `json:"name" binding:"required"`
+	Type         string    `json:"type"`
+	Scope        string    `json:"scope"`
+	Dimension    string    `json:"dimension"`
+	ResourceKind string    `json:"resourceKind"`
+	TargetKinds  *[]string `json:"targetKinds"`
+	TargetKey    string    `json:"targetKey"`
+	Color        string    `json:"color"`
+	TextColor    string    `json:"textColor"`
+	SortOrder    *int      `json:"sortOrder"`
+	Enabled      *int      `json:"enabled"`
+	Description  string    `json:"description"`
 }
 
 // ListTags 查询标签（支持按 type 过滤）。
@@ -118,6 +120,7 @@ func (h *TagHandler) CreateTag(ctx *gin.Context) {
 		Scope:        strings.TrimSpace(req.Scope),
 		Dimension:    strings.TrimSpace(req.Dimension),
 		ResourceKind: strings.TrimSpace(req.ResourceKind),
+		TargetKinds:  req.TargetKinds,
 		TargetKey:    strings.TrimSpace(req.TargetKey),
 		Color:        strings.TrimSpace(req.Color),
 		TextColor:    strings.TrimSpace(req.TextColor),
@@ -166,6 +169,7 @@ func (h *TagHandler) UpdateTag(ctx *gin.Context) {
 		Scope:        strings.TrimSpace(req.Scope),
 		Dimension:    strings.TrimSpace(req.Dimension),
 		ResourceKind: strings.TrimSpace(req.ResourceKind),
+		TargetKinds:  req.TargetKinds,
 		TargetKey:    strings.TrimSpace(req.TargetKey),
 		Color:        strings.TrimSpace(req.Color),
 		TextColor:    strings.TrimSpace(req.TextColor),

@@ -45,6 +45,7 @@ var (
 	hexColorPattern     = regexp.MustCompile(`^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
 	tagTypePattern      = regexp.MustCompile(`^[A-Z0-9_-]{1,64}$`)
 	resourceKindPattern = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
+	targetKindPattern   = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 	targetKeyPattern    = regexp.MustCompile(`^[A-Z0-9_-]{1,64}$`)
 )
 
@@ -63,6 +64,7 @@ type CreateTagCommand struct {
 	Scope        string
 	Dimension    string
 	ResourceKind string
+	TargetKinds  []string
 	TargetKey    string
 	Color        string
 	TextColor    string
@@ -79,6 +81,7 @@ type UpdateTagCommand struct {
 	Scope        string
 	Dimension    string
 	ResourceKind string
+	TargetKinds  *[]string
 	TargetKey    string
 	Color        string
 	TextColor    string
@@ -199,6 +202,10 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 	if err != nil {
 		return domaintag.Tag{}, err
 	}
+	targetKinds, err := normalizeTagTargetKinds(cmd.TargetKinds, *tagType)
+	if err != nil {
+		return domaintag.Tag{}, err
+	}
 	sortOrder := normalizeSortOrder(cmd.SortOrder)
 	enabled, err := normalizeEnabled(cmd.Enabled)
 	if err != nil {
@@ -211,6 +218,9 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 
 	var created domaintag.Tag
 	if err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		if err := u.ensureTargetKinds(txCtx, targetKinds); err != nil {
+			return err
+		}
 		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, scope, dimension, resourceKind, name, targetKey); err != nil {
 			return err
 		}
@@ -250,6 +260,7 @@ func (u *TagUseCase) Create(ctx context.Context, cmd CreateTagCommand) (domainta
 			SortOrder:    sortOrder,
 			Enabled:      enabled,
 			Description:  description,
+			TargetKinds:  targetKinds,
 		})
 		if err != nil {
 			if errors.Is(err, repository.ErrConflict) {
@@ -308,6 +319,14 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 	if err != nil {
 		return domaintag.Tag{}, err
 	}
+	var targetKinds *[]string
+	if cmd.TargetKinds != nil {
+		normalizedTargetKinds, err := normalizeTagTargetKinds(*cmd.TargetKinds, *tagType)
+		if err != nil {
+			return domaintag.Tag{}, err
+		}
+		targetKinds = &normalizedTargetKinds
+	}
 	sortOrder := normalizeSortOrder(cmd.SortOrder)
 	enabled, err := normalizeEnabled(cmd.Enabled)
 	if err != nil {
@@ -327,6 +346,11 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 			return err
 		}
 
+		if targetKinds != nil {
+			if err := u.ensureTargetKinds(txCtx, *targetKinds); err != nil {
+				return err
+			}
+		}
 		if err := u.lockTagUniqScopes(txCtx, ownerUserID, *tagType, scope, dimension, resourceKind, name, targetKey); err != nil {
 			return err
 		}
@@ -365,6 +389,7 @@ func (u *TagUseCase) Update(ctx context.Context, tagID uint64, cmd UpdateTagComm
 			SortOrder:    sortOrder,
 			Enabled:      enabled,
 			Description:  description,
+			TargetKinds:  targetKinds,
 		})
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -437,6 +462,19 @@ func normalizeTagName(raw string) (string, error) {
 func (u *TagUseCase) ensureTagsConfigured() error {
 	if u == nil || u.tags == nil {
 		return errTagRepositoryNotConfigured
+	}
+	return nil
+}
+
+func (u *TagUseCase) ensureTargetKinds(ctx context.Context, targetKinds []string) error {
+	if len(targetKinds) == 0 {
+		return nil
+	}
+	if err := u.tags.EnsureTargetKinds(ctx, targetKinds); err != nil {
+		if errors.Is(err, repository.ErrInvalidState) {
+			return fmt.Errorf("%w: unsupported targetKinds", ErrInvalidArgument)
+		}
+		return err
 	}
 	return nil
 }
@@ -540,6 +578,71 @@ func inferResourceKindFromType(tagType string) *string {
 		return lo.ToPtr("general")
 	default:
 		return nil
+	}
+}
+
+func normalizeTagTargetKinds(raw []string, tagType string) ([]string, error) {
+	normalizedType := strings.ToUpper(strings.TrimSpace(tagType))
+	if normalizedType == fileTabType {
+		return []string{}, nil
+	}
+
+	values := normalizeStringSet(raw)
+	if len(values) == 0 {
+		values = defaultTargetKindsForTagType(normalizedType)
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%w: targetKinds is required", ErrInvalidArgument)
+	}
+	if len(values) > 16 {
+		return nil, fmt.Errorf("%w: targetKinds length must be <= 16", ErrInvalidArgument)
+	}
+	for _, value := range values {
+		if !targetKindPattern.MatchString(value) {
+			return nil, fmt.Errorf("%w: targetKind format is invalid", ErrInvalidArgument)
+		}
+	}
+	return values, nil
+}
+
+func normalizeStringSet(raw []string) []string {
+	if len(raw) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(raw))
+	result := make([]string, 0, len(raw))
+	for _, item := range raw {
+		value := strings.ToLower(strings.TrimSpace(item))
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func defaultTargetKindsForTagType(tagType string) []string {
+	switch strings.ToUpper(strings.TrimSpace(tagType)) {
+	case "ASMR":
+		return []string{"asmr_work", "archive_root", "folder"}
+	case "COMIC":
+		return []string{"comic_work", "archive_root", "folder"}
+	case "AUDIO":
+		return []string{"audio_track", "audio_album", "folder"}
+	case "VIDEO":
+		return []string{"video_file", "video_collection", "folder"}
+	case "FILE":
+		return []string{"file"}
+	case "FOLDER":
+		return []string{"folder"}
+	case "GENERAL":
+		return []string{"file", "folder", "archive_root"}
+	default:
+		return []string{"file", "folder"}
 	}
 }
 

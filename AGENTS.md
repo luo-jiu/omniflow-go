@@ -127,6 +127,8 @@ CLI 硬规则：
 - 常规 CRUD 优先使用 GORM 链式查询或 gorm/gen 生成 query。
 - Raw SQL 只用于递归、复杂聚合等必要场景，并集中收口。
 - Raw SQL 必须使用参数占位符，禁止字符串拼接构造条件。
+- 只要新增或修改数据库表结构，必须先执行对应迁移，再重新运行 `tools/gen_postgres.sh` 生成 model/query，业务代码必须基于生成后的 model/query 编写；禁止一边手写临时结构一边假装表已经接入。
+- 除迁移脚本、触发器、递归查询、复杂聚合和确实更清楚的少数场景外，禁止随手写 Raw SQL；能用 GORM/gen 表达的查询必须用 GORM/gen。
 - 事务边界统一放在 `usecase`，普通仓储函数不隐式开启事务。
 - 仓储函数必须接收 `context.Context`，并通过上下文复用事务。
 - `internal/repository/postgres/model/*.gen.go` 与 `internal/repository/postgres/query/*.gen.go` 是生成结果，不手工编辑。
