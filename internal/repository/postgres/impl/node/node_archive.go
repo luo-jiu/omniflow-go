@@ -490,10 +490,10 @@ select
   pu.name,
   pu.sort_order,
   pu.card_kind,
-  pu.view_meta,
+  pu.view_meta::text as view_meta,
   case
-    when pu.unit_kind = 'direct_file' then pu.view_meta
-    else coalesce(media.view_meta, '')
+    when pu.unit_kind = 'direct_file' then pu.view_meta::text
+    else coalesce(media.view_meta::text, '')
   end as media_view_meta,
   case
     when pu.unit_kind = 'direct_file' then pu.id

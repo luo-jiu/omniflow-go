@@ -154,6 +154,12 @@ func TestArchivePagedMediaUnitsSQLArgumentShape(t *testing.T) {
 			if pagedIndex < 0 || detailIndex < 0 || pagedIndex > detailIndex {
 				t.Fatalf("page sql must page candidates before running lateral detail queries")
 			}
+			if strings.Contains(pageSQL, "coalesce(media.view_meta, '')") {
+				t.Fatalf("page sql must not coalesce json/jsonb view_meta with an empty string")
+			}
+			if !strings.Contains(pageSQL, "coalesce(media.view_meta::text, '')") {
+				t.Fatalf("page sql must cast media view_meta to text before applying empty-string fallback")
+			}
 		})
 	}
 }
