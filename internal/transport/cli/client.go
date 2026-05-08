@@ -284,6 +284,81 @@ type UploadRenewResult struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
+type MigrationTask struct {
+	ID               string  `json:"id"`
+	ActorID          string  `json:"actorId"`
+	LibraryID        int64   `json:"libraryId"`
+	RootNodeID       int64   `json:"rootNodeId"`
+	TargetProvider   string  `json:"targetProvider"`
+	Status           string  `json:"status"`
+	TotalObjects     int32   `json:"totalObjects"`
+	CompletedObjects int32   `json:"completedObjects"`
+	FailedObjects    int32   `json:"failedObjects"`
+	SkippedObjects   int32   `json:"skippedObjects"`
+	TotalBytes       int64   `json:"totalBytes"`
+	TransferredBytes int64   `json:"transferredBytes"`
+	CurrentObjectKey string  `json:"currentObjectKey"`
+	ErrorMessage     string  `json:"errorMessage"`
+	CreatedAt        string  `json:"createdAt"`
+	UpdatedAt        string  `json:"updatedAt"`
+	StartedAt        *string `json:"startedAt"`
+	FinishedAt       *string `json:"finishedAt"`
+}
+
+type MigrationTaskItem struct {
+	ID                    int64   `json:"id"`
+	TaskID                string  `json:"taskId"`
+	StorageObjectID       int64   `json:"storageObjectId"`
+	SourceProvider        string  `json:"sourceProvider"`
+	SourceBucket          string  `json:"sourceBucket"`
+	SourceKey             string  `json:"sourceKey"`
+	TargetStorageObjectID int64   `json:"targetStorageObjectId"`
+	TargetKey             string  `json:"targetKey"`
+	FileSize              int64   `json:"fileSize"`
+	Status                string  `json:"status"`
+	ErrorMessage          string  `json:"errorMessage"`
+	StartedAt             *string `json:"startedAt"`
+	FinishedAt            *string `json:"finishedAt"`
+	CreatedAt             string  `json:"createdAt"`
+}
+
+type MigrationEnqueueRequest struct {
+	LibraryID      int64  `json:"libraryId"`
+	RootNodeID     int64  `json:"rootNodeId"`
+	TargetProvider string `json:"targetProvider"`
+}
+
+type MigrationEnqueueResult struct {
+	Task             *MigrationTask `json:"task,omitempty"`
+	PlannedObjects   int32          `json:"plannedObjects"`
+	PlannedBytes     int64          `json:"plannedBytes"`
+	TargetProvider   string         `json:"targetProvider"`
+	TargetBucket     string         `json:"targetBucket"`
+	StorageObjectIDs []int64        `json:"storageObjectIds"`
+}
+
+type MigrationListTasksResult struct {
+	Tasks []MigrationTask `json:"tasks"`
+}
+
+type MigrationGetTaskResult struct {
+	Task MigrationTask `json:"task"`
+}
+
+type MigrationListItemsResult struct {
+	Items []MigrationTaskItem `json:"items"`
+}
+
+type StorageDistributionEntry struct {
+	Provider   string `json:"provider"`
+	FileCount  int64  `json:"fileCount"`
+	TotalBytes int64  `json:"totalBytes"`
+}
+
+type StorageDistributionResult struct {
+	ByProvider []StorageDistributionEntry `json:"byProvider"`
+}
+
 func NewClient(baseURL, username, token string) *Client {
 	return &Client{
 		baseURL:  normalizeBaseURL(baseURL),
@@ -748,6 +823,106 @@ func (c *Client) PresignedPut(
 	}
 	etag = strings.Trim(etag, "\"")
 	return etag, nil
+}
+
+func (c *Client) MigrationEnqueue(
+	ctx context.Context,
+	req MigrationEnqueueRequest,
+	dryRun bool,
+) (MigrationEnqueueResult, error) {
+	var out MigrationEnqueueResult
+	err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/v1/migration/tasks",
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) MigrationListTasks(
+	ctx context.Context,
+	libraryID int64,
+	statuses []string,
+	limit int,
+) (MigrationListTasksResult, error) {
+	query := url.Values{}
+	if libraryID > 0 {
+		query.Set("libraryId", strconv.FormatInt(libraryID, 10))
+	}
+	if len(statuses) > 0 {
+		query.Set("status", strings.Join(statuses, ","))
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+
+	var out MigrationListTasksResult
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/migration/tasks", query, nil, true, &out)
+	return out, err
+}
+
+func (c *Client) MigrationGetTask(ctx context.Context, taskID string) (MigrationGetTaskResult, error) {
+	var out MigrationGetTaskResult
+	err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/api/v1/migration/tasks/%s", url.PathEscape(taskID)),
+		nil,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) MigrationListTaskItems(ctx context.Context, taskID string) (MigrationListItemsResult, error) {
+	var out MigrationListItemsResult
+	err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/api/v1/migration/tasks/%s/items", url.PathEscape(taskID)),
+		nil,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) MigrationCancelTask(ctx context.Context, taskID string, dryRun bool) error {
+	return c.doJSON(
+		ctx,
+		http.MethodPost,
+		fmt.Sprintf("/api/v1/migration/tasks/%s/cancel", url.PathEscape(taskID)),
+		withDryRunQuery(nil, dryRun),
+		nil,
+		true,
+		nil,
+	)
+}
+
+func (c *Client) StorageDistribution(
+	ctx context.Context,
+	libraryID, nodeID int64,
+) (StorageDistributionResult, error) {
+	query := url.Values{}
+	query.Set("nodeId", strconv.FormatInt(nodeID, 10))
+
+	var out StorageDistributionResult
+	err := c.doJSON(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("/api/v1/libraries/%d/storage-distribution", libraryID),
+		query,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
 }
 
 func withDryRunQuery(query url.Values, dryRun bool) url.Values {

@@ -12,14 +12,14 @@ const TableNameTag = "tags"
 
 // Tag mapped from table <tags>
 type Tag struct {
-	ID           int64          `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true;index:idx_tags_type_target_order,priority:1;index:idx_tags_scope_resource_order,priority:2;index:idx_tags_owner_type_order,priority:1;index:idx_tags_owner_scope_dimension_order,priority:2" json:"id"`
+	ID           int64          `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true;index:idx_tags_owner_type_order,priority:1;index:idx_tags_type_target_order,priority:1;index:idx_tags_scope_resource_order,priority:2;index:idx_tags_owner_scope_dimension_order,priority:2" json:"id"`
 	Name         string         `gorm:"column:name;type:character varying(64);not null;uniqueIndex:uq_tags_scope_name_live,priority:2" json:"name"`
-	Type         string         `gorm:"column:type;type:character varying(32);not null;uniqueIndex:uq_tags_scope_name_live,priority:4;index:idx_tags_type_target_order,priority:4;index:idx_tags_owner_type_order,priority:4;default:GENERAL" json:"type"`
+	Type         string         `gorm:"column:type;type:character varying(32);not null;uniqueIndex:uq_tags_scope_name_live,priority:4;index:idx_tags_owner_type_order,priority:4;index:idx_tags_type_target_order,priority:4;default:GENERAL" json:"type"`
 	TargetKey    *string        `gorm:"column:target_key;type:character varying(64);index:idx_tags_type_target_order,priority:3" json:"target_key"`
 	OwnerUserID  *int64         `gorm:"column:owner_user_id;type:bigint;index:idx_tags_owner_type_order,priority:2;index:idx_tags_owner_scope_dimension_order,priority:3" json:"owner_user_id"`
 	Color        string         `gorm:"column:color;type:character varying(32);not null;default:#4F8CFF" json:"color"`
 	TextColor    *string        `gorm:"column:text_color;type:character varying(32)" json:"text_color"`
-	SortOrder    int32          `gorm:"column:sort_order;type:integer;not null;index:idx_tags_type_target_order,priority:2;index:idx_tags_scope_resource_order,priority:5;index:idx_tags_owner_type_order,priority:3;index:idx_tags_owner_scope_dimension_order,priority:6" json:"sort_order"`
+	SortOrder    int32          `gorm:"column:sort_order;type:integer;not null;index:idx_tags_owner_type_order,priority:3;index:idx_tags_type_target_order,priority:2;index:idx_tags_scope_resource_order,priority:5;index:idx_tags_owner_scope_dimension_order,priority:6" json:"sort_order"`
 	Enabled      bool           `gorm:"column:enabled;type:boolean;not null;default:true" json:"enabled"`
 	Description  *string        `gorm:"column:description;type:character varying(255)" json:"description"`
 	CreatedAt    time.Time      `gorm:"column:created_at;type:timestamp with time zone;not null;default:now()" json:"created_at"`

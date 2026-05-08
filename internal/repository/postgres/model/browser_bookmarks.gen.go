@@ -12,8 +12,8 @@ const TableNameBrowserBookmark = "browser_bookmarks"
 
 // BrowserBookmark mapped from table <browser_bookmarks>
 type BrowserBookmark struct {
-	ID          int64          `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true;index:idx_browser_bookmarks_owner_match_key,priority:1;index:idx_browser_bookmarks_owner_parent_order,priority:1" json:"id"`
-	OwnerUserID int64          `gorm:"column:owner_user_id;type:bigint;not null;index:idx_browser_bookmarks_owner_match_key,priority:2;index:idx_browser_bookmarks_owner_parent_order,priority:2" json:"owner_user_id"`
+	ID          int64          `gorm:"column:id;type:bigint;primaryKey;autoIncrement:true;index:idx_browser_bookmarks_owner_parent_order,priority:1;index:idx_browser_bookmarks_owner_match_key,priority:1" json:"id"`
+	OwnerUserID int64          `gorm:"column:owner_user_id;type:bigint;not null;index:idx_browser_bookmarks_owner_parent_order,priority:2;index:idx_browser_bookmarks_owner_match_key,priority:2" json:"owner_user_id"`
 	ParentID    *int64         `gorm:"column:parent_id;type:bigint;index:idx_browser_bookmarks_owner_parent_order,priority:3" json:"parent_id"`
 	Kind        string         `gorm:"column:kind;type:character varying(16);not null" json:"kind"`
 	Title       string         `gorm:"column:title;type:character varying(255);not null" json:"title"`

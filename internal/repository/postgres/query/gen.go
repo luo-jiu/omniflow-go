@@ -18,6 +18,8 @@ var (
 	BrowserBookmark    *browserBookmark
 	BrowserFileMapping *browserFileMapping
 	Library            *library
+	MigrationTask      *migrationTask
+	MigrationTaskItem  *migrationTaskItem
 	Node               *node
 	NodeFile           *nodeFile
 	NodeResourceTarget *nodeResourceTarget
@@ -36,6 +38,8 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	BrowserBookmark = &Q.BrowserBookmark
 	BrowserFileMapping = &Q.BrowserFileMapping
 	Library = &Q.Library
+	MigrationTask = &Q.MigrationTask
+	MigrationTaskItem = &Q.MigrationTaskItem
 	Node = &Q.Node
 	NodeFile = &Q.NodeFile
 	NodeResourceTarget = &Q.NodeResourceTarget
@@ -55,6 +59,8 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		BrowserBookmark:    newBrowserBookmark(db, opts...),
 		BrowserFileMapping: newBrowserFileMapping(db, opts...),
 		Library:            newLibrary(db, opts...),
+		MigrationTask:      newMigrationTask(db, opts...),
+		MigrationTaskItem:  newMigrationTaskItem(db, opts...),
 		Node:               newNode(db, opts...),
 		NodeFile:           newNodeFile(db, opts...),
 		NodeResourceTarget: newNodeResourceTarget(db, opts...),
@@ -75,6 +81,8 @@ type Query struct {
 	BrowserBookmark    browserBookmark
 	BrowserFileMapping browserFileMapping
 	Library            library
+	MigrationTask      migrationTask
+	MigrationTaskItem  migrationTaskItem
 	Node               node
 	NodeFile           nodeFile
 	NodeResourceTarget nodeResourceTarget
@@ -96,6 +104,8 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		BrowserBookmark:    q.BrowserBookmark.clone(db),
 		BrowserFileMapping: q.BrowserFileMapping.clone(db),
 		Library:            q.Library.clone(db),
+		MigrationTask:      q.MigrationTask.clone(db),
+		MigrationTaskItem:  q.MigrationTaskItem.clone(db),
 		Node:               q.Node.clone(db),
 		NodeFile:           q.NodeFile.clone(db),
 		NodeResourceTarget: q.NodeResourceTarget.clone(db),
@@ -124,6 +134,8 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		BrowserBookmark:    q.BrowserBookmark.replaceDB(db),
 		BrowserFileMapping: q.BrowserFileMapping.replaceDB(db),
 		Library:            q.Library.replaceDB(db),
+		MigrationTask:      q.MigrationTask.replaceDB(db),
+		MigrationTaskItem:  q.MigrationTaskItem.replaceDB(db),
 		Node:               q.Node.replaceDB(db),
 		NodeFile:           q.NodeFile.replaceDB(db),
 		NodeResourceTarget: q.NodeResourceTarget.replaceDB(db),
@@ -142,6 +154,8 @@ type queryCtx struct {
 	BrowserBookmark    IBrowserBookmarkDo
 	BrowserFileMapping IBrowserFileMappingDo
 	Library            ILibraryDo
+	MigrationTask      IMigrationTaskDo
+	MigrationTaskItem  IMigrationTaskItemDo
 	Node               INodeDo
 	NodeFile           INodeFileDo
 	NodeResourceTarget INodeResourceTargetDo
@@ -160,6 +174,8 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		BrowserBookmark:    q.BrowserBookmark.WithContext(ctx),
 		BrowserFileMapping: q.BrowserFileMapping.WithContext(ctx),
 		Library:            q.Library.WithContext(ctx),
+		MigrationTask:      q.MigrationTask.WithContext(ctx),
+		MigrationTaskItem:  q.MigrationTaskItem.WithContext(ctx),
 		Node:               q.Node.WithContext(ctx),
 		NodeFile:           q.NodeFile.WithContext(ctx),
 		NodeResourceTarget: q.NodeResourceTarget.WithContext(ctx),

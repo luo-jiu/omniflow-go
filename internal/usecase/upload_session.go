@@ -442,6 +442,17 @@ func (u *UploadSessionUseCase) Abort(ctx context.Context, act actor.Actor, uploa
 				"error", abortErr,
 			)
 		}
+	} else if session.Mode == domainsession.ModeSingle && strings.TrimSpace(session.StorageKey) != "" {
+		store, storeErr := u.registry.Get(session.StorageProvider)
+		if storeErr != nil {
+			return fmt.Errorf("storage provider %q: %w", session.StorageProvider, storeErr)
+		}
+		if deleteErr := store.Delete(ctx, session.StorageKey); deleteErr != nil {
+			slog.WarnContext(ctx, "upload_session.abort.single_delete_failed",
+				"upload_id", session.ID,
+				"error", deleteErr,
+			)
+		}
 	}
 
 	if _, delErr := u.repo.Delete(ctx, session.ID); delErr != nil {

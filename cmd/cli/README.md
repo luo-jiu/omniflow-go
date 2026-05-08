@@ -51,6 +51,13 @@
   - 走与前端相同的 7 端点流程（`/api/v1/upload/{init,parts/sign,complete,...}`）。
   - SIGINT/SIGTERM 时自动调 `DELETE /api/v1/upload/:uploadId` 收尾 MinIO + session。
   - 详见 `docs/architecture/upload-direct-design.md`。
+- 存储迁移命令把节点子树下的 `storage_objects` 物理对象搬到目标 provider，节点元数据保持不变：
+  - `of storage migrate --library-id <id> --node-id <id> --target-provider <alias> [--dry-run] [--json]`：入队迁移。`--dry-run` 只跑校验和枚举，返回 `{plannedObjects, plannedBytes}` 不落库。
+  - `of storage distribution --library-id <id> --node-id <id> [--json]`：按 provider 统计当前节点子树文件数 / 字节数，便于决定目标 provider。
+  - `of storage migration ls [--library-id <id>] [--status running,pending] [--limit <n>] [--json]`：列举当前 actor 的迁移任务。
+  - `of storage migration status --task-id <id> [--items] [--json]`：单任务详情；`--items` 同时拉子项列表。
+  - `of storage migration cancel --task-id <id> [--dry-run] [--json]`：取消任务（已运行子项保留，pending 子项被 worker 抢到时立刻 skipped）。
+  - 与 Web UI 共用 6 个 `/api/v1/migration/...` 端点，详见 `docs/architecture/storage-migration-design.md`。
 - 路径演进策略：写命令保持 `id` 参数兼容，同时逐步增加 `path` 参数入口。
 
 ## 4. 错误与退出码约定

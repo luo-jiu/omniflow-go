@@ -48,7 +48,7 @@ func newTestEngine() http.Handler {
 
 	uploadHandler := httpHandler.NewUploadHandler(nil)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, uploadHandler, httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, uploadHandler, httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewMigrationHandler(nil))
 	return engine
 }
 
@@ -80,7 +80,7 @@ func TestHealthRoutes(t *testing.T) {
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(nil)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewMigrationHandler(nil))
 
 	testCases := []string{"/healthz", "/api/v1/health"}
 	for _, path := range testCases {
@@ -123,7 +123,7 @@ func TestProtectedRouteRequiresAuthHeaders(t *testing.T) {
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(nil)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewMigrationHandler(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/protected-probe", nil)
 	recorder := httptest.NewRecorder()
@@ -170,7 +170,7 @@ func TestAuthStatusRouteRequiresAuthHeaders(t *testing.T) {
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(nil)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	engine := New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewMigrationHandler(nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/status?username=test&token=test", nil)
 	recorder := httptest.NewRecorder()
@@ -414,5 +414,5 @@ func newBookmarkBehaviorTestEngine(bookmarkRepo *routerTestBrowserBookmarkReposi
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(usecase.NewBrowserBookmarkUseCase(bookmarkRepo, nil, auditSink))
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(nil)
 
-	return New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""))
+	return New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, httpHandler.NewUploadHandler(nil), httpHandler.NewStorageConfigHandler(nil, ""), httpHandler.NewMigrationHandler(nil))
 }

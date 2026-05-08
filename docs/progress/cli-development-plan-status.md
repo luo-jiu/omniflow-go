@@ -1,6 +1,6 @@
 # CLI 开发计划与进度台账
 
-更新时间：2026-04-15  
+更新时间：2026-05-08  
 状态：M1-M4 已完成，M5 路径体验层进行中
 
 关联文档：
@@ -38,6 +38,7 @@
 | `browser-bookmark` | tree/match/import/create/update/move/rm |
 | `config` | show |
 | `upload` | file（直传 MinIO，复用前端同一套 7 端点） |
+| `storage` | migrate（入队迁移，含 `--dry-run`）、distribution（按 provider 统计当前节点子树）、migration ls / status / cancel（迁移任务管理） |
 
 完整命令示例见 `docs/architecture/cli-minimal-quickstart.md`。
 

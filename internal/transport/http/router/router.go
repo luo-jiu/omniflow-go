@@ -25,6 +25,7 @@ func New(
 	browserFileMappingHandler *handler.BrowserFileMappingHandler,
 	uploadHandler *handler.UploadHandler,
 	storageConfigHandler *handler.StorageConfigHandler,
+	migrationHandler *handler.MigrationHandler,
 ) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 
@@ -51,6 +52,7 @@ func New(
 		browserFileMappingHandler,
 		uploadHandler,
 		storageConfigHandler,
+		migrationHandler,
 	)
 
 	return engine

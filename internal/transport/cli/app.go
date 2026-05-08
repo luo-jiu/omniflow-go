@@ -763,6 +763,104 @@ func (a *App) buildCommandTree() *command {
 	}
 	root.Children["upload"] = upload
 
+	storage := &command{
+		Name:     "storage",
+		Summary:  "Storage migration commands",
+		Usage:    "of storage <migrate|distribution|migration> [flags]",
+		Children: map[string]*command{},
+	}
+	storage.Children["migrate"] = &command{
+		Name:    "migrate",
+		Summary: "Enqueue a storage migration task for a node tree",
+		Usage:   "of storage migrate --library-id <id> --node-id <id> --target-provider <alias> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--library-id <id>          library id (required)",
+			"--node-id <id>             root node id (required)",
+			"--target-provider <alias>  target provider alias (required)",
+			"--base-url <url>           API base URL",
+			"--dry-run                  preview only, do not commit changes",
+			"--json                     output JSON",
+		},
+		Examples: []string{
+			"of storage migrate --library-id 1 --node-id 100 --target-provider win-minio --dry-run",
+			"of storage migrate --library-id 1 --node-id 100 --target-provider win-minio --json",
+		},
+		Run: a.runStorageMigrate,
+	}
+	storage.Children["distribution"] = &command{
+		Name:    "distribution",
+		Summary: "Show storage provider distribution under a node",
+		Usage:   "of storage distribution --library-id <id> --node-id <id> [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id (required)",
+			"--node-id <id>      root node id (required)",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of storage distribution --library-id 1 --node-id 100",
+			"of storage distribution --library-id 1 --node-id 100 --json",
+		},
+		Run: a.runStorageDistribution,
+	}
+	migration := &command{
+		Name:     "migration",
+		Summary:  "Storage migration task commands",
+		Usage:    "of storage migration <ls|status|cancel> [flags]",
+		Children: map[string]*command{},
+	}
+	migration.Children["ls"] = &command{
+		Name:    "ls",
+		Summary: "List storage migration tasks",
+		Usage:   "of storage migration ls [--library-id <id>] [--status running,pending] [--limit <n>] [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id>   library id filter",
+			"--status <list>     comma-separated status filter",
+			"--limit <n>         max result size",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of storage migration ls --library-id 1",
+			"of storage migration ls --status running,pending --json",
+		},
+		Run: a.runMigrationList,
+	}
+	migration.Children["status"] = &command{
+		Name:    "status",
+		Summary: "Show migration task status",
+		Usage:   "of storage migration status --task-id <id> [--items] [--base-url <url>] [--json]",
+		Flags: []string{
+			"--task-id <id>      migration task id (required)",
+			"--items             include task items",
+			"--base-url <url>    API base URL",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of storage migration status --task-id mtk_xyz",
+			"of storage migration status --task-id mtk_xyz --items --json",
+		},
+		Run: a.runMigrationStatus,
+	}
+	migration.Children["cancel"] = &command{
+		Name:    "cancel",
+		Summary: "Cancel a running migration task",
+		Usage:   "of storage migration cancel --task-id <id> [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--task-id <id>      migration task id (required)",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of storage migration cancel --task-id mtk_xyz",
+			"of storage migration cancel --task-id mtk_xyz --dry-run --json",
+		},
+		Run: a.runMigrationCancel,
+	}
+	storage.Children["migration"] = migration
+	root.Children["storage"] = storage
+
 	return root
 }
 

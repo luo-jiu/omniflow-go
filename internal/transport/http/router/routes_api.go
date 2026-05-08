@@ -20,6 +20,7 @@ func registerAPIRoutes(
 	browserFileMappingHandler *handler.BrowserFileMappingHandler,
 	uploadHandler *handler.UploadHandler,
 	storageConfigHandler *handler.StorageConfigHandler,
+	migrationHandler *handler.MigrationHandler,
 ) {
 	registerHealthRoutes(api, healthHandler)
 	registerAuthRoutes(api, authHandler)
@@ -33,4 +34,5 @@ func registerAPIRoutes(
 	registerBrowserFileMappingRoutes(api, browserFileMappingHandler)
 	registerStorageConfigRoutes(api, storageConfigHandler)
 	registerUploadRoutes(api, uploadHandler)
+	registerMigrationRoutes(api, migrationHandler)
 }

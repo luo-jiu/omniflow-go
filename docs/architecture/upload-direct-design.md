@@ -66,6 +66,7 @@ complete / abort ──→ 删 session 行
 `UploadSessionUseCase.NewWithJanitor` 启动 5 min ticker：
 - 扫 `repo.ListExpiredBefore(now)`；
 - multipart session 调 MinIO `AbortMultipartUpload` 回收已上传分片；
+- single session 在用户主动取消时会 best-effort 删除已 PUT 的对象；janitor 对过期 single session 仅删除会话行；
 - `repo.Delete(uploadId)` 删 session 行。
 
 模式直抄 `multipart_upload.go` janitor pattern，bootstrap 注册 stop 钩子。

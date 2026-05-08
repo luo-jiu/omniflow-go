@@ -36,6 +36,8 @@ type ObjectStorage interface {
 	PresignedPutObject(ctx context.Context, objectName string, expiry time.Duration) (string, error)
 	// StatObject 在直传 single 模式 complete 阶段校验对象是否真实写入。
 	StatObject(ctx context.Context, objectName string) (ObjectInfo, error)
+	// GetObject 流式读对象，调用方负责关闭 reader。用于跨 provider 物理迁移。
+	GetObject(ctx context.Context, objectName string) (io.ReadCloser, ObjectInfo, error)
 
 	// InitiateMultipartUpload 创建分片上传会话，返回 MinIO 的 uploadID。
 	InitiateMultipartUpload(ctx context.Context, objectName string, contentType string) (uploadID string, err error)

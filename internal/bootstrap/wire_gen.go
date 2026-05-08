@@ -57,6 +57,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	browserBookmarkRepository := repository.NewBrowserBookmarkRepository(database)
 	browserFileMappingRepository := repository.NewBrowserFileMappingRepository(database)
 	uploadSessionRepository := repository.NewUploadSessionRepository(database)
+	migrationRepository := repository.NewMigrationRepository(database)
 	sessionRepository := repository.NewSessionRepository(redisClient)
 	transactor := repository.NewTransactor(database)
 
@@ -67,6 +68,8 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink, storageRegistry)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink)
 	uploadSessionUseCase, uploadSessionCleanup := usecase.NewUploadSessionUseCaseWithJanitor(uploadSessionRepository, nodeUseCase, storageRegistry, allowAll, logSink, cfg)
+	migrationUseCase := usecase.NewMigrationUseCase(migrationRepository, storageRegistry, allowAll, logSink, transactor, cfg)
+	_, migrationWorkerCleanup := usecase.NewMigrationWorkerPool(migrationUseCase, 0)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
 	tagUseCase := usecase.NewTagUseCase(tagRepository, transactor)
 	browserBookmarkUseCase := usecase.NewBrowserBookmarkUseCase(browserBookmarkRepository, transactor, logSink)
@@ -84,12 +87,14 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	browserBookmarkHandler := httpHandler.NewBrowserBookmarkHandler(browserBookmarkUseCase)
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(browserFileMappingUseCase)
 	storageConfigHandler := httpHandler.NewStorageConfigHandler(storageRegistry, resolveStorageConfigPath(cfg))
+	migrationHandler := httpHandler.NewMigrationHandler(migrationUseCase)
 
-	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, uploadHandler, storageConfigHandler)
+	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, uploadHandler, storageConfigHandler, migrationHandler)
 	httpServer := server.NewHTTPServer(cfg, engine, logger)
 	application := app.New(cfg, logger, httpServer)
 
 	cleanup := func() {
+		migrationWorkerCleanup()
 		uploadSessionCleanup()
 		storageRegistryCleanup()
 		objectStorageCleanup()

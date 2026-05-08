@@ -163,6 +163,24 @@ func (s *Store) StatObject(ctx context.Context, objectName string) (storage.Obje
 	}, nil
 }
 
+// GetObject 流式读对象。先 StatObject 拿元信息，再 GetObject 拿 reader；
+// 调用方负责 Close。注意 minio-go 的 Object 类型同时实现 io.Reader/Closer，可直接返回。
+func (s *Store) GetObject(ctx context.Context, objectName string) (io.ReadCloser, storage.ObjectInfo, error) {
+	stat, err := s.client.StatObject(ctx, s.bucket, objectName, minio.StatObjectOptions{})
+	if err != nil {
+		return nil, storage.ObjectInfo{}, fmt.Errorf("stat object before get: %w", err)
+	}
+	obj, err := s.client.GetObject(ctx, s.bucket, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, storage.ObjectInfo{}, fmt.Errorf("get object: %w", err)
+	}
+	return obj, storage.ObjectInfo{
+		Size:        stat.Size,
+		ContentType: stat.ContentType,
+		ETag:        stat.ETag,
+	}, nil
+}
+
 func (s *Store) InitiateMultipartUpload(
 	ctx context.Context,
 	objectName string,

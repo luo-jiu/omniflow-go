@@ -31,6 +31,8 @@ var defaultTableModels = map[string]string{
 	"tag_bind_policies":     "TagBindPolicy",
 	"tag_target_kinds":      "TagTargetKind",
 	"upload_sessions":       "UploadSession",
+	"migration_tasks":       "MigrationTask",
+	"migration_task_items":  "MigrationTaskItem",
 }
 
 func main() {

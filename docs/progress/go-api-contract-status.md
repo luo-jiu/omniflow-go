@@ -1,6 +1,6 @@
 # Go API 契约状态摘要
 
-更新时间：2026-05-06
+更新时间：2026-05-08
 状态：Go API 当前契约已收口，持续维护
 
 ## 1. 当前结论
@@ -11,9 +11,9 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 
 | 指标 | 数量 | 说明 |
 |---|---:|---|
-| `/api/v1` 接口总数 | 47 | 以当前路由注册为准 |
-| 功能实现 | 47/47 | 含兼容 no-op 1 个 |
-| 日志 P1 接入 | 47/47 | 详见 API 与日志归档摘要 |
+| `/api/v1` 接口总数 | 53 | 以当前路由注册为准 |
+| 功能实现 | 53/53 | 含兼容 no-op 1 个 |
+| 日志 P1 接入 | 53/53 | 详见 API 与日志归档摘要 |
 | CLI 主要写链路 | 已覆盖 | 详见 CLI 进度台账 |
 
 ## 2. 保留契约
@@ -40,6 +40,7 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 | File/Directory | 上传、链接、批量链接 |
 | Tag | 类型、列表、创建、更新、删除；标签定义支持 `scope / dimension / resourceKind` 多维字段 |
 | Browser | 文件映射、书签树、匹配、导入、创建、更新、移动、删除 |
+| Storage Migration | 入队 / 列表 / 详情 / 取消 / 子项 / 存储分布 |
 | Health | 服务健康检查 |
 
 ## 4. Go 扩展能力
@@ -73,6 +74,15 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 鉴权语义：actor 与 session.actor 不一致 / session 不存在统一返回 `404`（防 uploadId 枚举）；lease 过期返回 `410 Gone`。
   - 双层 TTL：DB lease（24h，可续）与 presigned URL 签名（1h，不可改）解耦；URL 过期可重新 sign 而无需重新 init。
   - 客户端覆盖：Electron 主进程 `http:upload:presigned-put` 走 `https.request` 流式 PUT；CLI `of upload file` 走 Go `http.Client` 直传，复用同一套后端流程。
+- 存储迁移（migration）：把节点子树下的 `storage_objects` 物理对象从一个 provider 搬到另一个 provider，节点元数据保持不变。
+  - `POST /api/v1/migration/tasks`：入队迁移任务，请求体 `{libraryId, rootNodeId, targetProvider}`；支持 `?dryRun=true` 仅返回 `{plannedObjects, plannedBytes, targetProvider, targetBucket, storageObjectIds}` 不落库。
+  - `GET /api/v1/migration/tasks?libraryId=&status=&limit=`：列举任务（actor 维度）；`status` 支持逗号分隔。
+  - `GET /api/v1/migration/tasks/:id`：单任务详情。
+  - `POST /api/v1/migration/tasks/:id/cancel`：取消任务（运行中保留已完成项，pending 子项被 worker 抢到时立刻 skipped）；支持 `?dryRun=true` 仅校验。
+  - `GET /api/v1/migration/tasks/:id/items`：子项列表（调试用）。
+  - `GET /api/v1/libraries/:libraryId/storage-distribution?nodeId=N`：按 provider 统计当前节点子树文件数 / 字节数，迁移对话框依赖此接口判断"100% 已在该 provider"。
+  - 鉴权语义：actor 与任务 actor 不一致 / 任务不存在统一 `404`（防 task_id 枚举）；已终态任务再取消返回 `409`。
+  - 数据库迁移脚本：`docs/schema/2026-05-09-migration-tasks.sql`；设计详见 `docs/architecture/storage-migration-design.md`。
 - CLI `of` 命令域及其 `--json`、`--dry-run` 契约
 - 节点创建与目录上传支持可选 `conflictPolicy`：
   - “同名”按用户可见名称判断：目录为 `name`，文件为 `name.ext`（无后缀文件仍为 `name`）。因此同一目录允许 `demo.txt` 与 `demo.md` 共存，但不允许两个 `demo.txt`。
