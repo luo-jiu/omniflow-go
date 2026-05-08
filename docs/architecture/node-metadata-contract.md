@@ -1,6 +1,6 @@
 # 节点元数据契约
 
-更新时间：2026-05-05
+更新时间：2026-05-08
 
 适用范围：`nodes.view_meta`、归档卡片接口、漫画 / 视频 / ASMR 等 viewer 读写节点状态和文件固有元数据的后端实现。
 
@@ -77,6 +77,7 @@ OmniFlow 当前还没有独立的 `node_metadata` 表，节点扩展数据统一
 - `coverNodeId`：封面文件节点
 - `subtitleCount`：伴随字幕数量
 - `durationSeconds`：从媒体节点 `__omniflowNodeMetadataV1.media.durationSeconds` 读取的视频时长
+- `offset / limit` 必须在数据库层对有效视频单元分页，封面探测、字幕计数和媒体节点识别只面向当前页卡片
 
 当 `cardKind=collection` 时，卡片本身是 `built_in_type=VIDEO` 且 `archive_mode=1` 的直属子目录：
 
@@ -84,6 +85,16 @@ OmniFlow 当前还没有独立的 `node_metadata` 表，节点扩展数据统一
 - 不返回 `mediaNodeId` / `durationSeconds`
 - 封面规则与普通视频单元一致：优先读取 `view_meta.coverNodeId`，缺失时探测合集目录第一代图片文件作为 `coverNodeId`
 - 前端应把它作为“合集”入口展示，双击后继续请求该子归档的 `archive/cards`
+
+`builtInType=COMIC` 卡片会返回：
+
+- 直属 `built_in_type=COMIC` 且 `archive_mode=false` 的目录，`cardKind=media`，表示普通漫画作品
+- 直属 `built_in_type=COMIC` 且 `archive_mode=true` 的子归档目录，`cardKind=collection`，表示漫画合集 / 系列入口
+- 该接口只识别当前归档目录的第一代子节点，不在后端递归展开更深层级
+- `offset / limit` 必须在数据库层对直属子节点分页，封面探测和链接解析只面向当前页卡片
+- `cardKind=collection` 不返回 `mediaNodeId` / `durationSeconds`
+- 封面规则仍优先读取 `view_meta.coverNodeId`，缺失时探测该目录第一代图片文件作为 `coverNodeId`
+- 前端打开 `collection` 卡片时应继续请求该子归档的 `archive/cards`，而不是把子孙漫画铺平到当前页
 
 如果时长缺失，后端会在归档卡片返回后调度 best-effort warmup，不阻塞本次列表响应：
 
@@ -98,6 +109,7 @@ OmniFlow 当前还没有独立的 `node_metadata` 表，节点扩展数据统一
 - 直属普通音频文件会作为兼容歌曲单元返回，`mediaNodeId` 等于文件节点自身。
 - 直属 `built_in_type=AUDIO` 且 `archive_mode=false` 的目录会作为歌曲文件夹返回；目录内第一个音频文件作为 `mediaNodeId`，第一个图片文件作为 `coverNodeId`，字幕 / 歌词文件通过 `subtitleCount` 计数。
 - 直属 `built_in_type=AUDIO` 且 `archive_mode=true` 的子归档目录不会作为上级归档卡片返回；音频归档不提供视频归档那种 `collection` 合集卡片。
+- `offset / limit` 必须在数据库层对有效歌曲单元分页，封面探测、歌词计数和媒体节点识别只面向当前页卡片。
 - `durationSeconds` 读取媒体节点已有的 `__omniflowNodeMetadataV1.media.durationSeconds`，当前不会为音频缺失时长触发同步 warmup。
 
 ### 4.2 `PUT /api/v1/nodes/:nodeId`

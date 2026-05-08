@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	pgmodel "omniflow-go/internal/repository/postgres/model"
@@ -27,6 +26,18 @@ type StorageInfoRow struct {
 	NodeID        int64  `gorm:"column:node_id"`
 	StorageKey    string `gorm:"column:storage_key"`
 	ProviderAlias string `gorm:"column:provider_alias"`
+}
+
+type archiveUnitRawRow struct {
+	ID            int64  `gorm:"column:id"`
+	Name          string `gorm:"column:name"`
+	SortOrder     int    `gorm:"column:sort_order"`
+	CardKind      string `gorm:"column:card_kind"`
+	ViewMeta      string `gorm:"column:view_meta"`
+	MediaViewMeta string `gorm:"column:media_view_meta"`
+	MediaNodeID   int64  `gorm:"column:media_node_id"`
+	CoverNodeID   int64  `gorm:"column:cover_node_id"`
+	SubtitleCount int    `gorm:"column:subtitle_count"`
 }
 
 var archiveImageExtensions = []string{
@@ -114,6 +125,9 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 	if normalizedType == "AUDIO" {
 		return r.listAudioArchiveUnits(ctx, parentNodeID, libraryID, offset, limit)
 	}
+	if normalizedType == "COMIC" {
+		return r.listComicArchiveUnits(ctx, parentNodeID, libraryID, offset, limit)
+	}
 
 	q := r.query(ctx)
 	base := q.Node.WithContext(ctx).
@@ -156,6 +170,63 @@ func (r *NodeRepository) ListArchiveUnitsByBuiltInType(
 		}
 	})
 	return result, int(totalCount), nil
+}
+
+func (r *NodeRepository) listDirectChildComicArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+	offset int,
+	limit int,
+) ([]ArchiveUnitRow, int, error) {
+	q := r.query(ctx)
+	base := q.Node.WithContext(ctx).
+		Where(
+			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
+			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
+			q.Node.NodeType.Eq(nodeTypeDirectory),
+			q.Node.BuiltInType.Eq("COMIC"),
+		)
+
+	totalCount, err := base.Count()
+	if err != nil {
+		return nil, 0, err
+	}
+	if totalCount == 0 {
+		return []ArchiveUnitRow{}, 0, nil
+	}
+
+	rows, err := base.
+		Order(
+			q.Node.SortOrder.Asc(),
+			q.Node.ID.Asc(),
+		).
+		Offset(offset).
+		Limit(limit).
+		Find()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	result := make([]ArchiveUnitRow, 0, len(rows))
+	for _, row := range rows {
+		unit := archiveUnitFromNode(row)
+		if row.ArchiveMode {
+			unit.CardKind = archiveCardKindCollection
+		}
+		result = append(result, unit)
+	}
+	return result, int(totalCount), nil
+}
+
+func (r *NodeRepository) listComicArchiveUnits(
+	ctx context.Context,
+	parentNodeID uint64,
+	libraryID uint64,
+	offset int,
+	limit int,
+) ([]ArchiveUnitRow, int, error) {
+	return r.listDirectChildComicArchiveUnits(ctx, parentNodeID, libraryID, offset, limit)
 }
 
 func archiveUnitFromNode(row *pgmodel.Node) ArchiveUnitRow {
@@ -219,33 +290,6 @@ func isArchiveMediaNode(row *pgmodel.Node, mimeTypes map[uint64]string, kind arc
 		return true
 	}
 	return archiveExtMatches(kind, normalizeArchiveNodeExt(row))
-}
-
-func isArchiveSubtitleNode(row *pgmodel.Node) bool {
-	if !isVisibleArchiveFileNode(row) {
-		return false
-	}
-	return lo.Contains(archiveSubtitleExtensions, normalizeArchiveNodeExt(row))
-}
-
-func sortArchiveUnits(units []ArchiveUnitRow) {
-	sort.SliceStable(units, func(i, j int) bool {
-		if units[i].SortOrder != units[j].SortOrder {
-			return units[i].SortOrder < units[j].SortOrder
-		}
-		return units[i].ID < units[j].ID
-	})
-}
-
-func paginateArchiveUnits(units []ArchiveUnitRow, offset int, limit int) []ArchiveUnitRow {
-	if offset >= len(units) {
-		return []ArchiveUnitRow{}
-	}
-	end := offset + limit
-	if end > len(units) {
-		end = len(units)
-	}
-	return units[offset:end]
 }
 
 func collectNodeIDs(rows []*pgmodel.Node) []uint64 {
@@ -315,188 +359,294 @@ func (r *NodeRepository) listLiveFileNodeIDsByIDs(
 	return collectNodeIDs(rows), nil
 }
 
-func (r *NodeRepository) listDirectChildFileArchiveUnits(
-	ctx context.Context,
-	parentNodeID uint64,
-	libraryID uint64,
-	kind archiveMediaKind,
-) ([]ArchiveUnitRow, error) {
-	q := r.query(ctx)
-	rows, err := q.Node.WithContext(ctx).
-		Where(
-			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
-			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
-			q.Node.NodeType.Eq(nodeTypeFile),
-		).
-		Order(
-			q.Node.SortOrder.Asc(),
-			q.Node.ID.Asc(),
-		).
-		Find()
-	if err != nil {
-		return nil, err
+func archiveMediaKindExtensions(kind archiveMediaKind) []string {
+	switch kind {
+	case archiveMediaKindVideo:
+		return archiveVideoExtensions
+	case archiveMediaKindAudio:
+		return archiveAudioExtensions
+	case archiveMediaKindImage:
+		return archiveImageExtensions
+	default:
+		return []string{}
 	}
-	if len(rows) == 0 {
-		return []ArchiveUnitRow{}, nil
-	}
+}
 
-	mimeTypes, err := r.listMimeTypesByNodeIDs(ctx, libraryID, collectNodeIDs(rows))
-	if err != nil {
-		return nil, err
-	}
+func archiveMediaKindMimePattern(kind archiveMediaKind) string {
+	return string(kind) + "/%"
+}
 
-	units := make([]ArchiveUnitRow, 0, len(rows))
+func scanArchiveUnitRows(rows []archiveUnitRawRow) []ArchiveUnitRow {
+	result := make([]ArchiveUnitRow, 0, len(rows))
 	for _, row := range rows {
-		if !isArchiveMediaNode(row, mimeTypes, kind) {
-			continue
-		}
-		unit := archiveUnitFromNode(row)
-		unit.MediaNodeID = unit.ID
-		unit.MediaViewMeta = unit.ViewMeta
-		units = append(units, unit)
+		result = append(result, ArchiveUnitRow{
+			ID:            toDomainUint64(row.ID),
+			Name:          row.Name,
+			SortOrder:     row.SortOrder,
+			CardKind:      strings.TrimSpace(row.CardKind),
+			ViewMeta:      row.ViewMeta,
+			MediaViewMeta: row.MediaViewMeta,
+			MediaNodeID:   toDomainUint64(row.MediaNodeID),
+			CoverNodeID:   toDomainUint64(row.CoverNodeID),
+			SubtitleCount: row.SubtitleCount,
+		})
 	}
-	return units, nil
+	return result
 }
 
-func (r *NodeRepository) listDirectChildVideoDirectoryArchiveUnits(
-	ctx context.Context,
+func archivePagedMediaUnitCandidatesSQL(includeCollections bool) string {
+	collectionUnion := ""
+	if includeCollections {
+		collectionUnion = `
+  union all
+  select
+    d.id,
+    d.library_id,
+    d.name,
+    d.sort_order,
+    'collection'::text as card_kind,
+    'collection'::text as unit_kind,
+    d.view_meta
+  from nodes d
+  where
+    d.deleted_at is null
+    and d.library_id = ?
+    and d.parent_id = ?
+    and d.node_type = ?
+    and d.archive_mode = true
+    and d.built_in_type = ?`
+	}
+	return `
+with unit_candidates as (
+  select
+    n.id,
+    n.library_id,
+    n.name,
+    n.sort_order,
+    'media'::text as card_kind,
+    'direct_file'::text as unit_kind,
+    n.view_meta
+  from nodes n
+  left join node_files nf
+    on nf.library_id = n.library_id and nf.file_id = n.id
+  where
+    n.deleted_at is null
+    and n.library_id = ?
+    and n.parent_id = ?
+    and n.node_type = ?
+    and n.name not like '.%'
+    and not (n.name = '' and lower(trim(leading '.' from coalesce(n.ext, ''))) <> '')
+    and (
+      lower(coalesce(nf.mime_type, '')) like ?
+      or lower(trim(leading '.' from coalesce(n.ext, ''))) in ?
+    )
+  union all
+  select
+    d.id,
+    d.library_id,
+    d.name,
+    d.sort_order,
+    'media'::text as card_kind,
+    'media_directory'::text as unit_kind,
+    d.view_meta
+  from nodes d
+  where
+    d.deleted_at is null
+    and d.library_id = ?
+    and d.parent_id = ?
+    and d.node_type = ?
+    and d.archive_mode = false
+    and d.built_in_type = ?
+    and exists (
+      select 1
+      from nodes c
+      left join node_files cnf
+        on cnf.library_id = c.library_id and cnf.file_id = c.id
+      where
+        c.deleted_at is null
+        and c.library_id = d.library_id
+        and c.parent_id = d.id
+        and c.node_type = ?
+        and c.name not like '.%'
+        and not (c.name = '' and lower(trim(leading '.' from coalesce(c.ext, ''))) <> '')
+        and (
+          lower(coalesce(cnf.mime_type, '')) like ?
+          or lower(trim(leading '.' from coalesce(c.ext, ''))) in ?
+        )
+    )` + collectionUnion + `
+)`
+}
+
+func archivePagedMediaUnitPageSQL(includeCollections bool) string {
+	return archivePagedMediaUnitCandidatesSQL(includeCollections) + `,
+paged_units as (
+  select *
+  from unit_candidates
+  order by sort_order asc, id asc
+  offset ? limit ?
+)
+select
+  pu.id,
+  pu.name,
+  pu.sort_order,
+  pu.card_kind,
+  pu.view_meta,
+  case
+    when pu.unit_kind = 'direct_file' then pu.view_meta
+    else coalesce(media.view_meta, '')
+  end as media_view_meta,
+  case
+    when pu.unit_kind = 'direct_file' then pu.id
+    else coalesce(media.id, 0)::bigint
+  end as media_node_id,
+  coalesce(cover.id, 0)::bigint as cover_node_id,
+  case
+    when pu.unit_kind = 'media_directory' then coalesce(subtitle.subtitle_count, 0)::int
+    else 0
+  end as subtitle_count
+from paged_units pu
+left join lateral (
+    select c.id, c.view_meta
+    from nodes c
+    left join node_files cnf
+      on cnf.library_id = c.library_id and cnf.file_id = c.id
+    where
+      c.deleted_at is null
+      and c.library_id = pu.library_id
+      and c.parent_id = pu.id
+      and c.node_type = ?
+      and c.name not like '.%'
+      and not (c.name = '' and lower(trim(leading '.' from coalesce(c.ext, ''))) <> '')
+      and (
+        lower(coalesce(cnf.mime_type, '')) like ?
+        or lower(trim(leading '.' from coalesce(c.ext, ''))) in ?
+      )
+    order by c.sort_order asc, c.id asc
+    limit 1
+  ) media on pu.unit_kind = 'media_directory'
+left join lateral (
+    select c.id
+    from nodes c
+    left join node_files cnf
+      on cnf.library_id = c.library_id and cnf.file_id = c.id
+    where
+      c.deleted_at is null
+      and c.library_id = pu.library_id
+      and c.parent_id = pu.id
+      and c.node_type = ?
+      and c.name not like '.%'
+      and not (c.name = '' and lower(trim(leading '.' from coalesce(c.ext, ''))) <> '')
+      and (
+        lower(coalesce(cnf.mime_type, '')) like ?
+        or lower(trim(leading '.' from coalesce(c.ext, ''))) in ?
+      )
+    order by c.sort_order asc, c.id asc
+    limit 1
+  ) cover on pu.unit_kind = 'media_directory'
+left join lateral (
+    select count(*) as subtitle_count
+    from nodes c
+    where
+      c.deleted_at is null
+      and c.library_id = pu.library_id
+      and c.parent_id = pu.id
+      and c.node_type = ?
+      and c.name not like '.%'
+      and not (c.name = '' and lower(trim(leading '.' from coalesce(c.ext, ''))) <> '')
+      and lower(trim(leading '.' from coalesce(c.ext, ''))) in ?
+  ) subtitle on pu.unit_kind = 'media_directory'
+order by pu.sort_order asc, pu.id asc`
+}
+
+func archivePagedMediaUnitCandidateArgs(
 	parentNodeID uint64,
 	libraryID uint64,
-) ([]ArchiveUnitRow, error) {
-	return r.listDirectChildMediaDirectoryArchiveUnits(ctx, parentNodeID, libraryID, "VIDEO", archiveMediaKindVideo)
+	builtInType string,
+	mediaKind archiveMediaKind,
+	includeCollections bool,
+) []any {
+	mediaExtensions := archiveMediaKindExtensions(mediaKind)
+	mediaMimePattern := archiveMediaKindMimePattern(mediaKind)
+	args := []any{
+		toPGInt64(libraryID),
+		toPGInt64(parentNodeID),
+		nodeTypeFile,
+		mediaMimePattern,
+		mediaExtensions,
+		toPGInt64(libraryID),
+		toPGInt64(parentNodeID),
+		nodeTypeDirectory,
+		builtInType,
+		nodeTypeFile,
+		mediaMimePattern,
+		mediaExtensions,
+	}
+	if includeCollections {
+		args = append(
+			args,
+			toPGInt64(libraryID),
+			toPGInt64(parentNodeID),
+			nodeTypeDirectory,
+			builtInType,
+		)
+	}
+	return args
 }
 
-func (r *NodeRepository) listDirectChildAudioDirectoryArchiveUnits(
-	ctx context.Context,
-	parentNodeID uint64,
-	libraryID uint64,
-) ([]ArchiveUnitRow, error) {
-	return r.listDirectChildMediaDirectoryArchiveUnits(ctx, parentNodeID, libraryID, "AUDIO", archiveMediaKindAudio)
+func archivePagedMediaUnitDetailArgs(mediaKind archiveMediaKind) []any {
+	mediaExtensions := archiveMediaKindExtensions(mediaKind)
+	mediaMimePattern := archiveMediaKindMimePattern(mediaKind)
+	imageMimePattern := archiveMediaKindMimePattern(archiveMediaKindImage)
+	return []any{
+		nodeTypeFile,
+		mediaMimePattern,
+		mediaExtensions,
+		nodeTypeFile,
+		imageMimePattern,
+		archiveImageExtensions,
+		nodeTypeFile,
+		archiveSubtitleExtensions,
+	}
 }
 
-func (r *NodeRepository) listDirectChildMediaDirectoryArchiveUnits(
+func (r *NodeRepository) listPagedMediaArchiveUnits(
 	ctx context.Context,
 	parentNodeID uint64,
 	libraryID uint64,
 	builtInType string,
 	mediaKind archiveMediaKind,
-) ([]ArchiveUnitRow, error) {
-	q := r.query(ctx)
-	directories, err := q.Node.WithContext(ctx).
-		Where(
-			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
-			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
-			q.Node.NodeType.Eq(nodeTypeDirectory),
-			q.Node.ArchiveMode.Is(false),
-			q.Node.BuiltInType.Eq(builtInType),
-		).
-		Order(
-			q.Node.SortOrder.Asc(),
-			q.Node.ID.Asc(),
-		).
-		Find()
-	if err != nil {
-		return nil, err
+	includeCollections bool,
+	offset int,
+	limit int,
+) ([]ArchiveUnitRow, int, error) {
+	candidateSQL := archivePagedMediaUnitCandidatesSQL(includeCollections)
+	candidateArgs := archivePagedMediaUnitCandidateArgs(
+		parentNodeID,
+		libraryID,
+		builtInType,
+		mediaKind,
+		includeCollections,
+	)
+
+	var totalCount int64
+	if err := r.dbWithContext(ctx).
+		Raw(candidateSQL+" select count(*) from unit_candidates", candidateArgs...).
+		Scan(&totalCount).Error; err != nil {
+		return nil, 0, err
 	}
-	if len(directories) == 0 {
-		return []ArchiveUnitRow{}, nil
+	if totalCount == 0 {
+		return []ArchiveUnitRow{}, 0, nil
 	}
 
-	directoryIDs := collectNodeIDs(directories)
-	children, err := q.Node.WithContext(ctx).
-		Where(
-			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
-			q.Node.ParentID.In(toPGInt64Slice(directoryIDs)...),
-			q.Node.NodeType.Eq(nodeTypeFile),
-		).
-		Order(
-			q.Node.ParentID.Asc(),
-			q.Node.SortOrder.Asc(),
-			q.Node.ID.Asc(),
-		).
-		Find()
-	if err != nil {
-		return nil, err
+	pageArgs := append(append([]any{}, candidateArgs...), offset, limit)
+	pageArgs = append(pageArgs, archivePagedMediaUnitDetailArgs(mediaKind)...)
+	var rows []archiveUnitRawRow
+	if err := r.dbWithContext(ctx).
+		Raw(archivePagedMediaUnitPageSQL(includeCollections), pageArgs...).
+		Scan(&rows).Error; err != nil {
+		return nil, 0, err
 	}
-	if len(children) == 0 {
-		return []ArchiveUnitRow{}, nil
-	}
-
-	mimeTypes, err := r.listMimeTypesByNodeIDs(ctx, libraryID, collectNodeIDs(children))
-	if err != nil {
-		return nil, err
-	}
-
-	unitByDirectoryID := make(map[uint64]ArchiveUnitRow, len(directories))
-	for _, directory := range directories {
-		unit := archiveUnitFromNode(directory)
-		unitByDirectoryID[unit.ID] = unit
-	}
-
-	for _, child := range children {
-		if child.ParentID == nil {
-			continue
-		}
-		parentID := toDomainUint64(*child.ParentID)
-		unit, ok := unitByDirectoryID[parentID]
-		if !ok {
-			continue
-		}
-		if unit.MediaNodeID == 0 && isArchiveMediaNode(child, mimeTypes, mediaKind) {
-			unit.MediaNodeID = toDomainUint64(child.ID)
-			unit.MediaViewMeta = child.ViewMeta
-		}
-		if unit.CoverNodeID == 0 && isArchiveMediaNode(child, mimeTypes, archiveMediaKindImage) {
-			unit.CoverNodeID = toDomainUint64(child.ID)
-		}
-		if isArchiveSubtitleNode(child) {
-			unit.SubtitleCount++
-		}
-		unitByDirectoryID[parentID] = unit
-	}
-
-	units := make([]ArchiveUnitRow, 0, len(directories))
-	for _, directory := range directories {
-		nodeID := toDomainUint64(directory.ID)
-		unit := unitByDirectoryID[nodeID]
-		if unit.MediaNodeID == 0 {
-			continue
-		}
-		units = append(units, unit)
-	}
-	return units, nil
-}
-
-func (r *NodeRepository) listDirectChildVideoCollectionArchiveUnits(
-	ctx context.Context,
-	parentNodeID uint64,
-	libraryID uint64,
-) ([]ArchiveUnitRow, error) {
-	q := r.query(ctx)
-	rows, err := q.Node.WithContext(ctx).
-		Where(
-			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
-			q.Node.ParentID.Eq(toPGInt64(parentNodeID)),
-			q.Node.NodeType.Eq(nodeTypeDirectory),
-			q.Node.ArchiveMode.Is(true),
-			q.Node.BuiltInType.Eq("VIDEO"),
-		).
-		Order(
-			q.Node.SortOrder.Asc(),
-			q.Node.ID.Asc(),
-		).
-		Find()
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]ArchiveUnitRow, 0, len(rows))
-	for _, row := range rows {
-		unit := archiveUnitFromNode(row)
-		unit.CardKind = archiveCardKindCollection
-		result = append(result, unit)
-	}
-	return result, nil
+	return scanArchiveUnitRows(rows), int(totalCount), nil
 }
 
 func (r *NodeRepository) listVideoArchiveUnits(
@@ -506,27 +656,16 @@ func (r *NodeRepository) listVideoArchiveUnits(
 	offset int,
 	limit int,
 ) ([]ArchiveUnitRow, int, error) {
-	fileUnits, err := r.listDirectChildFileArchiveUnits(ctx, parentNodeID, libraryID, archiveMediaKindVideo)
-	if err != nil {
-		return nil, 0, err
-	}
-	directoryUnits, err := r.listDirectChildVideoDirectoryArchiveUnits(ctx, parentNodeID, libraryID)
-	if err != nil {
-		return nil, 0, err
-	}
-	collectionUnits, err := r.listDirectChildVideoCollectionArchiveUnits(ctx, parentNodeID, libraryID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	units := append(fileUnits, directoryUnits...)
-	units = append(units, collectionUnits...)
-	sortArchiveUnits(units)
-	total := len(units)
-	if total == 0 {
-		return []ArchiveUnitRow{}, 0, nil
-	}
-	return paginateArchiveUnits(units, offset, limit), total, nil
+	return r.listPagedMediaArchiveUnits(
+		ctx,
+		parentNodeID,
+		libraryID,
+		"VIDEO",
+		archiveMediaKindVideo,
+		true,
+		offset,
+		limit,
+	)
 }
 
 func (r *NodeRepository) listAudioArchiveUnits(
@@ -536,22 +675,16 @@ func (r *NodeRepository) listAudioArchiveUnits(
 	offset int,
 	limit int,
 ) ([]ArchiveUnitRow, int, error) {
-	fileUnits, err := r.listDirectChildFileArchiveUnits(ctx, parentNodeID, libraryID, archiveMediaKindAudio)
-	if err != nil {
-		return nil, 0, err
-	}
-	directoryUnits, err := r.listDirectChildAudioDirectoryArchiveUnits(ctx, parentNodeID, libraryID)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	units := append(fileUnits, directoryUnits...)
-	sortArchiveUnits(units)
-	total := len(units)
-	if total == 0 {
-		return []ArchiveUnitRow{}, 0, nil
-	}
-	return paginateArchiveUnits(units, offset, limit), total, nil
+	return r.listPagedMediaArchiveUnits(
+		ctx,
+		parentNodeID,
+		libraryID,
+		"AUDIO",
+		archiveMediaKindAudio,
+		false,
+		offset,
+		limit,
+	)
 }
 
 func (r *NodeRepository) DetectFirstImageChildrenByParentIDs(
