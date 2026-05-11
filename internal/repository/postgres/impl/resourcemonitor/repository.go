@@ -26,6 +26,18 @@ func (r *Repository) dbWithContext(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx)
 }
 
+// Ping 执行 PostgreSQL 只读连通性检查。
+func (r *Repository) Ping(ctx context.Context) error {
+	if r.db == nil {
+		return errors.New("resource monitor repository: database is nil")
+	}
+	sqlDB, err := r.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
+}
+
 // CountStorageDistribution 统计指定用户可见资料库范围内的物理存储分布。
 func (r *Repository) CountStorageDistribution(
 	ctx context.Context,

@@ -39,6 +39,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 		repository.NewUploadSessionRepository,
 		repository.NewMigrationRepository,
 		repository.NewResourceMonitorRepository,
+		repository.NewResourceMonitorRedisProbeRepository,
 		usecase.NewHealthUseCase,
 		usecase.NewAuthUseCase,
 		usecase.NewUserUseCase,

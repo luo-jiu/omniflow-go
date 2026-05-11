@@ -62,6 +62,18 @@ func (s *Store) Bucket() string {
 	return s.bucket
 }
 
+// Probe 只读检查 bucket 是否可访问；不会创建 bucket 或写入对象。
+func (s *Store) Probe(ctx context.Context) error {
+	exists, err := s.client.BucketExists(ctx, s.bucket)
+	if err != nil {
+		return fmt.Errorf("check bucket exists: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("bucket %q does not exist", s.bucket)
+	}
+	return nil
+}
+
 func (s *Store) ensureBucket(ctx context.Context) error {
 	exists, err := s.client.BucketExists(ctx, s.bucket)
 	if err != nil {

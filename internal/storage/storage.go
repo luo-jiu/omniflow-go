@@ -31,6 +31,8 @@ type ObjectStorage interface {
 	GetPresignedURL(ctx context.Context, objectName string, expiry time.Duration) (string, error)
 	Delete(ctx context.Context, objectName string) error
 	Bucket() string
+	// Probe 执行只读连通性检查。实现不得创建 bucket、写对象或删除对象。
+	Probe(ctx context.Context) error
 
 	// PresignedPutObject 颁发单端点 PUT 直传的预签名 URL。
 	PresignedPutObject(ctx context.Context, objectName string, expiry time.Duration) (string, error)

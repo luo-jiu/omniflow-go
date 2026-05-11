@@ -41,7 +41,7 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 | Tag | 类型、列表、创建、更新、删除；标签定义支持 `scope / dimension / resourceKind` 多维字段 |
 | Browser | 文件映射、书签树、匹配、导入、创建、更新、移动、删除 |
 | Storage Migration | 入队 / 列表 / 详情 / 取消 / 子项 / 存储分布 |
-| Resource Monitor | 当前用户资料库范围的物理存储分布快照 |
+| Resource Monitor | 当前用户资料库范围的物理存储分布快照和只读资源探针 |
 | Health | 服务健康检查 |
 
 ## 4. Go 扩展能力
@@ -53,7 +53,9 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 返回当前 actor 拥有资料库范围内的资源分布快照。
   - `summary` 包含 `providerCount / bucketCount / objectCount / fileRefCount / physicalBytes / unmatchedCount`。
   - `storage` 按 provider / bucket 聚合，包含 `provider / providerType / providerLabel / endpoint / bucket / isDefault / objectCount / fileRefCount / physicalBytes / percent / matchedConfig`。
-  - 当前接口只读，不执行存储 probe、不创建对象、不清理数据。
+  - `distributionError` 表示资源分布统计失败时的脱敏错误摘要；失败时接口仍返回 partial snapshot 和探针结果。
+  - `probeSummary` 和 `probes` 返回对象存储、Postgres、Redis 的只读探针状态、耗时和错误摘要。
+  - 当前接口只读；对象存储探针只检查 bucket 可访问性，不创建对象、不清理数据。
 - `POST /api/v1/directory/links/batch`
 - `PUT /api/v1/nodes/:nodeId/content`
   - 按节点 ID 原地替换文件内容，请求体使用 `libraryId`、`content`、可选 `contentType` 和 `storageProvider`。

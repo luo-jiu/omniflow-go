@@ -8,7 +8,7 @@
 
 资源监测控制台后端提供只读资源快照，服务于前端仓库页 / 资料库页 system workspace。它不承担存储配置修改，不触发迁移，不清理对象，也不执行有副作用的连通性测试。
 
-当前第一版只实现全局资源分布快照：
+当前实现全局资源分布快照和只读资源探针：
 
 ```text
 GET /api/v1/resource-monitor/snapshot
@@ -73,6 +73,44 @@ GET /api/v1/resource-monitor/snapshot
       "percent": 100,
       "matchedConfig": true
     }
+  ],
+  "distributionError": "",
+  "probeSummary": {
+    "total": 3,
+    "ok": 3,
+    "error": 0,
+    "unknown": 0
+  },
+  "probes": [
+    {
+      "key": "object-storage:local-minio",
+      "kind": "object_storage",
+      "label": "Local MinIO",
+      "provider": "local-minio",
+      "providerType": "MINIO",
+      "endpoint": "localhost:9000",
+      "bucket": "default",
+      "isDefault": true,
+      "status": "ok",
+      "latencyMs": 4,
+      "checkedAt": "2026-05-11T00:00:00Z"
+    },
+    {
+      "key": "postgres:primary",
+      "kind": "postgres",
+      "label": "PostgreSQL",
+      "status": "ok",
+      "latencyMs": 1,
+      "checkedAt": "2026-05-11T00:00:00Z"
+    },
+    {
+      "key": "redis:primary",
+      "kind": "redis",
+      "label": "Redis",
+      "status": "ok",
+      "latencyMs": 1,
+      "checkedAt": "2026-05-11T00:00:00Z"
+    }
   ]
 }
 ```
@@ -85,6 +123,9 @@ GET /api/v1/resource-monitor/snapshot
 - `providerCount`：结果中不同 provider 数量。
 - `bucketCount`：结果中不同 provider / bucket 组合数量。
 - `unmatchedCount`：结果中无法通过当前 `StorageRegistry` 匹配到 provider 配置的行数。
+- `distributionError`：资源分布统计失败时的脱敏错误摘要；此时接口仍返回 partial snapshot 和探针结果。
+- `probeSummary`：对象存储、Postgres、Redis 探针状态汇总。
+- `probes`：只读探针结果，错误只返回脱敏后的简短摘要。
 
 第一版暂不区分：
 
@@ -93,14 +134,26 @@ GET /api/v1/resource-monitor/snapshot
 - 孤儿对象占用
 - 历史 provider 类型值修复建议
 
-## 5. 后续扩展
+## 5. 探针约束
 
-后续探针能力必须遵守：
+探针能力必须遵守：
 
 - 对象存储 probe 只能做只读检查，例如 bucket exists / head bucket。
 - 不允许为了探测连通性创建 bucket、写测试对象或删除对象。
 - Postgres / Redis / MySQL 探针必须收敛在对应 repository 实现，usecase 不直连技术客户端。
 - 探针错误应返回稳定的状态、耗时和脱敏错误摘要，不返回密钥。
+- 资源分布统计失败不应阻断探针返回；前端需要能看见 Postgres / Redis / 对象存储状态。
+
+当前已实现：
+
+- 对象存储：调用 provider 的只读 `Probe`，MinIO/S3 兼容实现使用 `BucketExists`。
+- Postgres：resource monitor PostgreSQL repository 调用 `PingContext`。
+- Redis：resource monitor Redis repository 调用 `PING`。
+
+后续仍未实现：
+
+- MySQL / 外部资源探针。
+- 历史采样、趋势曲线和阈值提醒。
 
 ## 6. 验证方式
 
@@ -115,4 +168,3 @@ GOCACHE=/tmp/go-build go test ./...
 - actor id 缺失时返回参数错误。
 - provider 配置匹配时补齐 label / type / endpoint / default。
 - provider 配置缺失时保留原 provider 并标记 `matchedConfig=false`。
-

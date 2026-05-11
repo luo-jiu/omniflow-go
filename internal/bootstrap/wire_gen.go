@@ -59,6 +59,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	uploadSessionRepository := repository.NewUploadSessionRepository(database)
 	migrationRepository := repository.NewMigrationRepository(database)
 	resourceMonitorRepository := repository.NewResourceMonitorRepository(database)
+	resourceMonitorRedisProbeRepository := repository.NewResourceMonitorRedisProbeRepository(redisClient)
 	sessionRepository := repository.NewSessionRepository(redisClient)
 	transactor := repository.NewTransactor(database)
 
@@ -70,7 +71,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink)
 	uploadSessionUseCase, uploadSessionCleanup := usecase.NewUploadSessionUseCaseWithJanitor(uploadSessionRepository, nodeUseCase, storageRegistry, allowAll, logSink, cfg)
 	migrationUseCase := usecase.NewMigrationUseCase(migrationRepository, storageRegistry, allowAll, logSink, transactor, cfg)
-	resourceMonitorUseCase := usecase.NewResourceMonitorUseCase(resourceMonitorRepository, storageRegistry)
+	resourceMonitorUseCase := usecase.NewResourceMonitorUseCase(resourceMonitorRepository, resourceMonitorRedisProbeRepository, storageRegistry)
 	_, migrationWorkerCleanup := usecase.NewMigrationWorkerPool(migrationUseCase, 0)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
 	tagUseCase := usecase.NewTagUseCase(tagRepository, transactor)
