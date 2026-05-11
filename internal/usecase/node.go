@@ -1159,6 +1159,8 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 				rowByID,
 				childrenByParent,
 			)
+		} else if topLevel[i].Type == domainnode.TypeFile {
+			topLevel[i].StorageLocations = recycleFileStorageLocations(topLevel[i])
 		}
 	}
 
@@ -1194,6 +1196,20 @@ func (u *NodeUseCase) enrichRecycleStorageMetadata(item domainnode.RecycleItem) 
 		item.StorageBucket = strings.TrimSpace(pcfg.Bucket)
 	}
 	return item
+}
+
+func recycleFileStorageLocations(item domainnode.RecycleItem) []domainnode.RecycleStorageLocation {
+	if strings.TrimSpace(item.StorageProvider) == "" && strings.TrimSpace(item.StorageBucket) == "" {
+		return nil
+	}
+	return []domainnode.RecycleStorageLocation{{
+		StorageProvider:      item.StorageProvider,
+		StorageProviderType:  item.StorageProviderType,
+		StorageProviderLabel: item.StorageProviderLabel,
+		StorageEndpoint:      item.StorageEndpoint,
+		StorageBucket:        item.StorageBucket,
+		FileCount:            1,
+	}}
 }
 
 func (u *NodeUseCase) collectRecycleStorageLocations(

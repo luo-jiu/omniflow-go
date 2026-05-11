@@ -98,11 +98,6 @@ func (r *NodeRepository) ListDeletedNodes(ctx context.Context, libraryID uint64)
 			items[idx].StorageKey = storageRow.ObjectKey
 			items[idx].StorageProvider = storageRow.Provider
 			items[idx].StorageBucket = storageRow.Bucket
-			items[idx].StorageLocations = []domainnode.RecycleStorageLocation{{
-				StorageProvider: storageRow.Provider,
-				StorageBucket:   storageRow.Bucket,
-				FileCount:       1,
-			}}
 		}
 	}
 	return items, nil

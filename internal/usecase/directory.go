@@ -264,6 +264,9 @@ func (u *DirectoryUseCase) UpdateFileContent(
 				)
 			}
 			providerAlias = overrideProvider
+			if _, canonicalAlias, ok := u.registry.ProviderConfigByAlias(overrideProvider); ok {
+				providerAlias = canonicalAlias
+			}
 		} else {
 			ext := strings.TrimPrefix(extWithDot, ".")
 			store, providerAlias, err = u.registry.Resolve(cmd.FileSize, ext, contentType)
