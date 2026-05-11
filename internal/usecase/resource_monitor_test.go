@@ -15,17 +15,20 @@ import (
 )
 
 type fakeResourceMonitorRepository struct {
-	rows []domain.StorageDistributionRow
-	err  error
-	ping error
-	got  uint64
+	rows       []domain.StorageDistributionRow
+	err        error
+	ping       error
+	got        uint64
+	gotLibrary uint64
 }
 
 func (r *fakeResourceMonitorRepository) CountStorageDistribution(
 	_ context.Context,
 	ownerUserID uint64,
+	libraryID uint64,
 ) ([]domain.StorageDistributionRow, error) {
 	r.got = ownerUserID
+	r.gotLibrary = libraryID
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -171,6 +174,9 @@ func TestResourceMonitorSnapshot(t *testing.T) {
 	if repo.got != 42 {
 		t.Fatalf("ownerUserID = %d, want 42", repo.got)
 	}
+	if repo.gotLibrary != 0 {
+		t.Fatalf("libraryID = %d, want 0", repo.gotLibrary)
+	}
 	if got.Summary.ProviderCount != 2 || got.Summary.BucketCount != 2 {
 		t.Fatalf("summary provider/bucket = %d/%d, want 2/2", got.Summary.ProviderCount, got.Summary.BucketCount)
 	}
@@ -189,6 +195,9 @@ func TestResourceMonitorSnapshot(t *testing.T) {
 	if got.Summary.UnmatchedCount != 1 {
 		t.Fatalf("unmatched = %d, want 1", got.Summary.UnmatchedCount)
 	}
+	if got.Summary.LegacyProviderCount != 1 {
+		t.Fatalf("legacy provider count = %d, want 1", got.Summary.LegacyProviderCount)
+	}
 	if len(got.Storage) != 2 {
 		t.Fatalf("storage len = %d, want 2", len(got.Storage))
 	}
@@ -203,6 +212,9 @@ func TestResourceMonitorSnapshot(t *testing.T) {
 		got.Storage[0].OrphanObjectCount != 1 {
 		t.Fatalf("merged diagnostics = %+v", got.Storage[0])
 	}
+	if !got.Storage[0].IsLegacyProvider || got.Storage[0].SourceProvider != "MINIO" {
+		t.Fatalf("legacy provider metadata = %+v", got.Storage[0])
+	}
 	if !got.Storage[0].MatchedConfig || got.Storage[0].ProviderLabel != "Local MinIO" {
 		t.Fatalf("provider metadata = %+v", got.Storage[0])
 	}
@@ -211,6 +223,33 @@ func TestResourceMonitorSnapshot(t *testing.T) {
 	}
 	if len(got.Probes) != 3 || got.Probes[0].Key != "object-storage:local-minio" {
 		t.Fatalf("probes = %+v", got.Probes)
+	}
+}
+
+func TestResourceMonitorSnapshotWithLibraryScope(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		rows: []domain.StorageDistributionRow{
+			{
+				Provider:      "local-minio",
+				Bucket:        "default",
+				ObjectCount:   1,
+				FileRefCount:  1,
+				PhysicalBytes: 512,
+			},
+		},
+	}
+
+	uc := NewResourceMonitorUseCase(repo, nil, storage.NewStorageRegistry())
+	_, err := uc.Snapshot(
+		context.Background(),
+		actor.Actor{ID: "42", Kind: actor.KindUser},
+		ResourceMonitorSnapshotOptions{LibraryID: 7},
+	)
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	if repo.got != 42 || repo.gotLibrary != 7 {
+		t.Fatalf("scope = owner %d library %d, want owner 42 library 7", repo.got, repo.gotLibrary)
 	}
 }
 

@@ -22,7 +22,15 @@ func (h *ResourceMonitorHandler) Snapshot(ctx *gin.Context) {
 		InternalError(ctx, "resource monitor service not configured")
 		return
 	}
-	snapshot, err := h.uc.Snapshot(ctx.Request.Context(), actorFromContext(ctx))
+	libraryID, ok := QueryUint64(ctx, false, "libraryId")
+	if !ok {
+		return
+	}
+	snapshot, err := h.uc.Snapshot(
+		ctx.Request.Context(),
+		actorFromContext(ctx),
+		usecase.ResourceMonitorSnapshotOptions{LibraryID: libraryID},
+	)
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return

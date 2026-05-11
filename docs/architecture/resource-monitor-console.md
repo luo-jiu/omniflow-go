@@ -12,6 +12,7 @@
 
 ```text
 GET /api/v1/resource-monitor/snapshot
+GET /api/v1/resource-monitor/snapshot?libraryId=123
 ```
 
 ## 2. 分层边界
@@ -44,7 +45,8 @@ GET /api/v1/resource-monitor/snapshot
 鉴权：
 
 - 需要登录态。
-- 当前只统计 actor 自己拥有的资料库范围。
+- 不带 `libraryId` 时统计 actor 自己拥有的全部资料库范围。
+- 带 `libraryId` 时只统计 actor 自己拥有的指定资料库；不拥有该资料库时结果为空，不泄露跨用户资源。
 
 响应 `data`：
 
@@ -65,16 +67,19 @@ GET /api/v1/resource-monitor/snapshot
     "recycleBytes": 256,
     "orphanObjectCount": 0,
     "orphanBytes": 0,
-    "unmatchedCount": 0
+    "unmatchedCount": 0,
+    "legacyProviderCount": 0
   },
   "storage": [
     {
       "provider": "local-minio",
+      "sourceProvider": "MINIO",
       "providerType": "MINIO",
       "providerLabel": "Local MinIO",
       "endpoint": "localhost:9000",
       "bucket": "default",
       "isDefault": true,
+      "isLegacyProvider": true,
       "objectCount": 10,
       "fileRefCount": 10,
       "physicalBytes": 1024,
@@ -134,6 +139,7 @@ GET /api/v1/resource-monitor/snapshot
 ## 4. 统计口径
 
 - `physicalBytes`：按 distinct `storage_objects` 聚合 `content_length`，代表真实对象占用。
+- `libraryId`：可选查询参数；`0` 或缺失表示当前用户全部资料库，正整数表示指定资料库范围。
 - `objectCount`：当前用户资料库下未软删的 `storage_objects` 数量。
 - `fileRefCount`：引用这些对象的 `node_files` 行数。
 - `visible*`：存在未删除节点引用的对象及其文件引用数 / 容量；对象有可见引用时优先归入此类。
@@ -142,13 +148,15 @@ GET /api/v1/resource-monitor/snapshot
 - `providerCount`：结果中不同 provider 数量。
 - `bucketCount`：结果中不同 provider / bucket 组合数量。
 - `unmatchedCount`：结果中无法通过当前 `StorageRegistry` 匹配到 provider 配置的行数。
+- `legacyProviderCount`：仍使用历史 provider 类型值、但已兼容映射到唯一 alias 的存储位置数。
+- `sourceProvider` / `isLegacyProvider`：展示历史 provider 类型值与当前 alias 的兼容关系。
 - `distributionError`：资源分布统计失败时的脱敏错误摘要；此时接口仍返回 partial snapshot 和探针结果。
 - `probeSummary`：对象存储、Postgres、Redis 探针状态汇总。
 - `probes`：只读探针结果，错误只返回脱敏后的简短摘要。
 
 第一版暂不区分：
 
-- 历史 provider 类型值修复建议
+- 历史 provider 类型值修复动作
 
 ## 5. 探针约束
 

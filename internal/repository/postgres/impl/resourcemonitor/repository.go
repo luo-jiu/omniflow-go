@@ -39,9 +39,11 @@ func (r *Repository) Ping(ctx context.Context) error {
 }
 
 // CountStorageDistribution 统计指定用户可见资料库范围内的物理存储分布。
+// libraryID 为 0 时统计用户全部资料库，否则只统计指定资料库。
 func (r *Repository) CountStorageDistribution(
 	ctx context.Context,
 	ownerUserID uint64,
+	libraryID uint64,
 ) ([]domain.StorageDistributionRow, error) {
 	if r.db == nil {
 		return nil, errors.New("resource monitor repository: database is nil")
@@ -61,6 +63,7 @@ func (r *Repository) CountStorageDistribution(
 			 AND l.deleted_at IS NULL
 			WHERE so.deleted_at IS NULL
 			  AND l.user_id = ?
+			  AND (? = 0 OR so.library_id = ?)
 		),
 		object_refs AS (
 			SELECT
@@ -127,7 +130,7 @@ func (r *Repository) CountStorageDistribution(
 
 	var rows []domain.StorageDistributionRow
 	if err := r.dbWithContext(ctx).
-		Raw(querySQL, int64(ownerUserID)).
+		Raw(querySQL, int64(ownerUserID), int64(libraryID), int64(libraryID)).
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}

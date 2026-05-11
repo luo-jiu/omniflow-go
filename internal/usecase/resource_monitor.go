@@ -40,6 +40,11 @@ type ResourceMonitorUseCase struct {
 	registry  *storage.StorageRegistry
 }
 
+// ResourceMonitorSnapshotOptions 表示资源监测快照的可选范围。
+type ResourceMonitorSnapshotOptions struct {
+	LibraryID uint64
+}
+
 // NewResourceMonitorUseCase 创建资源监测用例。
 func NewResourceMonitorUseCase(
 	repo domain.Repository,
@@ -57,6 +62,7 @@ func NewResourceMonitorUseCase(
 func (u *ResourceMonitorUseCase) Snapshot(
 	ctx context.Context,
 	principal actor.Actor,
+	options ...ResourceMonitorSnapshotOptions,
 ) (domain.Snapshot, error) {
 	if u.repo == nil {
 		return domain.Snapshot{}, errResourceMonitorRepositoryNotConfigured
@@ -75,7 +81,11 @@ func (u *ResourceMonitorUseCase) Snapshot(
 		GeneratedAt: time.Now().UTC(),
 	}
 
-	rows, err := u.repo.CountStorageDistribution(ctx, userID)
+	libraryID := uint64(0)
+	if len(options) > 0 {
+		libraryID = options[0].LibraryID
+	}
+	rows, err := u.repo.CountStorageDistribution(ctx, userID, libraryID)
 	if err != nil {
 		if ctx.Err() != nil {
 			return domain.Snapshot{}, ctx.Err()
@@ -129,6 +139,10 @@ func (u *ResourceMonitorUseCase) Snapshot(
 		merged.OrphanBytes += item.OrphanBytes
 		merged.MatchedConfig = merged.MatchedConfig || item.MatchedConfig
 		merged.IsDefault = merged.IsDefault || item.IsDefault
+		merged.IsLegacyProvider = merged.IsLegacyProvider || item.IsLegacyProvider
+		if merged.SourceProvider == "" {
+			merged.SourceProvider = item.SourceProvider
+		}
 		if merged.ProviderType == "" {
 			merged.ProviderType = item.ProviderType
 		}
@@ -155,6 +169,9 @@ func (u *ResourceMonitorUseCase) Snapshot(
 		}
 		if !item.MatchedConfig {
 			snapshot.Summary.UnmatchedCount++
+		}
+		if item.IsLegacyProvider {
+			snapshot.Summary.LegacyProviderCount++
 		}
 		snapshot.Storage = append(snapshot.Storage, item)
 		snapshot.Summary.ObjectCount += item.ObjectCount
@@ -200,12 +217,17 @@ func (u *ResourceMonitorUseCase) Snapshot(
 func (u *ResourceMonitorUseCase) enrichStorageDistributionItem(
 	item domain.StorageDistributionItem,
 ) domain.StorageDistributionItem {
-	if u.registry == nil || strings.TrimSpace(item.Provider) == "" {
+	sourceProvider := strings.TrimSpace(item.Provider)
+	if u.registry == nil || sourceProvider == "" {
 		return item
 	}
-	cfg, alias, ok := u.registry.ProviderConfigByAlias(item.Provider)
+	cfg, alias, ok := u.registry.ProviderConfigByAlias(sourceProvider)
 	if !ok {
 		return item
+	}
+	if u.isLegacyProviderTypeValue(sourceProvider, alias) {
+		item.SourceProvider = sourceProvider
+		item.IsLegacyProvider = true
 	}
 	item.Provider = alias
 	item.ProviderType = strings.TrimSpace(cfg.Type)
@@ -216,6 +238,30 @@ func (u *ResourceMonitorUseCase) enrichStorageDistributionItem(
 		item.Bucket = strings.TrimSpace(cfg.Bucket)
 	}
 	return item
+}
+
+func (u *ResourceMonitorUseCase) isLegacyProviderTypeValue(sourceProvider string, matchedAlias string) bool {
+	sourceProvider = strings.TrimSpace(sourceProvider)
+	if u.registry == nil || sourceProvider == "" {
+		return false
+	}
+	cfg := u.registry.StorageConfig()
+	if cfg == nil {
+		return false
+	}
+	if _, ok := cfg.Providers[sourceProvider]; ok {
+		return false
+	}
+	for alias := range cfg.Providers {
+		if strings.EqualFold(alias, sourceProvider) {
+			return false
+		}
+	}
+	pcfg, ok := cfg.Providers[matchedAlias]
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(pcfg.Type), sourceProvider)
 }
 
 func (u *ResourceMonitorUseCase) probeTargets(

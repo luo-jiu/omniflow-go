@@ -24,7 +24,7 @@ type StorageDistributionRow struct {
 
 // Repository 定义资源监测所需的只读数据端口。
 type Repository interface {
-	CountStorageDistribution(ctx context.Context, ownerUserID uint64) ([]StorageDistributionRow, error)
+	CountStorageDistribution(ctx context.Context, ownerUserID uint64, libraryID uint64) ([]StorageDistributionRow, error)
 	Ping(ctx context.Context) error
 }
 
@@ -59,16 +59,19 @@ type SnapshotSummary struct {
 	OrphanObjectCount   int64 `json:"orphanObjectCount"`
 	OrphanBytes         int64 `json:"orphanBytes"`
 	UnmatchedCount      int   `json:"unmatchedCount"`
+	LegacyProviderCount int   `json:"legacyProviderCount"`
 }
 
 // StorageDistributionItem 表示单个 provider / bucket 的占用。
 type StorageDistributionItem struct {
 	Provider            string  `json:"provider"`
+	SourceProvider      string  `json:"sourceProvider,omitempty"`
 	ProviderType        string  `json:"providerType,omitempty"`
 	ProviderLabel       string  `json:"providerLabel,omitempty"`
 	Endpoint            string  `json:"endpoint,omitempty"`
 	Bucket              string  `json:"bucket"`
 	IsDefault           bool    `json:"isDefault"`
+	IsLegacyProvider    bool    `json:"isLegacyProvider"`
 	ObjectCount         int64   `json:"objectCount"`
 	FileRefCount        int64   `json:"fileRefCount"`
 	PhysicalBytes       int64   `json:"physicalBytes"`
