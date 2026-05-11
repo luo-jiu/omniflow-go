@@ -30,9 +30,10 @@ type batchFileLinkRequest struct {
 }
 
 type updateFileContentRequest struct {
-	LibraryID   uint64  `json:"libraryId" binding:"required"`
-	Content     *string `json:"content" binding:"required"`
-	ContentType string  `json:"contentType"`
+	LibraryID       uint64  `json:"libraryId" binding:"required"`
+	Content         *string `json:"content" binding:"required"`
+	ContentType     string  `json:"contentType"`
+	StorageProvider string  `json:"storageProvider"`
 }
 
 // GetFileLink 获取目录文件节点的预签名链接。
@@ -149,13 +150,14 @@ func (h *DirectoryHandler) UpdateFileContent(ctx *gin.Context) {
 
 	contentBytes := []byte(*req.Content)
 	node, err := h.directoryUseCase.UpdateFileContent(ctx.Request.Context(), usecase.UpdateFileContentCommand{
-		Actor:       actorFromContext(ctx),
-		LibraryID:   req.LibraryID,
-		NodeID:      uri.NodeID,
-		FileSize:    int64(len(contentBytes)),
-		ContentType: req.ContentType,
-		Content:     strings.NewReader(*req.Content),
-		DryRun:      dryRun,
+		Actor:           actorFromContext(ctx),
+		LibraryID:       req.LibraryID,
+		NodeID:          uri.NodeID,
+		FileSize:        int64(len(contentBytes)),
+		ContentType:     req.ContentType,
+		StorageProvider: strings.TrimSpace(req.StorageProvider),
+		Content:         strings.NewReader(*req.Content),
+		DryRun:          dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

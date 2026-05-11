@@ -40,13 +40,14 @@ type BatchFileLinkItem struct {
 }
 
 type UpdateFileContentCommand struct {
-	Actor       actor.Actor
-	LibraryID   uint64
-	NodeID      uint64
-	FileSize    int64
-	ContentType string
-	Content     io.Reader
-	DryRun      bool
+	Actor           actor.Actor
+	LibraryID       uint64
+	NodeID          uint64
+	FileSize        int64
+	ContentType     string
+	StorageProvider string
+	Content         io.Reader
+	DryRun          bool
 }
 
 type DirectoryUseCase struct {
@@ -252,10 +253,23 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	var store storage.ObjectStorage
 	var providerAlias string
 	if strings.TrimSpace(node.StorageKey) == "" {
-		ext := strings.TrimPrefix(extWithDot, ".")
-		store, providerAlias, err = u.registry.Resolve(cmd.FileSize, ext, contentType)
-		if err != nil {
-			return domainnode.Node{}, err
+		if overrideProvider := strings.TrimSpace(cmd.StorageProvider); overrideProvider != "" {
+			store, err = u.registry.Get(overrideProvider)
+			if err != nil {
+				return domainnode.Node{}, fmt.Errorf(
+					"%w: storage provider %q: %v",
+					ErrInvalidArgument,
+					overrideProvider,
+					err,
+				)
+			}
+			providerAlias = overrideProvider
+		} else {
+			ext := strings.TrimPrefix(extWithDot, ".")
+			store, providerAlias, err = u.registry.Resolve(cmd.FileSize, ext, contentType)
+			if err != nil {
+				return domainnode.Node{}, err
+			}
 		}
 	} else {
 		providerAlias, err = u.nodes.GetFileStorageProvider(ctx, cmd.NodeID, cmd.LibraryID)

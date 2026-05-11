@@ -50,12 +50,16 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - `GET /api/v1/health`
 - `POST /api/v1/directory/links/batch`
 - `PUT /api/v1/nodes/:nodeId/content`
-  - 按节点 ID 原地替换文件内容，请求体使用 `libraryId`、`content`、可选 `contentType`。
+  - 按节点 ID 原地替换文件内容，请求体使用 `libraryId`、`content`、可选 `contentType` 和 `storageProvider`。
   - 后端生成新对象并更新 `storage_objects` / `node_files`，保留节点 ID、目录位置和文件名不变。
+  - `storageProvider` 只在文件节点尚未绑定对象存储时生效，用于右键新建文件这类首次写入场景；已有存储绑定的文件保存时继续沿用原 provider。
   - 若文件节点来自右键新建、尚未绑定 `node_files` / `storage_objects`，首次写入会初始化空文件对象，之后可正常获取预签名链接。
   - 支持 `dryRun` 查询参数，dry-run 只做校验，不写对象存储和数据库。
 - `PATCH /api/v1/nodes/move/batch`
   - 归档目录允许作为移动目标；移动接口只保留跨库、移动到自身 / 子节点、同目录可见名称冲突等通用安全校验。
+- `GET /api/v1/nodes/recycle/library/:libraryId`
+  - 返回回收站顶层条目，文件条目会包含物理存储摘要：`storageProvider`、`storageProviderType`、`storageProviderLabel`、`storageEndpoint`、`storageBucket`、`storageKey`。
+  - 目录条目会聚合子树文件的 `storageLocations`，每个位置包含 provider / bucket / endpoint 和文件数量，用于前端展示资源目录实际占用的物理存储。
 - `GET /api/v1/nodes/:nodeId/archive/cards`
   - 当前支持 `COMIC` / `ASMR` / `VIDEO` / `AUDIO` 归档卡片查询
   - `COMIC` 当前返回归档目录下的直属漫画单元：直属 `built_in_type=COMIC` 且 `archive_mode=false` 的目录返回为普通漫画卡片，直属 `built_in_type=COMIC` 且 `archive_mode=true` 的子归档返回为 `cardKind=collection` 合集卡片；该规则只看亲子关系，不递归展开孙级，并且 `offset / limit` 在数据库层分页

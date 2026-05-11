@@ -63,6 +63,28 @@ func (r *NodeRepository) ListDeletedNodes(ctx context.Context, libraryID uint64)
 	if err != nil {
 		return nil, err
 	}
+	storageIDs := make([]int64, 0, len(fileRows))
+	for _, row := range fileRows {
+		if row.StorageObjectID > 0 {
+			storageIDs = append(storageIDs, row.StorageObjectID)
+		}
+	}
+
+	storageByID := make(map[uint64]*pgmodel.StorageObject, len(storageIDs))
+	if len(storageIDs) > 0 {
+		storageRows, err := q.StorageObject.WithContext(ctx).
+			Where(
+				q.StorageObject.LibraryID.Eq(toPGInt64(libraryID)),
+				q.StorageObject.ID.In(storageIDs...),
+			).
+			Find()
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range storageRows {
+			storageByID[toDomainUint64(row.ID)] = row
+		}
+	}
 
 	for _, row := range fileRows {
 		nodeID := toDomainUint64(row.FileID)
@@ -72,6 +94,16 @@ func (r *NodeRepository) ListDeletedNodes(ctx context.Context, libraryID uint64)
 		}
 		items[idx].MIMEType = derefString(row.MimeType)
 		items[idx].FileSize = row.FileSize
+		if storageRow, ok := storageByID[toDomainUint64(row.StorageObjectID)]; ok {
+			items[idx].StorageKey = storageRow.ObjectKey
+			items[idx].StorageProvider = storageRow.Provider
+			items[idx].StorageBucket = storageRow.Bucket
+			items[idx].StorageLocations = []domainnode.RecycleStorageLocation{{
+				StorageProvider: storageRow.Provider,
+				StorageBucket:   storageRow.Bucket,
+				FileCount:       1,
+			}}
+		}
 	}
 	return items, nil
 }

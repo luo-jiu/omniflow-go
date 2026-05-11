@@ -384,13 +384,21 @@ func (a *App) runFSRecycleList(args []string) error {
 		if !item.DeletedAt.IsZero() {
 			deletedAt = item.DeletedAt.Format(time.RFC3339)
 		}
+		provider := item.StorageProvider
+		bucket := item.StorageBucket
+		if provider == "" && len(item.StorageLocations) > 0 {
+			provider = item.StorageLocations[0].StorageProvider
+			bucket = item.StorageLocations[0].StorageBucket
+		}
 		a.printf(
-			"id=%d type=%s name=%s lib=%d parent=%d deleted_at=%s descendants=%d\n",
+			"id=%d type=%s name=%s lib=%d parent=%d provider=%s bucket=%s deleted_at=%s descendants=%d\n",
 			item.ID,
 			item.Type,
 			item.Name,
 			item.LibraryID,
 			item.ParentID,
+			provider,
+			bucket,
 			deletedAt,
 			item.DeletedDescendantCount,
 		)

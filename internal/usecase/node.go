@@ -1143,11 +1143,22 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 
 	topLevel, deletedSet := resolveRecycleTopLevelItems(rows)
 	childrenByParent := buildRecycleChildrenByParent(rows, deletedSet)
+	rowByID := lo.SliceToMap(rows, func(item domainnode.RecycleItem) (uint64, domainnode.RecycleItem) {
+		return item.ID, item
+	})
 
 	for i := range topLevel {
 		subtreeCount := countDeletedSubtree(childrenByParent, topLevel[i].ID)
 		if subtreeCount > 1 {
 			topLevel[i].DeletedDescendantCount = subtreeCount - 1
+		}
+		topLevel[i] = u.enrichRecycleStorageMetadata(topLevel[i])
+		if topLevel[i].Type == domainnode.TypeDirectory {
+			topLevel[i].StorageLocations = u.collectRecycleStorageLocations(
+				topLevel[i].ID,
+				rowByID,
+				childrenByParent,
+			)
 		}
 	}
 
@@ -1163,6 +1174,104 @@ func (u *NodeUseCase) GetRecycleBinItems(ctx context.Context, libraryID uint64) 
 		"raw_deleted_count", len(rows),
 	)
 	return topLevel, nil
+}
+
+func (u *NodeUseCase) enrichRecycleStorageMetadata(item domainnode.RecycleItem) domainnode.RecycleItem {
+	if u.registry == nil || strings.TrimSpace(item.StorageProvider) == "" {
+		return item
+	}
+
+	pcfg, alias, ok := u.registry.ProviderConfigByAlias(item.StorageProvider)
+	if !ok {
+		return item
+	}
+
+	item.StorageProvider = alias
+	item.StorageProviderType = strings.TrimSpace(pcfg.Type)
+	item.StorageProviderLabel = strings.TrimSpace(pcfg.Label)
+	item.StorageEndpoint = strings.TrimSpace(pcfg.Endpoint)
+	if strings.TrimSpace(item.StorageBucket) == "" {
+		item.StorageBucket = strings.TrimSpace(pcfg.Bucket)
+	}
+	return item
+}
+
+func (u *NodeUseCase) collectRecycleStorageLocations(
+	rootID uint64,
+	rowByID map[uint64]domainnode.RecycleItem,
+	childrenByParent map[uint64][]uint64,
+) []domainnode.RecycleStorageLocation {
+	type locationKey struct {
+		provider string
+		bucket   string
+	}
+
+	locations := make(map[locationKey]domainnode.RecycleStorageLocation)
+	stack := append([]uint64(nil), childrenByParent[rootID]...)
+	for len(stack) > 0 {
+		last := len(stack) - 1
+		current := stack[last]
+		stack = stack[:last]
+
+		item, ok := rowByID[current]
+		if !ok {
+			continue
+		}
+		stack = append(stack, childrenByParent[current]...)
+		if item.Type != domainnode.TypeFile || strings.TrimSpace(item.StorageProvider) == "" {
+			continue
+		}
+
+		key := locationKey{
+			provider: strings.TrimSpace(item.StorageProvider),
+			bucket:   strings.TrimSpace(item.StorageBucket),
+		}
+		location := locations[key]
+		if location.FileCount == 0 {
+			location = domainnode.RecycleStorageLocation{
+				StorageProvider: key.provider,
+				StorageBucket:   key.bucket,
+			}
+		}
+		location.FileCount++
+		locations[key] = location
+	}
+
+	output := make([]domainnode.RecycleStorageLocation, 0, len(locations))
+	for _, location := range locations {
+		output = append(output, u.enrichRecycleStorageLocation(location))
+	}
+	sort.Slice(output, func(i, j int) bool {
+		if output[i].FileCount != output[j].FileCount {
+			return output[i].FileCount > output[j].FileCount
+		}
+		left := output[i].StorageProvider + "\x00" + output[i].StorageBucket
+		right := output[j].StorageProvider + "\x00" + output[j].StorageBucket
+		return left < right
+	})
+	return output
+}
+
+func (u *NodeUseCase) enrichRecycleStorageLocation(
+	location domainnode.RecycleStorageLocation,
+) domainnode.RecycleStorageLocation {
+	if u.registry == nil || strings.TrimSpace(location.StorageProvider) == "" {
+		return location
+	}
+
+	pcfg, alias, ok := u.registry.ProviderConfigByAlias(location.StorageProvider)
+	if !ok {
+		return location
+	}
+
+	location.StorageProvider = alias
+	location.StorageProviderType = strings.TrimSpace(pcfg.Type)
+	location.StorageProviderLabel = strings.TrimSpace(pcfg.Label)
+	location.StorageEndpoint = strings.TrimSpace(pcfg.Endpoint)
+	if strings.TrimSpace(location.StorageBucket) == "" {
+		location.StorageBucket = strings.TrimSpace(pcfg.Bucket)
+	}
+	return location
 }
 
 // resolveRecycleTopLevelItems returns the deleted roots that drive recycle-bin mutations.

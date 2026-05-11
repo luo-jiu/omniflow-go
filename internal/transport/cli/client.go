@@ -105,16 +105,32 @@ type Node struct {
 }
 
 type RecycleItem struct {
-	ID                     uint64    `json:"id"`
-	Name                   string    `json:"name"`
-	Ext                    string    `json:"ext,omitempty"`
-	MIMEType               string    `json:"mimeType,omitempty"`
-	FileSize               int64     `json:"fileSize,omitempty"`
-	Type                   string    `json:"type"`
-	ParentID               uint64    `json:"parentId"`
-	LibraryID              uint64    `json:"libraryId"`
-	DeletedAt              time.Time `json:"deletedAt"`
-	DeletedDescendantCount int       `json:"deletedDescendantCount,omitempty"`
+	ID                     uint64                   `json:"id"`
+	Name                   string                   `json:"name"`
+	Ext                    string                   `json:"ext,omitempty"`
+	MIMEType               string                   `json:"mimeType,omitempty"`
+	FileSize               int64                    `json:"fileSize,omitempty"`
+	StorageKey             string                   `json:"storageKey,omitempty"`
+	StorageProvider        string                   `json:"storageProvider,omitempty"`
+	StorageProviderType    string                   `json:"storageProviderType,omitempty"`
+	StorageProviderLabel   string                   `json:"storageProviderLabel,omitempty"`
+	StorageEndpoint        string                   `json:"storageEndpoint,omitempty"`
+	StorageBucket          string                   `json:"storageBucket,omitempty"`
+	StorageLocations       []RecycleStorageLocation `json:"storageLocations,omitempty"`
+	Type                   string                   `json:"type"`
+	ParentID               uint64                   `json:"parentId"`
+	LibraryID              uint64                   `json:"libraryId"`
+	DeletedAt              time.Time                `json:"deletedAt"`
+	DeletedDescendantCount int                      `json:"deletedDescendantCount,omitempty"`
+}
+
+type RecycleStorageLocation struct {
+	StorageProvider      string `json:"storageProvider,omitempty"`
+	StorageProviderType  string `json:"storageProviderType,omitempty"`
+	StorageProviderLabel string `json:"storageProviderLabel,omitempty"`
+	StorageEndpoint      string `json:"storageEndpoint,omitempty"`
+	StorageBucket        string `json:"storageBucket,omitempty"`
+	FileCount            int    `json:"fileCount,omitempty"`
 }
 
 type BrowserFileMapping struct {
