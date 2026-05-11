@@ -114,25 +114,33 @@ func TestResourceMonitorSnapshot(t *testing.T) {
 	repo := &fakeResourceMonitorRepository{
 		rows: []domain.StorageDistributionRow{
 			{
-				Provider:      "local-minio",
-				Bucket:        "default",
-				ObjectCount:   2,
-				FileRefCount:  3,
-				PhysicalBytes: 1024,
+				Provider:            "local-minio",
+				Bucket:              "default",
+				ObjectCount:         2,
+				FileRefCount:        3,
+				PhysicalBytes:       1024,
+				VisibleObjectCount:  2,
+				VisibleFileRefCount: 3,
+				VisibleBytes:        1024,
 			},
 			{
-				Provider:      "unknown-provider",
-				Bucket:        "legacy",
-				ObjectCount:   1,
-				FileRefCount:  1,
-				PhysicalBytes: 512,
+				Provider:            "unknown-provider",
+				Bucket:              "legacy",
+				ObjectCount:         1,
+				FileRefCount:        1,
+				PhysicalBytes:       512,
+				RecycleObjectCount:  1,
+				RecycleFileRefCount: 1,
+				RecycleBytes:        512,
 			},
 			{
-				Provider:      "MINIO",
-				Bucket:        "default",
-				ObjectCount:   1,
-				FileRefCount:  2,
-				PhysicalBytes: 256,
+				Provider:          "MINIO",
+				Bucket:            "default",
+				ObjectCount:       1,
+				FileRefCount:      2,
+				PhysicalBytes:     256,
+				OrphanObjectCount: 1,
+				OrphanBytes:       256,
 			},
 		},
 	}
@@ -169,6 +177,15 @@ func TestResourceMonitorSnapshot(t *testing.T) {
 	if got.Summary.ObjectCount != 4 || got.Summary.FileRefCount != 6 || got.Summary.PhysicalBytes != 1792 {
 		t.Fatalf("summary counts = %+v", got.Summary)
 	}
+	if got.Summary.VisibleObjectCount != 2 || got.Summary.VisibleFileRefCount != 3 || got.Summary.VisibleBytes != 1024 {
+		t.Fatalf("visible summary = %+v", got.Summary)
+	}
+	if got.Summary.RecycleObjectCount != 1 || got.Summary.RecycleFileRefCount != 1 || got.Summary.RecycleBytes != 512 {
+		t.Fatalf("recycle summary = %+v", got.Summary)
+	}
+	if got.Summary.OrphanObjectCount != 1 || got.Summary.OrphanBytes != 256 {
+		t.Fatalf("orphan summary = %+v", got.Summary)
+	}
 	if got.Summary.UnmatchedCount != 1 {
 		t.Fatalf("unmatched = %d, want 1", got.Summary.UnmatchedCount)
 	}
@@ -180,6 +197,11 @@ func TestResourceMonitorSnapshot(t *testing.T) {
 	}
 	if got.Storage[0].ObjectCount != 3 || got.Storage[0].FileRefCount != 5 || got.Storage[0].PhysicalBytes != 1280 {
 		t.Fatalf("merged first storage = %+v", got.Storage[0])
+	}
+	if got.Storage[0].VisibleObjectCount != 2 ||
+		got.Storage[0].RecycleObjectCount != 0 ||
+		got.Storage[0].OrphanObjectCount != 1 {
+		t.Fatalf("merged diagnostics = %+v", got.Storage[0])
 	}
 	if !got.Storage[0].MatchedConfig || got.Storage[0].ProviderLabel != "Local MinIO" {
 		t.Fatalf("provider metadata = %+v", got.Storage[0])

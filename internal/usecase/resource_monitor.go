@@ -93,11 +93,19 @@ func (u *ResourceMonitorUseCase) Snapshot(
 		bucket := strings.TrimSpace(row.Bucket)
 
 		item := domain.StorageDistributionItem{
-			Provider:      provider,
-			Bucket:        bucket,
-			ObjectCount:   row.ObjectCount,
-			FileRefCount:  row.FileRefCount,
-			PhysicalBytes: row.PhysicalBytes,
+			Provider:            provider,
+			Bucket:              bucket,
+			ObjectCount:         row.ObjectCount,
+			FileRefCount:        row.FileRefCount,
+			PhysicalBytes:       row.PhysicalBytes,
+			VisibleObjectCount:  row.VisibleObjectCount,
+			VisibleFileRefCount: row.VisibleFileRefCount,
+			VisibleBytes:        row.VisibleBytes,
+			RecycleObjectCount:  row.RecycleObjectCount,
+			RecycleFileRefCount: row.RecycleFileRefCount,
+			RecycleBytes:        row.RecycleBytes,
+			OrphanObjectCount:   row.OrphanObjectCount,
+			OrphanBytes:         row.OrphanBytes,
 		}
 		item = u.enrichStorageDistributionItem(item)
 		item.IsDefault = defaultProvider != "" && strings.EqualFold(item.Provider, defaultProvider)
@@ -111,6 +119,14 @@ func (u *ResourceMonitorUseCase) Snapshot(
 		merged.ObjectCount += item.ObjectCount
 		merged.FileRefCount += item.FileRefCount
 		merged.PhysicalBytes += item.PhysicalBytes
+		merged.VisibleObjectCount += item.VisibleObjectCount
+		merged.VisibleFileRefCount += item.VisibleFileRefCount
+		merged.VisibleBytes += item.VisibleBytes
+		merged.RecycleObjectCount += item.RecycleObjectCount
+		merged.RecycleFileRefCount += item.RecycleFileRefCount
+		merged.RecycleBytes += item.RecycleBytes
+		merged.OrphanObjectCount += item.OrphanObjectCount
+		merged.OrphanBytes += item.OrphanBytes
 		merged.MatchedConfig = merged.MatchedConfig || item.MatchedConfig
 		merged.IsDefault = merged.IsDefault || item.IsDefault
 		if merged.ProviderType == "" {
@@ -144,6 +160,14 @@ func (u *ResourceMonitorUseCase) Snapshot(
 		snapshot.Summary.ObjectCount += item.ObjectCount
 		snapshot.Summary.FileRefCount += item.FileRefCount
 		snapshot.Summary.PhysicalBytes += item.PhysicalBytes
+		snapshot.Summary.VisibleObjectCount += item.VisibleObjectCount
+		snapshot.Summary.VisibleFileRefCount += item.VisibleFileRefCount
+		snapshot.Summary.VisibleBytes += item.VisibleBytes
+		snapshot.Summary.RecycleObjectCount += item.RecycleObjectCount
+		snapshot.Summary.RecycleFileRefCount += item.RecycleFileRefCount
+		snapshot.Summary.RecycleBytes += item.RecycleBytes
+		snapshot.Summary.OrphanObjectCount += item.OrphanObjectCount
+		snapshot.Summary.OrphanBytes += item.OrphanBytes
 	}
 
 	for i := range snapshot.Storage {

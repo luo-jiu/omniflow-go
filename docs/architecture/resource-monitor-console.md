@@ -57,6 +57,14 @@ GET /api/v1/resource-monitor/snapshot
     "objectCount": 10,
     "fileRefCount": 10,
     "physicalBytes": 1024,
+    "visibleObjectCount": 8,
+    "visibleFileRefCount": 8,
+    "visibleBytes": 768,
+    "recycleObjectCount": 2,
+    "recycleFileRefCount": 2,
+    "recycleBytes": 256,
+    "orphanObjectCount": 0,
+    "orphanBytes": 0,
     "unmatchedCount": 0
   },
   "storage": [
@@ -70,6 +78,14 @@ GET /api/v1/resource-monitor/snapshot
       "objectCount": 10,
       "fileRefCount": 10,
       "physicalBytes": 1024,
+      "visibleObjectCount": 8,
+      "visibleFileRefCount": 8,
+      "visibleBytes": 768,
+      "recycleObjectCount": 2,
+      "recycleFileRefCount": 2,
+      "recycleBytes": 256,
+      "orphanObjectCount": 0,
+      "orphanBytes": 0,
       "percent": 100,
       "matchedConfig": true
     }
@@ -120,6 +136,9 @@ GET /api/v1/resource-monitor/snapshot
 - `physicalBytes`：按 distinct `storage_objects` 聚合 `content_length`，代表真实对象占用。
 - `objectCount`：当前用户资料库下未软删的 `storage_objects` 数量。
 - `fileRefCount`：引用这些对象的 `node_files` 行数。
+- `visible*`：存在未删除节点引用的对象及其文件引用数 / 容量；对象有可见引用时优先归入此类。
+- `recycle*`：没有可见引用、但存在已删除节点引用的对象及其文件引用数 / 容量。
+- `orphan*`：没有任何 `node_files` 引用的对象及其容量。
 - `providerCount`：结果中不同 provider 数量。
 - `bucketCount`：结果中不同 provider / bucket 组合数量。
 - `unmatchedCount`：结果中无法通过当前 `StorageRegistry` 匹配到 provider 配置的行数。
@@ -129,9 +148,6 @@ GET /api/v1/resource-monitor/snapshot
 
 第一版暂不区分：
 
-- 可见文件占用
-- 回收站占用
-- 孤儿对象占用
 - 历史 provider 类型值修复建议
 
 ## 5. 探针约束

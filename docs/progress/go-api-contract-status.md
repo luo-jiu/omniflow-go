@@ -51,8 +51,8 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - `GET /api/v1/health`
 - `GET /api/v1/resource-monitor/snapshot`
   - 返回当前 actor 拥有资料库范围内的资源分布快照。
-  - `summary` 包含 `providerCount / bucketCount / objectCount / fileRefCount / physicalBytes / unmatchedCount`。
-  - `storage` 按 provider / bucket 聚合，包含 `provider / providerType / providerLabel / endpoint / bucket / isDefault / objectCount / fileRefCount / physicalBytes / percent / matchedConfig`。
+  - `summary` 包含 `providerCount / bucketCount / objectCount / fileRefCount / physicalBytes / visible* / recycle* / orphan* / unmatchedCount`。
+  - `storage` 按 provider / bucket 聚合，包含 `provider / providerType / providerLabel / endpoint / bucket / isDefault / objectCount / fileRefCount / physicalBytes / visible* / recycle* / orphan* / percent / matchedConfig`。
   - `distributionError` 表示资源分布统计失败时的脱敏错误摘要；失败时接口仍返回 partial snapshot 和探针结果。
   - `probeSummary` 和 `probes` 返回对象存储、Postgres、Redis 的只读探针状态、耗时和错误摘要。
   - 当前接口只读；对象存储探针只检查 bucket 可访问性，不创建对象、不清理数据。
