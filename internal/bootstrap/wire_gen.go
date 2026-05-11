@@ -58,6 +58,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	browserFileMappingRepository := repository.NewBrowserFileMappingRepository(database)
 	uploadSessionRepository := repository.NewUploadSessionRepository(database)
 	migrationRepository := repository.NewMigrationRepository(database)
+	resourceMonitorRepository := repository.NewResourceMonitorRepository(database)
 	sessionRepository := repository.NewSessionRepository(redisClient)
 	transactor := repository.NewTransactor(database)
 
@@ -69,6 +70,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink)
 	uploadSessionUseCase, uploadSessionCleanup := usecase.NewUploadSessionUseCaseWithJanitor(uploadSessionRepository, nodeUseCase, storageRegistry, allowAll, logSink, cfg)
 	migrationUseCase := usecase.NewMigrationUseCase(migrationRepository, storageRegistry, allowAll, logSink, transactor, cfg)
+	resourceMonitorUseCase := usecase.NewResourceMonitorUseCase(resourceMonitorRepository, storageRegistry)
 	_, migrationWorkerCleanup := usecase.NewMigrationWorkerPool(migrationUseCase, 0)
 	fileUseCase := usecase.NewFileUseCase(objectStorage)
 	tagUseCase := usecase.NewTagUseCase(tagRepository, transactor)
@@ -88,8 +90,9 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	browserFileMappingHandler := httpHandler.NewBrowserFileMappingHandler(browserFileMappingUseCase)
 	storageConfigHandler := httpHandler.NewStorageConfigHandler(storageRegistry, resolveStorageConfigPath(cfg))
 	migrationHandler := httpHandler.NewMigrationHandler(migrationUseCase)
+	resourceMonitorHandler := httpHandler.NewResourceMonitorHandler(resourceMonitorUseCase)
 
-	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, uploadHandler, storageConfigHandler, migrationHandler)
+	engine := httpRouter.New(cfg, logger, healthHandler, authHandler, userHandler, libraryHandler, nodeHandler, directoryHandler, fileHandler, tagHandler, browserBookmarkHandler, browserFileMappingHandler, uploadHandler, storageConfigHandler, migrationHandler, resourceMonitorHandler)
 	httpServer := server.NewHTTPServer(cfg, engine, logger)
 	application := app.New(cfg, logger, httpServer)
 

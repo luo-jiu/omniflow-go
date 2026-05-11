@@ -1,6 +1,6 @@
 # Go API 契约状态摘要
 
-更新时间：2026-05-08
+更新时间：2026-05-11
 状态：Go API 当前契约已收口，持续维护
 
 ## 1. 当前结论
@@ -11,9 +11,9 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 
 | 指标 | 数量 | 说明 |
 |---|---:|---|
-| `/api/v1` 接口总数 | 53 | 以当前路由注册为准 |
-| 功能实现 | 53/53 | 含兼容 no-op 1 个 |
-| 日志 P1 接入 | 53/53 | 详见 API 与日志归档摘要 |
+| `/api/v1` 接口总数 | 54 | 以当前路由注册为准 |
+| 功能实现 | 54/54 | 含兼容 no-op 1 个 |
+| 日志 P1 接入 | 54/54 | 详见 API 与日志归档摘要 |
 | CLI 主要写链路 | 已覆盖 | 详见 CLI 进度台账 |
 
 ## 2. 保留契约
@@ -41,6 +41,7 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 | Tag | 类型、列表、创建、更新、删除；标签定义支持 `scope / dimension / resourceKind` 多维字段 |
 | Browser | 文件映射、书签树、匹配、导入、创建、更新、移动、删除 |
 | Storage Migration | 入队 / 列表 / 详情 / 取消 / 子项 / 存储分布 |
+| Resource Monitor | 当前用户资料库范围的物理存储分布快照 |
 | Health | 服务健康检查 |
 
 ## 4. Go 扩展能力
@@ -48,6 +49,11 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 
 - `GET /api/v1/health`
+- `GET /api/v1/resource-monitor/snapshot`
+  - 返回当前 actor 拥有资料库范围内的资源分布快照。
+  - `summary` 包含 `providerCount / bucketCount / objectCount / fileRefCount / physicalBytes / unmatchedCount`。
+  - `storage` 按 provider / bucket 聚合，包含 `provider / providerType / providerLabel / endpoint / bucket / isDefault / objectCount / fileRefCount / physicalBytes / percent / matchedConfig`。
+  - 当前接口只读，不执行存储 probe、不创建对象、不清理数据。
 - `POST /api/v1/directory/links/batch`
 - `PUT /api/v1/nodes/:nodeId/content`
   - 按节点 ID 原地替换文件内容，请求体使用 `libraryId`、`content`、可选 `contentType` 和 `storageProvider`。

@@ -26,6 +26,7 @@ func New(
 	uploadHandler *handler.UploadHandler,
 	storageConfigHandler *handler.StorageConfigHandler,
 	migrationHandler *handler.MigrationHandler,
+	resourceMonitorHandler *handler.ResourceMonitorHandler,
 ) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 
@@ -53,6 +54,7 @@ func New(
 		uploadHandler,
 		storageConfigHandler,
 		migrationHandler,
+		resourceMonitorHandler,
 	)
 
 	return engine

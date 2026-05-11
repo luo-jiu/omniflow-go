@@ -21,6 +21,7 @@ func registerAPIRoutes(
 	uploadHandler *handler.UploadHandler,
 	storageConfigHandler *handler.StorageConfigHandler,
 	migrationHandler *handler.MigrationHandler,
+	resourceMonitorHandler *handler.ResourceMonitorHandler,
 ) {
 	registerHealthRoutes(api, healthHandler)
 	registerAuthRoutes(api, authHandler)
@@ -35,4 +36,5 @@ func registerAPIRoutes(
 	registerStorageConfigRoutes(api, storageConfigHandler)
 	registerUploadRoutes(api, uploadHandler)
 	registerMigrationRoutes(api, migrationHandler)
+	registerResourceMonitorRoutes(api, resourceMonitorHandler)
 }
