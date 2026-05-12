@@ -64,12 +64,24 @@ type BreakdownCategoryRow struct {
 	ArchiveDirectoryCount int64
 }
 
+// DashboardMatrixRow 是仓储层返回的业务集合与基础文件类型交叉统计事实。
+type DashboardMatrixRow struct {
+	CollectionKey         string
+	CollectionBuiltInType string
+	FileTypeKey           string
+	ObjectCount           int64
+	FileRefCount          int64
+	PhysicalBytes         int64
+	ReferencedBytes       int64
+}
+
 // Repository 定义资源监测所需的只读数据端口。
 type Repository interface {
 	LibraryBelongsToOwner(ctx context.Context, ownerUserID uint64, libraryID uint64) (bool, error)
 	CountStorageDistribution(ctx context.Context, ownerUserID uint64, libraryID uint64) ([]StorageDistributionRow, error)
 	CountBreakdownLibraries(ctx context.Context, ownerUserID uint64, libraryID uint64) ([]BreakdownLibraryRow, error)
 	CountBreakdownCategories(ctx context.Context, ownerUserID uint64, libraryID uint64) ([]BreakdownCategoryRow, error)
+	CountDashboardMatrix(ctx context.Context, ownerUserID uint64, libraryID uint64) ([]DashboardMatrixRow, error)
 	SaveSample(ctx context.Context, sample Sample) (Sample, error)
 	Ping(ctx context.Context) error
 }
@@ -98,6 +110,49 @@ type Breakdown struct {
 	Statuses       []BreakdownStatusItem   `json:"statuses"`
 	Anomalies      []BreakdownAnomalyItem  `json:"anomalies"`
 	BreakdownError string                  `json:"breakdownError,omitempty"`
+}
+
+// Dashboard 表示资源监测控制台 V2 的统计仪表盘快照。
+type Dashboard struct {
+	GeneratedAt              time.Time                `json:"generatedAt"`
+	Summary                  DashboardSummary         `json:"summary"`
+	FileTypes                []DashboardDimensionItem `json:"fileTypes"`
+	Collections              []DashboardDimensionItem `json:"collections"`
+	CollectionFileTypeMatrix []DashboardMatrixItem    `json:"collectionFileTypeMatrix"`
+	Libraries                []BreakdownLibraryItem   `json:"libraries"`
+	Statuses                 []BreakdownStatusItem    `json:"statuses"`
+	Anomalies                []BreakdownAnomalyItem   `json:"anomalies"`
+	DashboardError           string                   `json:"dashboardError,omitempty"`
+}
+
+// DashboardSummary 表示 V2 仪表盘的总览指标。
+type DashboardSummary = BreakdownSummary
+
+// DashboardDimensionItem 表示 V2 仪表盘的单维度统计项。
+type DashboardDimensionItem struct {
+	Key             string  `json:"key"`
+	Label           string  `json:"label"`
+	BuiltInType     string  `json:"builtInType,omitempty"`
+	PhysicalBytes   int64   `json:"physicalBytes"`
+	ReferencedBytes int64   `json:"referencedBytes"`
+	ObjectCount     int64   `json:"objectCount"`
+	FileRefCount    int64   `json:"fileRefCount"`
+	Percent         float64 `json:"percent"`
+}
+
+// DashboardMatrixItem 表示 V2 仪表盘的业务集合与基础文件类型交叉统计项。
+type DashboardMatrixItem struct {
+	CollectionKey         string  `json:"collectionKey"`
+	CollectionLabel       string  `json:"collectionLabel"`
+	CollectionBuiltInType string  `json:"collectionBuiltInType,omitempty"`
+	FileTypeKey           string  `json:"fileTypeKey"`
+	FileTypeLabel         string  `json:"fileTypeLabel"`
+	PhysicalBytes         int64   `json:"physicalBytes"`
+	ReferencedBytes       int64   `json:"referencedBytes"`
+	ObjectCount           int64   `json:"objectCount"`
+	FileRefCount          int64   `json:"fileRefCount"`
+	PercentOfCollection   float64 `json:"percentOfCollection"`
+	PercentOfTotal        float64 `json:"percentOfTotal"`
 }
 
 // BreakdownSummary 表示细分仪表盘的总览指标。

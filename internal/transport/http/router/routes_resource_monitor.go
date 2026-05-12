@@ -12,5 +12,6 @@ func registerResourceMonitorRoutes(api *gin.RouterGroup, h *handler.ResourceMoni
 	group.GET("/distribution", h.Distribution)
 	group.GET("/probes", h.Probes)
 	group.GET("/breakdown", h.Breakdown)
+	group.GET("/dashboard", h.Dashboard)
 	group.POST("/samples", h.CaptureSample)
 }

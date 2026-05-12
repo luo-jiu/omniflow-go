@@ -1,6 +1,6 @@
 # Go API 契约状态摘要
 
-更新时间：2026-05-11
+更新时间：2026-05-12
 状态：Go API 当前契约已收口，持续维护
 
 ## 1. 当前结论
@@ -11,9 +11,9 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 
 | 指标 | 数量 | 说明 |
 |---|---:|---|
-| `/api/v1` 接口总数 | 55 | 以当前路由注册为准 |
-| 功能实现 | 55/55 | 含兼容 no-op 1 个 |
-| 日志 P1 接入 | 55/55 | 详见 API 与日志归档摘要 |
+| `/api/v1` 接口总数 | 56 | 以当前路由注册为准 |
+| 功能实现 | 56/56 | 含兼容 no-op 1 个 |
+| 日志 P1 接入 | 56/56 | 详见 API 与日志归档摘要 |
 | CLI 主要写链路 | 已覆盖 | 详见 CLI 进度台账 |
 
 ## 2. 保留契约
@@ -62,6 +62,10 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 返回资源细分仪表盘字段；支持可选 `libraryId`，范围语义与 distribution 一致。
   - `summary / libraries / categories / statuses / anomalies` 分别表示总览、资料库排行、归档分类、资源状态和只读诊断摘要。
   - 同时区分 `physicalBytes` 物理去重容量和 `referencedBytes` 引用展开容量。
+- `GET /api/v1/resource-monitor/dashboard`
+  - 返回资源监测 V2 仪表盘字段；支持可选 `libraryId`，范围语义与 breakdown 一致。
+  - `fileTypes` 表示基础文件类型分布，`collections` 表示业务集合类型分布，`collectionFileTypeMatrix` 表示业务集合 x 基础文件类型交叉统计。
+  - 当前作为并行 V2 接口提供，不替换旧 `/breakdown`；它不执行探针，探针仍由 `/probes` 独立返回。
 - `GET /api/v1/resource-monitor/probes`
   - 返回对象存储、Postgres、Redis 的只读探针字段；供前端和分布统计并行加载。
 - `POST /api/v1/resource-monitor/samples`

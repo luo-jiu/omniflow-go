@@ -96,6 +96,28 @@ func (h *ResourceMonitorHandler) Breakdown(ctx *gin.Context) {
 	Success(ctx, breakdown)
 }
 
+// Dashboard 返回当前用户可见资料库范围的 V2 资源统计仪表盘。
+func (h *ResourceMonitorHandler) Dashboard(ctx *gin.Context) {
+	if h.uc == nil {
+		InternalError(ctx, "resource monitor service not configured")
+		return
+	}
+	libraryID, ok := QueryUint64(ctx, false, "libraryId")
+	if !ok {
+		return
+	}
+	dashboard, err := h.uc.Dashboard(
+		ctx.Request.Context(),
+		actorFromContext(ctx),
+		usecase.ResourceMonitorSnapshotOptions{LibraryID: libraryID},
+	)
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, dashboard)
+}
+
 // CaptureSample 显式写入一条资源监测历史采样。
 func (h *ResourceMonitorHandler) CaptureSample(ctx *gin.Context) {
 	libraryID, ok := QueryUint64(ctx, false, "libraryId")

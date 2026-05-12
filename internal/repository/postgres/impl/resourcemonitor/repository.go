@@ -135,6 +135,26 @@ func (r *Repository) CountBreakdownCategories(
 	return rows, nil
 }
 
+// CountDashboardMatrix 统计业务集合与基础文件类型交叉维度细分。
+// libraryID 为 0 时统计用户全部资料库，否则只统计指定资料库。
+func (r *Repository) CountDashboardMatrix(
+	ctx context.Context,
+	ownerUserID uint64,
+	libraryID uint64,
+) ([]domain.DashboardMatrixRow, error) {
+	if r.db == nil {
+		return nil, errors.New("resource monitor repository: database is nil")
+	}
+
+	var rows []domain.DashboardMatrixRow
+	if err := r.dbWithContext(ctx).
+		Raw(resourceDashboardMatrixSQL, int64(ownerUserID), int64(libraryID), int64(libraryID)).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func sampleToModel(sample domain.Sample) *pgmodel.ResourceMonitorSamples {
 	return &pgmodel.ResourceMonitorSamples{
 		ActorID:             sample.ActorID,

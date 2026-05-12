@@ -18,8 +18,10 @@ type fakeResourceMonitorRepository struct {
 	rows         []domain.StorageDistributionRow
 	libraryRows  []domain.BreakdownLibraryRow
 	categoryRows []domain.BreakdownCategoryRow
+	matrixRows   []domain.DashboardMatrixRow
 	err          error
 	categoryErr  error
+	matrixErr    error
 	ping         error
 	got          uint64
 	gotLibrary   uint64
@@ -76,6 +78,19 @@ func (r *fakeResourceMonitorRepository) CountBreakdownCategories(
 		return nil, r.categoryErr
 	}
 	return r.categoryRows, nil
+}
+
+func (r *fakeResourceMonitorRepository) CountDashboardMatrix(
+	_ context.Context,
+	ownerUserID uint64,
+	libraryID uint64,
+) ([]domain.DashboardMatrixRow, error) {
+	r.got = ownerUserID
+	r.gotLibrary = libraryID
+	if r.matrixErr != nil {
+		return nil, r.matrixErr
+	}
+	return r.matrixRows, nil
 }
 
 func (r *fakeResourceMonitorRepository) Ping(_ context.Context) error {
@@ -476,6 +491,106 @@ func TestResourceMonitorBreakdownReturnsPartialOnCategoryError(t *testing.T) {
 	}
 	if got.Summary.PhysicalBytes != 512 || len(got.Libraries) != 1 || len(got.Categories) != 0 {
 		t.Fatalf("partial breakdown = %+v", got)
+	}
+}
+
+func TestResourceMonitorDashboardBuildsCollectionFileTypeMatrix(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		libraryRows: []domain.BreakdownLibraryRow{
+			{
+				LibraryID:       7,
+				LibraryName:     "声库",
+				ObjectCount:     4,
+				FileRefCount:    5,
+				PhysicalBytes:   3072,
+				ReferencedBytes: 4096,
+				VisibleBytes:    3072,
+			},
+		},
+		matrixRows: []domain.DashboardMatrixRow{
+			{
+				CollectionKey:         "ASMR",
+				CollectionBuiltInType: "ASMR",
+				FileTypeKey:           "video",
+				ObjectCount:           2,
+				FileRefCount:          2,
+				PhysicalBytes:         2048,
+				ReferencedBytes:       2048,
+			},
+			{
+				CollectionKey:         "ASMR",
+				CollectionBuiltInType: "ASMR",
+				FileTypeKey:           "image",
+				ObjectCount:           1,
+				FileRefCount:          2,
+				PhysicalBytes:         512,
+				ReferencedBytes:       1024,
+			},
+			{
+				CollectionKey:   "DEF",
+				FileTypeKey:     "text",
+				ObjectCount:     1,
+				FileRefCount:    1,
+				PhysicalBytes:   512,
+				ReferencedBytes: 1024,
+			},
+		},
+	}
+	uc := NewResourceMonitorUseCase(repo, nil, nil)
+
+	got, err := uc.Dashboard(
+		context.Background(),
+		actor.Actor{ID: "42", Kind: actor.KindUser},
+		ResourceMonitorSnapshotOptions{LibraryID: 7},
+	)
+	if err != nil {
+		t.Fatalf("Dashboard() error = %v", err)
+	}
+	if repo.got != 42 || repo.gotLibrary != 7 {
+		t.Fatalf("scope = owner %d library %d, want owner 42 library 7", repo.got, repo.gotLibrary)
+	}
+	if got.Summary.PhysicalBytes != 3072 || got.Summary.ReferencedBytes != 4096 {
+		t.Fatalf("summary = %+v", got.Summary)
+	}
+	if len(got.Collections) != 2 || got.Collections[0].Key != "ASMR" || got.Collections[0].PhysicalBytes != 2560 {
+		t.Fatalf("collections = %+v", got.Collections)
+	}
+	if len(got.FileTypes) != 3 || got.FileTypes[0].Key != "video" || got.FileTypes[0].Percent != 66.7 {
+		t.Fatalf("fileTypes = %+v", got.FileTypes)
+	}
+	if len(got.CollectionFileTypeMatrix) != 3 ||
+		got.CollectionFileTypeMatrix[0].CollectionKey != "ASMR" ||
+		got.CollectionFileTypeMatrix[0].FileTypeKey != "video" ||
+		got.CollectionFileTypeMatrix[0].PercentOfCollection != 80 {
+		t.Fatalf("matrix = %+v", got.CollectionFileTypeMatrix)
+	}
+}
+
+func TestResourceMonitorDashboardReturnsPartialOnMatrixError(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		libraryRows: []domain.BreakdownLibraryRow{
+			{
+				LibraryID:       7,
+				LibraryName:     "文档",
+				ObjectCount:     1,
+				FileRefCount:    1,
+				PhysicalBytes:   512,
+				ReferencedBytes: 512,
+			},
+		},
+		matrixErr: errors.New("matrix query failed"),
+	}
+	uc := NewResourceMonitorUseCase(repo, nil, nil)
+
+	got, err := uc.Dashboard(context.Background(), actor.Actor{ID: "42", Kind: actor.KindUser})
+	if err != nil {
+		t.Fatalf("Dashboard() error = %v", err)
+	}
+	if got.DashboardError == "" {
+		t.Fatalf("expected dashboard error, got %+v", got)
+	}
+	if got.Summary.PhysicalBytes != 512 || len(got.Libraries) != 1 || len(got.CollectionFileTypeMatrix) != 0 {
+		t.Fatalf("partial dashboard = %+v", got)
 	}
 }
 

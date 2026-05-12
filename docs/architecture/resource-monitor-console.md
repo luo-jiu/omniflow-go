@@ -17,6 +17,8 @@ GET /api/v1/resource-monitor/distribution
 GET /api/v1/resource-monitor/distribution?libraryId=123
 GET /api/v1/resource-monitor/breakdown
 GET /api/v1/resource-monitor/breakdown?libraryId=123
+GET /api/v1/resource-monitor/dashboard
+GET /api/v1/resource-monitor/dashboard?libraryId=123
 GET /api/v1/resource-monitor/probes
 POST /api/v1/resource-monitor/samples
 POST /api/v1/resource-monitor/samples?libraryId=123
@@ -57,6 +59,8 @@ GET /api/v1/resource-monitor/distribution
 GET /api/v1/resource-monitor/distribution?libraryId=123
 GET /api/v1/resource-monitor/breakdown
 GET /api/v1/resource-monitor/breakdown?libraryId=123
+GET /api/v1/resource-monitor/dashboard
+GET /api/v1/resource-monitor/dashboard?libraryId=123
 GET /api/v1/resource-monitor/probes
 ```
 
@@ -67,6 +71,7 @@ GET /api/v1/resource-monitor/probes
 - 带 `libraryId` 时只统计 actor 自己拥有的指定资料库；不拥有该资料库时结果为空，不泄露跨用户资源。
 - `/distribution` 的范围语义与 `/snapshot` 一致，只返回 `summary / storage / distributionError` 等分布字段。
 - `/breakdown` 的范围语义与 `/distribution` 一致，只返回资料库、归档分类、资源状态和诊断摘要等细分字段。
+- `/dashboard` 的范围语义与 `/breakdown` 一致，返回 V2 仪表盘字段；它不执行探针，探针仍由 `/probes` 独立返回。
 - `/probes` 只返回 `probeSummary / probes`，探针是当前后端基础设施和 provider 配置级别的只读检查，不按资料库过滤。
 
 响应 `data`：
@@ -175,7 +180,25 @@ GET /api/v1/resource-monitor/breakdown?libraryId=123
 
 当前第一版不新增表结构，不写入历史，不做清理动作。
 
-### 3.3 显式采样
+### 3.3 V2 仪表盘
+
+```text
+GET /api/v1/resource-monitor/dashboard
+GET /api/v1/resource-monitor/dashboard?libraryId=123
+```
+
+响应 `data` 包含：
+
+- `summary`：沿用细分仪表盘总览，区分物理去重容量和引用展开容量。
+- `fileTypes`：基础文件类型分布，例如视频、图片、音频、文本、压缩包、未知类型。
+- `collections`：业务集合类型分布，例如普通资源、漫画、ASMR、视频、音频、未知类型、未归类对象。
+- `collectionFileTypeMatrix`：业务集合 x 基础文件类型交叉统计，用于解释 ASMR / 漫画等集合内部由哪些基础文件组成。
+- `libraries / statuses / anomalies`：沿用细分仪表盘中的资料库排行、资源状态和只读诊断摘要。
+- `dashboardError`：V2 统计失败时的脱敏错误摘要；该接口不影响 `/distribution`、`/breakdown` 和 `/probes`。
+
+`/dashboard` 是 V2 并行接口，当前不替换 `/breakdown`；前端完成 V2 页面验证后再决定旧接口的兼容周期。
+
+### 3.4 显式采样
 
 ```text
 POST /api/v1/resource-monitor/samples
@@ -242,6 +265,9 @@ POST /api/v1/resource-monitor/samples?libraryId=123
 - `probeSummary`：对象存储、Postgres、Redis 探针状态汇总。
 - `probes`：只读探针结果，错误只返回脱敏后的简短摘要。
 - `breakdown.categories`：按引用节点向上寻找最外层非 `DEF` 内置类型做分类；内置类型被视为内容集合，集合内部文件都归属该外层内置类型。物理容量按对象主分类去重，引用容量按引用展开；归档模式允许嵌套，分类统计不按 `archive_mode` 递归聚合。
+- `dashboard.collections`：沿用最外层非 `DEF` 内置类型作为业务集合归属。
+- `dashboard.fileTypes`：优先按 `node_files.mime_type` / `storage_objects.content_type` 归类基础文件类型，再用节点扩展名兜底；`.ts` 等冲突后缀不能只靠后缀决定真实类型。
+- `dashboard.collectionFileTypeMatrix`：同一对象的物理容量只进入一个主业务集合和一个主基础文件类型；引用容量按 `node_files` 展开。
 - `breakdown.statuses`：沿用 visible / recycle / orphan 对象级主归属。
 - `resource_monitor_samples`：历史采样表；summary 列用于趋势查询，`snapshot_json` 保存完整快照用于后续告警、详情回放和重新聚合。
 - `dryRun`：采样写链路的标准 dry-run 参数，真实校验和快照生成照常执行，但跳过持久化。
@@ -287,3 +313,4 @@ GOCACHE=/tmp/go-build go test ./...
 - 显式采样会写入 `resource_monitor_samples`；带 `libraryId` 时必须先通过 actor ownership 校验。
 - `dryRun=true` 时返回样本预览且不写入 `resource_monitor_samples`。
 - `/breakdown` 返回资料库、分类、状态和诊断摘要，且不阻塞 `/distribution` 和 `/probes`。
+- `/dashboard` 返回基础文件类型、业务集合类型和交叉矩阵；它不执行探针，也不阻塞旧 `/breakdown`。
