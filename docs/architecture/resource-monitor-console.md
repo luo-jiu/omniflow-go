@@ -8,13 +8,15 @@
 
 资源监测控制台后端提供只读资源快照，服务于前端仓库页 / 资料库页 system workspace。它不承担存储配置修改，不触发迁移，不清理对象，也不执行有副作用的连通性测试。
 
-当前实现全局资源分布快照和只读资源探针：
+当前实现全局资源分布快照、细分仪表盘和只读资源探针：
 
 ```text
 GET /api/v1/resource-monitor/snapshot
 GET /api/v1/resource-monitor/snapshot?libraryId=123
 GET /api/v1/resource-monitor/distribution
 GET /api/v1/resource-monitor/distribution?libraryId=123
+GET /api/v1/resource-monitor/breakdown
+GET /api/v1/resource-monitor/breakdown?libraryId=123
 GET /api/v1/resource-monitor/probes
 POST /api/v1/resource-monitor/samples
 POST /api/v1/resource-monitor/samples?libraryId=123
@@ -48,11 +50,13 @@ transport/http/handler/resource_monitor.go
 GET /api/v1/resource-monitor/snapshot
 ```
 
-`/snapshot` 是兼容聚合接口，会同时返回分布统计和探针结果。前端资源监测面板默认使用下面两个拆分接口并行加载，避免慢探针或慢统计阻塞另一块 UI：
+`/snapshot` 是兼容聚合接口，会同时返回分布统计和探针结果。前端资源监测面板默认使用下面几个拆分接口并行加载，避免慢探针、慢统计或慢细分阻塞其它 UI：
 
 ```text
 GET /api/v1/resource-monitor/distribution
 GET /api/v1/resource-monitor/distribution?libraryId=123
+GET /api/v1/resource-monitor/breakdown
+GET /api/v1/resource-monitor/breakdown?libraryId=123
 GET /api/v1/resource-monitor/probes
 ```
 
@@ -62,6 +66,7 @@ GET /api/v1/resource-monitor/probes
 - 不带 `libraryId` 时统计 actor 自己拥有的全部资料库范围。
 - 带 `libraryId` 时只统计 actor 自己拥有的指定资料库；不拥有该资料库时结果为空，不泄露跨用户资源。
 - `/distribution` 的范围语义与 `/snapshot` 一致，只返回 `summary / storage / distributionError` 等分布字段。
+- `/breakdown` 的范围语义与 `/distribution` 一致，只返回资料库、归档分类、资源状态和诊断摘要等细分字段。
 - `/probes` 只返回 `probeSummary / probes`，探针是当前后端基础设施和 provider 配置级别的只读检查，不按资料库过滤。
 
 响应 `data`：
@@ -152,7 +157,25 @@ GET /api/v1/resource-monitor/probes
 }
 ```
 
-### 3.2 显式采样
+### 3.2 细分仪表盘
+
+```text
+GET /api/v1/resource-monitor/breakdown
+GET /api/v1/resource-monitor/breakdown?libraryId=123
+```
+
+响应 `data` 包含：
+
+- `summary`：资料库数、归档目录数、物理去重容量、引用展开容量、对象数、文件引用数、visible / recycle / orphan、多引用对象等总览。
+- `libraries`：按资料库聚合的容量、对象、引用、归档目录、状态容量、最大 provider / bucket 和占比，默认按容量降序。
+- `categories`：按 `builtInType` 归类的普通资源、漫画、ASMR、视频、音频、未知类型和未归类对象。
+- `statuses`：可见资源、回收站、孤儿对象三类对象级主归属。
+- `anomalies`：只读诊断摘要，例如回收站占用集中、孤儿对象、多引用对象。
+- `breakdownError`：细分统计失败时的脱敏错误摘要；失败不影响 `/distribution` 和 `/probes`。
+
+当前第一版不新增表结构，不写入历史，不做清理动作。
+
+### 3.3 显式采样
 
 ```text
 POST /api/v1/resource-monitor/samples
@@ -203,6 +226,7 @@ POST /api/v1/resource-monitor/samples?libraryId=123
 ## 4. 统计口径
 
 - `physicalBytes`：按 distinct `storage_objects` 聚合 `content_length`，代表真实对象占用。
+- `referencedBytes`：按 `node_files` 引用展开后的容量，可能因为同一对象多引用而大于 `physicalBytes`。
 - `libraryId`：可选查询参数；`0` 或缺失表示当前用户全部资料库，正整数表示指定资料库范围。
 - `objectCount`：当前用户资料库下未软删的 `storage_objects` 数量。
 - `fileRefCount`：引用这些对象的 `node_files` 行数。
@@ -217,6 +241,8 @@ POST /api/v1/resource-monitor/samples?libraryId=123
 - `distributionError`：资源分布统计失败时的脱敏错误摘要；此时接口仍返回 partial snapshot 和探针结果。
 - `probeSummary`：对象存储、Postgres、Redis 探针状态汇总。
 - `probes`：只读探针结果，错误只返回脱敏后的简短摘要。
+- `breakdown.categories`：按引用节点的 `built_in_type` 做分类；物理容量按对象主分类去重，引用容量按引用展开。
+- `breakdown.statuses`：沿用 visible / recycle / orphan 对象级主归属。
 - `resource_monitor_samples`：历史采样表；summary 列用于趋势查询，`snapshot_json` 保存完整快照用于后续告警、详情回放和重新聚合。
 - `dryRun`：采样写链路的标准 dry-run 参数，真实校验和快照生成照常执行，但跳过持久化。
 
@@ -260,3 +286,4 @@ GOCACHE=/tmp/go-build go test ./...
 - provider 配置缺失时保留原 provider 并标记 `matchedConfig=false`。
 - 显式采样会写入 `resource_monitor_samples`；带 `libraryId` 时必须先通过 actor ownership 校验。
 - `dryRun=true` 时返回样本预览且不写入 `resource_monitor_samples`。
+- `/breakdown` 返回资料库、分类、状态和诊断摘要，且不阻塞 `/distribution` 和 `/probes`。

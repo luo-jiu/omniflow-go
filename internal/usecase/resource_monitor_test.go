@@ -15,13 +15,16 @@ import (
 )
 
 type fakeResourceMonitorRepository struct {
-	rows       []domain.StorageDistributionRow
-	err        error
-	ping       error
-	got        uint64
-	gotLibrary uint64
-	ownedBy    map[uint64]bool
-	saved      domain.Sample
+	rows         []domain.StorageDistributionRow
+	libraryRows  []domain.BreakdownLibraryRow
+	categoryRows []domain.BreakdownCategoryRow
+	err          error
+	categoryErr  error
+	ping         error
+	got          uint64
+	gotLibrary   uint64
+	ownedBy      map[uint64]bool
+	saved        domain.Sample
 }
 
 func (r *fakeResourceMonitorRepository) LibraryBelongsToOwner(
@@ -47,6 +50,32 @@ func (r *fakeResourceMonitorRepository) CountStorageDistribution(
 		return nil, r.err
 	}
 	return r.rows, nil
+}
+
+func (r *fakeResourceMonitorRepository) CountBreakdownLibraries(
+	_ context.Context,
+	ownerUserID uint64,
+	libraryID uint64,
+) ([]domain.BreakdownLibraryRow, error) {
+	r.got = ownerUserID
+	r.gotLibrary = libraryID
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r.libraryRows, nil
+}
+
+func (r *fakeResourceMonitorRepository) CountBreakdownCategories(
+	_ context.Context,
+	ownerUserID uint64,
+	libraryID uint64,
+) ([]domain.BreakdownCategoryRow, error) {
+	r.got = ownerUserID
+	r.gotLibrary = libraryID
+	if r.categoryErr != nil {
+		return nil, r.categoryErr
+	}
+	return r.categoryRows, nil
 }
 
 func (r *fakeResourceMonitorRepository) Ping(_ context.Context) error {
@@ -327,6 +356,126 @@ func TestResourceMonitorProbesOmitDistribution(t *testing.T) {
 	}
 	if got.ProbeSummary.Total != 2 || got.ProbeSummary.OK != 2 {
 		t.Fatalf("probe summary = %+v", got.ProbeSummary)
+	}
+}
+
+func TestResourceMonitorBreakdown(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		libraryRows: []domain.BreakdownLibraryRow{
+			{
+				LibraryID:             7,
+				LibraryName:           "文档",
+				ObjectCount:           4,
+				FileRefCount:          6,
+				PhysicalBytes:         2048,
+				ReferencedBytes:       3072,
+				VisibleObjectCount:    3,
+				VisibleFileRefCount:   4,
+				VisibleBytes:          1536,
+				RecycleObjectCount:    1,
+				RecycleFileRefCount:   2,
+				RecycleBytes:          512,
+				ArchiveDirectoryCount: 2,
+				MultiRefObjectCount:   1,
+				MultiRefPhysicalBytes: 512,
+				TopProvider:           "local-minio",
+				TopBucket:             "default",
+			},
+			{
+				LibraryID:         8,
+				LibraryName:       "素材",
+				ObjectCount:       1,
+				FileRefCount:      0,
+				PhysicalBytes:     256,
+				OrphanObjectCount: 1,
+				OrphanBytes:       256,
+				TopProvider:       "win-minio",
+				TopBucket:         "default",
+			},
+			{
+				LibraryID:   9,
+				LibraryName: "空资料库",
+			},
+		},
+		categoryRows: []domain.BreakdownCategoryRow{
+			{
+				Key:                   "COMIC",
+				BuiltInType:           "COMIC",
+				ObjectCount:           3,
+				FileRefCount:          4,
+				PhysicalBytes:         1536,
+				ReferencedBytes:       2048,
+				ArchiveDirectoryCount: 1,
+				VisibleBytes:          1536,
+			},
+			{
+				Key:               "UNCLASSIFIED",
+				ObjectCount:       1,
+				PhysicalBytes:     256,
+				OrphanBytes:       256,
+				OrphanObjectCount: 1,
+			},
+		},
+	}
+	uc := NewResourceMonitorUseCase(repo, nil, nil)
+
+	got, err := uc.Breakdown(
+		context.Background(),
+		actor.Actor{ID: "42", Kind: actor.KindUser},
+		ResourceMonitorSnapshotOptions{LibraryID: 7},
+	)
+	if err != nil {
+		t.Fatalf("Breakdown() error = %v", err)
+	}
+	if repo.got != 42 || repo.gotLibrary != 7 {
+		t.Fatalf("scope = owner %d library %d, want owner 42 library 7", repo.got, repo.gotLibrary)
+	}
+	if got.Summary.LibraryCount != 2 ||
+		got.Summary.PhysicalBytes != 2304 ||
+		got.Summary.ReferencedBytes != 3072 ||
+		got.Summary.ArchiveDirectoryCount != 2 ||
+		got.Summary.MultiRefObjectCount != 1 {
+		t.Fatalf("summary = %+v", got.Summary)
+	}
+	if len(got.Libraries) != 2 || got.Libraries[0].Percent != 88.9 {
+		t.Fatalf("libraries = %+v", got.Libraries)
+	}
+	if len(got.Categories) != 2 || got.Categories[0].Key != "COMIC" || got.Categories[0].Label != "漫画" {
+		t.Fatalf("categories = %+v", got.Categories)
+	}
+	if len(got.Statuses) != 3 || got.Statuses[0].Key != "visible" || got.Statuses[0].Percent != 66.7 {
+		t.Fatalf("statuses = %+v", got.Statuses)
+	}
+	if len(got.Anomalies) != 3 || got.Anomalies[0].Key != "top-recycle-library" {
+		t.Fatalf("anomalies = %+v", got.Anomalies)
+	}
+}
+
+func TestResourceMonitorBreakdownReturnsPartialOnCategoryError(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		libraryRows: []domain.BreakdownLibraryRow{
+			{
+				LibraryID:       7,
+				LibraryName:     "文档",
+				ObjectCount:     1,
+				FileRefCount:    1,
+				PhysicalBytes:   512,
+				ReferencedBytes: 512,
+			},
+		},
+		categoryErr: errors.New("category query failed"),
+	}
+	uc := NewResourceMonitorUseCase(repo, nil, nil)
+
+	got, err := uc.Breakdown(context.Background(), actor.Actor{ID: "42", Kind: actor.KindUser})
+	if err != nil {
+		t.Fatalf("Breakdown() error = %v", err)
+	}
+	if got.BreakdownError == "" {
+		t.Fatalf("expected breakdown error, got %+v", got)
+	}
+	if got.Summary.PhysicalBytes != 512 || len(got.Libraries) != 1 || len(got.Categories) != 0 {
+		t.Fatalf("partial breakdown = %+v", got)
 	}
 }
 

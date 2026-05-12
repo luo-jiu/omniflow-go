@@ -95,6 +95,46 @@ func (r *Repository) CountStorageDistribution(
 	return rows, nil
 }
 
+// CountBreakdownLibraries 统计指定用户可见资料库范围内的资料库维度细分。
+// libraryID 为 0 时统计用户全部资料库，否则只统计指定资料库。
+func (r *Repository) CountBreakdownLibraries(
+	ctx context.Context,
+	ownerUserID uint64,
+	libraryID uint64,
+) ([]domain.BreakdownLibraryRow, error) {
+	if r.db == nil {
+		return nil, errors.New("resource monitor repository: database is nil")
+	}
+
+	var rows []domain.BreakdownLibraryRow
+	if err := r.dbWithContext(ctx).
+		Raw(resourceBreakdownLibrarySQL, int64(ownerUserID), int64(libraryID), int64(libraryID)).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// CountBreakdownCategories 统计指定用户可见资料库范围内的归档分类维度细分。
+// libraryID 为 0 时统计用户全部资料库，否则只统计指定资料库。
+func (r *Repository) CountBreakdownCategories(
+	ctx context.Context,
+	ownerUserID uint64,
+	libraryID uint64,
+) ([]domain.BreakdownCategoryRow, error) {
+	if r.db == nil {
+		return nil, errors.New("resource monitor repository: database is nil")
+	}
+
+	var rows []domain.BreakdownCategoryRow
+	if err := r.dbWithContext(ctx).
+		Raw(resourceBreakdownCategorySQL, int64(ownerUserID), int64(libraryID), int64(libraryID)).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func sampleToModel(sample domain.Sample) *pgmodel.ResourceMonitorSamples {
 	return &pgmodel.ResourceMonitorSamples{
 		ActorID:             sample.ActorID,

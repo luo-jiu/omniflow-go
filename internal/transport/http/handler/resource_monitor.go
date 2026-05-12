@@ -74,6 +74,28 @@ func (h *ResourceMonitorHandler) Probes(ctx *gin.Context) {
 	Success(ctx, snapshot)
 }
 
+// Breakdown 返回当前用户可见资料库范围的资源细分仪表盘。
+func (h *ResourceMonitorHandler) Breakdown(ctx *gin.Context) {
+	if h.uc == nil {
+		InternalError(ctx, "resource monitor service not configured")
+		return
+	}
+	libraryID, ok := QueryUint64(ctx, false, "libraryId")
+	if !ok {
+		return
+	}
+	breakdown, err := h.uc.Breakdown(
+		ctx.Request.Context(),
+		actorFromContext(ctx),
+		usecase.ResourceMonitorSnapshotOptions{LibraryID: libraryID},
+	)
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, breakdown)
+}
+
 // CaptureSample 显式写入一条资源监测历史采样。
 func (h *ResourceMonitorHandler) CaptureSample(ctx *gin.Context) {
 	libraryID, ok := QueryUint64(ctx, false, "libraryId")

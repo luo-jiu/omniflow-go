@@ -58,6 +58,10 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 当前接口只读；对象存储探针只检查 bucket 可访问性，不创建对象、不清理数据。
 - `GET /api/v1/resource-monitor/distribution`
   - 返回资源分布字段；支持可选 `libraryId`，范围语义与 snapshot 一致。
+- `GET /api/v1/resource-monitor/breakdown`
+  - 返回资源细分仪表盘字段；支持可选 `libraryId`，范围语义与 distribution 一致。
+  - `summary / libraries / categories / statuses / anomalies` 分别表示总览、资料库排行、归档分类、资源状态和只读诊断摘要。
+  - 同时区分 `physicalBytes` 物理去重容量和 `referencedBytes` 引用展开容量。
 - `GET /api/v1/resource-monitor/probes`
   - 返回对象存储、Postgres、Redis 的只读探针字段；供前端和分布统计并行加载。
 - `POST /api/v1/resource-monitor/samples`
