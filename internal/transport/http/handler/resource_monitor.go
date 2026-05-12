@@ -38,6 +38,42 @@ func (h *ResourceMonitorHandler) Snapshot(ctx *gin.Context) {
 	Success(ctx, snapshot)
 }
 
+// Distribution 返回当前用户可见资料库范围的资源分布快照。
+func (h *ResourceMonitorHandler) Distribution(ctx *gin.Context) {
+	if h.uc == nil {
+		InternalError(ctx, "resource monitor service not configured")
+		return
+	}
+	libraryID, ok := QueryUint64(ctx, false, "libraryId")
+	if !ok {
+		return
+	}
+	snapshot, err := h.uc.Distribution(
+		ctx.Request.Context(),
+		actorFromContext(ctx),
+		usecase.ResourceMonitorSnapshotOptions{LibraryID: libraryID},
+	)
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, snapshot)
+}
+
+// Probes 返回当前资源监测探针结果。
+func (h *ResourceMonitorHandler) Probes(ctx *gin.Context) {
+	if h.uc == nil {
+		InternalError(ctx, "resource monitor service not configured")
+		return
+	}
+	snapshot, err := h.uc.Probes(ctx.Request.Context(), actorFromContext(ctx))
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, snapshot)
+}
+
 // CaptureSample 显式写入一条资源监测历史采样。
 func (h *ResourceMonitorHandler) CaptureSample(ctx *gin.Context) {
 	libraryID, ok := QueryUint64(ctx, false, "libraryId")

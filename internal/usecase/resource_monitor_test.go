@@ -277,6 +277,59 @@ func TestResourceMonitorSnapshotWithLibraryScope(t *testing.T) {
 	}
 }
 
+func TestResourceMonitorDistributionOmitsProbes(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		rows: []domain.StorageDistributionRow{
+			{
+				Provider:      "local-minio",
+				Bucket:        "default",
+				ObjectCount:   1,
+				FileRefCount:  1,
+				PhysicalBytes: 512,
+			},
+		},
+		ping: errors.New("postgres should not be probed"),
+	}
+	uc := NewResourceMonitorUseCase(repo, &fakeRedisProbeRepository{err: errors.New("redis should not be probed")}, nil)
+
+	got, err := uc.Distribution(context.Background(), actor.Actor{ID: "42", Kind: actor.KindUser})
+	if err != nil {
+		t.Fatalf("Distribution() error = %v", err)
+	}
+	if got.Summary.PhysicalBytes != 512 || len(got.Storage) != 1 {
+		t.Fatalf("distribution = %+v", got)
+	}
+	if got.ProbeSummary.Total != 0 || len(got.Probes) != 0 {
+		t.Fatalf("probes should be omitted, got summary %+v probes %+v", got.ProbeSummary, got.Probes)
+	}
+}
+
+func TestResourceMonitorProbesOmitDistribution(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		rows: []domain.StorageDistributionRow{
+			{
+				Provider:      "local-minio",
+				Bucket:        "default",
+				ObjectCount:   1,
+				FileRefCount:  1,
+				PhysicalBytes: 512,
+			},
+		},
+	}
+	uc := NewResourceMonitorUseCase(repo, &fakeRedisProbeRepository{}, nil)
+
+	got, err := uc.Probes(context.Background(), actor.Actor{ID: "42", Kind: actor.KindUser})
+	if err != nil {
+		t.Fatalf("Probes() error = %v", err)
+	}
+	if got.Summary.PhysicalBytes != 0 || len(got.Storage) != 0 {
+		t.Fatalf("distribution should be omitted, got summary %+v storage %+v", got.Summary, got.Storage)
+	}
+	if got.ProbeSummary.Total != 2 || got.ProbeSummary.OK != 2 {
+		t.Fatalf("probe summary = %+v", got.ProbeSummary)
+	}
+}
+
 func TestResourceMonitorCaptureSample(t *testing.T) {
 	repo := &fakeResourceMonitorRepository{
 		rows: []domain.StorageDistributionRow{

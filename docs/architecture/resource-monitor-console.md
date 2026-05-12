@@ -1,6 +1,6 @@
 # 资源监测控制台后端契约
 
-更新时间：2026-05-11
+更新时间：2026-05-12
 
 适用范围：`resource-monitor` 后端 API、资源占用统计、后续存储 / 数据库探针扩展。
 
@@ -13,6 +13,9 @@
 ```text
 GET /api/v1/resource-monitor/snapshot
 GET /api/v1/resource-monitor/snapshot?libraryId=123
+GET /api/v1/resource-monitor/distribution
+GET /api/v1/resource-monitor/distribution?libraryId=123
+GET /api/v1/resource-monitor/probes
 POST /api/v1/resource-monitor/samples
 POST /api/v1/resource-monitor/samples?libraryId=123
 POST /api/v1/resource-monitor/samples?libraryId=123&dryRun=true
@@ -45,11 +48,21 @@ transport/http/handler/resource_monitor.go
 GET /api/v1/resource-monitor/snapshot
 ```
 
+`/snapshot` 是兼容聚合接口，会同时返回分布统计和探针结果。前端资源监测面板默认使用下面两个拆分接口并行加载，避免慢探针或慢统计阻塞另一块 UI：
+
+```text
+GET /api/v1/resource-monitor/distribution
+GET /api/v1/resource-monitor/distribution?libraryId=123
+GET /api/v1/resource-monitor/probes
+```
+
 鉴权：
 
 - 需要登录态。
 - 不带 `libraryId` 时统计 actor 自己拥有的全部资料库范围。
 - 带 `libraryId` 时只统计 actor 自己拥有的指定资料库；不拥有该资料库时结果为空，不泄露跨用户资源。
+- `/distribution` 的范围语义与 `/snapshot` 一致，只返回 `summary / storage / distributionError` 等分布字段。
+- `/probes` 只返回 `probeSummary / probes`，探针是当前后端基础设施和 provider 配置级别的只读检查，不按资料库过滤。
 
 响应 `data`：
 

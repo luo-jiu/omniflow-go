@@ -69,17 +69,31 @@ func (u *ResourceMonitorUseCase) Snapshot(
 	principal actor.Actor,
 	options ...ResourceMonitorSnapshotOptions,
 ) (domain.Snapshot, error) {
+	snapshot, err := u.Distribution(ctx, principal, options...)
+	if err != nil {
+		return domain.Snapshot{}, err
+	}
+	probeSnapshot, err := u.Probes(ctx, principal, options...)
+	if err != nil {
+		return domain.Snapshot{}, err
+	}
+	snapshot.Probes = probeSnapshot.Probes
+	snapshot.ProbeSummary = probeSnapshot.ProbeSummary
+	return snapshot, nil
+}
+
+// Distribution 返回当前用户可见资料库范围内的资源分布快照。
+func (u *ResourceMonitorUseCase) Distribution(
+	ctx context.Context,
+	principal actor.Actor,
+	options ...ResourceMonitorSnapshotOptions,
+) (domain.Snapshot, error) {
 	if u.repo == nil {
 		return domain.Snapshot{}, errResourceMonitorRepositoryNotConfigured
 	}
 	userID, err := actorIDToUint64(principal)
 	if err != nil {
 		return domain.Snapshot{}, err
-	}
-
-	defaultProvider := ""
-	if u.registry != nil {
-		defaultProvider = strings.TrimSpace(u.registry.DefaultAlias())
 	}
 
 	snapshot := domain.Snapshot{
@@ -97,9 +111,12 @@ func (u *ResourceMonitorUseCase) Snapshot(
 		}
 		snapshot.Storage = []domain.StorageDistributionItem{}
 		snapshot.DistributionError = sanitizeProbeError(err)
-		snapshot.Probes = u.probeTargets(ctx, snapshot.GeneratedAt, defaultProvider)
-		snapshot.ProbeSummary = summarizeProbes(snapshot.Probes)
 		return snapshot, nil
+	}
+
+	defaultProvider := ""
+	if u.registry != nil {
+		defaultProvider = strings.TrimSpace(u.registry.DefaultAlias())
 	}
 
 	itemsByLocation := make(map[string]domain.StorageDistributionItem, len(rows))
@@ -214,6 +231,29 @@ func (u *ResourceMonitorUseCase) Snapshot(
 
 	snapshot.Summary.ProviderCount = len(providerSet)
 	snapshot.Summary.BucketCount = len(bucketSet)
+	return snapshot, nil
+}
+
+// Probes 返回当前资源监测探针结果。
+func (u *ResourceMonitorUseCase) Probes(
+	ctx context.Context,
+	principal actor.Actor,
+	options ...ResourceMonitorSnapshotOptions,
+) (domain.Snapshot, error) {
+	if u.repo == nil {
+		return domain.Snapshot{}, errResourceMonitorRepositoryNotConfigured
+	}
+	if _, err := actorIDToUint64(principal); err != nil {
+		return domain.Snapshot{}, err
+	}
+
+	defaultProvider := ""
+	if u.registry != nil {
+		defaultProvider = strings.TrimSpace(u.registry.DefaultAlias())
+	}
+	snapshot := domain.Snapshot{
+		GeneratedAt: time.Now().UTC(),
+	}
 	snapshot.Probes = u.probeTargets(ctx, snapshot.GeneratedAt, defaultProvider)
 	snapshot.ProbeSummary = summarizeProbes(snapshot.Probes)
 	return snapshot, nil

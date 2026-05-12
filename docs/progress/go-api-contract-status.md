@@ -56,6 +56,10 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - `distributionError` 表示资源分布统计失败时的脱敏错误摘要；失败时接口仍返回 partial snapshot 和探针结果。
   - `probeSummary` 和 `probes` 返回对象存储、Postgres、Redis 的只读探针状态、耗时和错误摘要。
   - 当前接口只读；对象存储探针只检查 bucket 可访问性，不创建对象、不清理数据。
+- `GET /api/v1/resource-monitor/distribution`
+  - 返回资源分布字段；支持可选 `libraryId`，范围语义与 snapshot 一致。
+- `GET /api/v1/resource-monitor/probes`
+  - 返回对象存储、Postgres、Redis 的只读探针字段；供前端和分布统计并行加载。
 - `POST /api/v1/resource-monitor/samples`
   - 显式写入一条资源监测历史采样；支持可选 `libraryId` 查询参数，范围语义与 snapshot 一致。
   - 带 `libraryId` 时会先校验资料库归属；不属于当前 actor 时返回 not found 且不写入空样本。
