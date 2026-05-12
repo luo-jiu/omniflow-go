@@ -8,6 +8,7 @@
 - 支持文件树查询（children/search）
 - 支持文件树基础写操作（mkdir/rename/mv/rm）与回收站管理
 - 支持浏览器文件映射管理（list/resolve/create/update/delete）
+- 支持资源监测样本采集
 
 ## 1. 构建
 
@@ -59,6 +60,7 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of storage migration ls [--library-id <id>] [--status running,pending] [--limit <n>] [--json]
 ./bin/of storage migration status --task-id <id> [--items] [--json]
 ./bin/of storage migration cancel --task-id <id> [--dry-run] [--json]
+./bin/of resource-monitor sample [--library-id <id>] [--dry-run] [--json]
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。

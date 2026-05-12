@@ -9,4 +9,5 @@ import (
 func registerResourceMonitorRoutes(api *gin.RouterGroup, h *handler.ResourceMonitorHandler) {
 	group := api.Group("/resource-monitor")
 	group.GET("/snapshot", h.Snapshot)
+	group.POST("/samples", h.CaptureSample)
 }

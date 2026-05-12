@@ -14,23 +14,24 @@ import (
 )
 
 var (
-	Q                  = new(Query)
-	BrowserBookmark    *browserBookmark
-	BrowserFileMapping *browserFileMapping
-	Library            *library
-	MigrationTask      *migrationTask
-	MigrationTaskItem  *migrationTaskItem
-	Node               *node
-	NodeFile           *nodeFile
-	NodeResourceTarget *nodeResourceTarget
-	NodeTagRel         *nodeTagRel
-	StorageObject      *storageObject
-	Tag                *tag
-	TagAlias           *tagAlias
-	TagBindPolicy      *tagBindPolicy
-	TagTargetKind      *tagTargetKind
-	UploadSession      *uploadSession
-	User               *user
+	Q                      = new(Query)
+	BrowserBookmark        *browserBookmark
+	BrowserFileMapping     *browserFileMapping
+	Library                *library
+	MigrationTask          *migrationTask
+	MigrationTaskItem      *migrationTaskItem
+	Node                   *node
+	NodeFile               *nodeFile
+	NodeResourceTarget     *nodeResourceTarget
+	NodeTagRel             *nodeTagRel
+	ResourceMonitorSamples *resourceMonitorSamples
+	StorageObject          *storageObject
+	Tag                    *tag
+	TagAlias               *tagAlias
+	TagBindPolicy          *tagBindPolicy
+	TagTargetKind          *tagTargetKind
+	UploadSession          *uploadSession
+	User                   *user
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
@@ -44,6 +45,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	NodeFile = &Q.NodeFile
 	NodeResourceTarget = &Q.NodeResourceTarget
 	NodeTagRel = &Q.NodeTagRel
+	ResourceMonitorSamples = &Q.ResourceMonitorSamples
 	StorageObject = &Q.StorageObject
 	Tag = &Q.Tag
 	TagAlias = &Q.TagAlias
@@ -55,68 +57,71 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:                 db,
-		BrowserBookmark:    newBrowserBookmark(db, opts...),
-		BrowserFileMapping: newBrowserFileMapping(db, opts...),
-		Library:            newLibrary(db, opts...),
-		MigrationTask:      newMigrationTask(db, opts...),
-		MigrationTaskItem:  newMigrationTaskItem(db, opts...),
-		Node:               newNode(db, opts...),
-		NodeFile:           newNodeFile(db, opts...),
-		NodeResourceTarget: newNodeResourceTarget(db, opts...),
-		NodeTagRel:         newNodeTagRel(db, opts...),
-		StorageObject:      newStorageObject(db, opts...),
-		Tag:                newTag(db, opts...),
-		TagAlias:           newTagAlias(db, opts...),
-		TagBindPolicy:      newTagBindPolicy(db, opts...),
-		TagTargetKind:      newTagTargetKind(db, opts...),
-		UploadSession:      newUploadSession(db, opts...),
-		User:               newUser(db, opts...),
+		db:                     db,
+		BrowserBookmark:        newBrowserBookmark(db, opts...),
+		BrowserFileMapping:     newBrowserFileMapping(db, opts...),
+		Library:                newLibrary(db, opts...),
+		MigrationTask:          newMigrationTask(db, opts...),
+		MigrationTaskItem:      newMigrationTaskItem(db, opts...),
+		Node:                   newNode(db, opts...),
+		NodeFile:               newNodeFile(db, opts...),
+		NodeResourceTarget:     newNodeResourceTarget(db, opts...),
+		NodeTagRel:             newNodeTagRel(db, opts...),
+		ResourceMonitorSamples: newResourceMonitorSamples(db, opts...),
+		StorageObject:          newStorageObject(db, opts...),
+		Tag:                    newTag(db, opts...),
+		TagAlias:               newTagAlias(db, opts...),
+		TagBindPolicy:          newTagBindPolicy(db, opts...),
+		TagTargetKind:          newTagTargetKind(db, opts...),
+		UploadSession:          newUploadSession(db, opts...),
+		User:                   newUser(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	BrowserBookmark    browserBookmark
-	BrowserFileMapping browserFileMapping
-	Library            library
-	MigrationTask      migrationTask
-	MigrationTaskItem  migrationTaskItem
-	Node               node
-	NodeFile           nodeFile
-	NodeResourceTarget nodeResourceTarget
-	NodeTagRel         nodeTagRel
-	StorageObject      storageObject
-	Tag                tag
-	TagAlias           tagAlias
-	TagBindPolicy      tagBindPolicy
-	TagTargetKind      tagTargetKind
-	UploadSession      uploadSession
-	User               user
+	BrowserBookmark        browserBookmark
+	BrowserFileMapping     browserFileMapping
+	Library                library
+	MigrationTask          migrationTask
+	MigrationTaskItem      migrationTaskItem
+	Node                   node
+	NodeFile               nodeFile
+	NodeResourceTarget     nodeResourceTarget
+	NodeTagRel             nodeTagRel
+	ResourceMonitorSamples resourceMonitorSamples
+	StorageObject          storageObject
+	Tag                    tag
+	TagAlias               tagAlias
+	TagBindPolicy          tagBindPolicy
+	TagTargetKind          tagTargetKind
+	UploadSession          uploadSession
+	User                   user
 }
 
 func (q *Query) Available() bool { return q.db != nil }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:                 db,
-		BrowserBookmark:    q.BrowserBookmark.clone(db),
-		BrowserFileMapping: q.BrowserFileMapping.clone(db),
-		Library:            q.Library.clone(db),
-		MigrationTask:      q.MigrationTask.clone(db),
-		MigrationTaskItem:  q.MigrationTaskItem.clone(db),
-		Node:               q.Node.clone(db),
-		NodeFile:           q.NodeFile.clone(db),
-		NodeResourceTarget: q.NodeResourceTarget.clone(db),
-		NodeTagRel:         q.NodeTagRel.clone(db),
-		StorageObject:      q.StorageObject.clone(db),
-		Tag:                q.Tag.clone(db),
-		TagAlias:           q.TagAlias.clone(db),
-		TagBindPolicy:      q.TagBindPolicy.clone(db),
-		TagTargetKind:      q.TagTargetKind.clone(db),
-		UploadSession:      q.UploadSession.clone(db),
-		User:               q.User.clone(db),
+		db:                     db,
+		BrowserBookmark:        q.BrowserBookmark.clone(db),
+		BrowserFileMapping:     q.BrowserFileMapping.clone(db),
+		Library:                q.Library.clone(db),
+		MigrationTask:          q.MigrationTask.clone(db),
+		MigrationTaskItem:      q.MigrationTaskItem.clone(db),
+		Node:                   q.Node.clone(db),
+		NodeFile:               q.NodeFile.clone(db),
+		NodeResourceTarget:     q.NodeResourceTarget.clone(db),
+		NodeTagRel:             q.NodeTagRel.clone(db),
+		ResourceMonitorSamples: q.ResourceMonitorSamples.clone(db),
+		StorageObject:          q.StorageObject.clone(db),
+		Tag:                    q.Tag.clone(db),
+		TagAlias:               q.TagAlias.clone(db),
+		TagBindPolicy:          q.TagBindPolicy.clone(db),
+		TagTargetKind:          q.TagTargetKind.clone(db),
+		UploadSession:          q.UploadSession.clone(db),
+		User:                   q.User.clone(db),
 	}
 }
 
@@ -130,63 +135,66 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:                 db,
-		BrowserBookmark:    q.BrowserBookmark.replaceDB(db),
-		BrowserFileMapping: q.BrowserFileMapping.replaceDB(db),
-		Library:            q.Library.replaceDB(db),
-		MigrationTask:      q.MigrationTask.replaceDB(db),
-		MigrationTaskItem:  q.MigrationTaskItem.replaceDB(db),
-		Node:               q.Node.replaceDB(db),
-		NodeFile:           q.NodeFile.replaceDB(db),
-		NodeResourceTarget: q.NodeResourceTarget.replaceDB(db),
-		NodeTagRel:         q.NodeTagRel.replaceDB(db),
-		StorageObject:      q.StorageObject.replaceDB(db),
-		Tag:                q.Tag.replaceDB(db),
-		TagAlias:           q.TagAlias.replaceDB(db),
-		TagBindPolicy:      q.TagBindPolicy.replaceDB(db),
-		TagTargetKind:      q.TagTargetKind.replaceDB(db),
-		UploadSession:      q.UploadSession.replaceDB(db),
-		User:               q.User.replaceDB(db),
+		db:                     db,
+		BrowserBookmark:        q.BrowserBookmark.replaceDB(db),
+		BrowserFileMapping:     q.BrowserFileMapping.replaceDB(db),
+		Library:                q.Library.replaceDB(db),
+		MigrationTask:          q.MigrationTask.replaceDB(db),
+		MigrationTaskItem:      q.MigrationTaskItem.replaceDB(db),
+		Node:                   q.Node.replaceDB(db),
+		NodeFile:               q.NodeFile.replaceDB(db),
+		NodeResourceTarget:     q.NodeResourceTarget.replaceDB(db),
+		NodeTagRel:             q.NodeTagRel.replaceDB(db),
+		ResourceMonitorSamples: q.ResourceMonitorSamples.replaceDB(db),
+		StorageObject:          q.StorageObject.replaceDB(db),
+		Tag:                    q.Tag.replaceDB(db),
+		TagAlias:               q.TagAlias.replaceDB(db),
+		TagBindPolicy:          q.TagBindPolicy.replaceDB(db),
+		TagTargetKind:          q.TagTargetKind.replaceDB(db),
+		UploadSession:          q.UploadSession.replaceDB(db),
+		User:                   q.User.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	BrowserBookmark    IBrowserBookmarkDo
-	BrowserFileMapping IBrowserFileMappingDo
-	Library            ILibraryDo
-	MigrationTask      IMigrationTaskDo
-	MigrationTaskItem  IMigrationTaskItemDo
-	Node               INodeDo
-	NodeFile           INodeFileDo
-	NodeResourceTarget INodeResourceTargetDo
-	NodeTagRel         INodeTagRelDo
-	StorageObject      IStorageObjectDo
-	Tag                ITagDo
-	TagAlias           ITagAliasDo
-	TagBindPolicy      ITagBindPolicyDo
-	TagTargetKind      ITagTargetKindDo
-	UploadSession      IUploadSessionDo
-	User               IUserDo
+	BrowserBookmark        IBrowserBookmarkDo
+	BrowserFileMapping     IBrowserFileMappingDo
+	Library                ILibraryDo
+	MigrationTask          IMigrationTaskDo
+	MigrationTaskItem      IMigrationTaskItemDo
+	Node                   INodeDo
+	NodeFile               INodeFileDo
+	NodeResourceTarget     INodeResourceTargetDo
+	NodeTagRel             INodeTagRelDo
+	ResourceMonitorSamples IResourceMonitorSamplesDo
+	StorageObject          IStorageObjectDo
+	Tag                    ITagDo
+	TagAlias               ITagAliasDo
+	TagBindPolicy          ITagBindPolicyDo
+	TagTargetKind          ITagTargetKindDo
+	UploadSession          IUploadSessionDo
+	User                   IUserDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		BrowserBookmark:    q.BrowserBookmark.WithContext(ctx),
-		BrowserFileMapping: q.BrowserFileMapping.WithContext(ctx),
-		Library:            q.Library.WithContext(ctx),
-		MigrationTask:      q.MigrationTask.WithContext(ctx),
-		MigrationTaskItem:  q.MigrationTaskItem.WithContext(ctx),
-		Node:               q.Node.WithContext(ctx),
-		NodeFile:           q.NodeFile.WithContext(ctx),
-		NodeResourceTarget: q.NodeResourceTarget.WithContext(ctx),
-		NodeTagRel:         q.NodeTagRel.WithContext(ctx),
-		StorageObject:      q.StorageObject.WithContext(ctx),
-		Tag:                q.Tag.WithContext(ctx),
-		TagAlias:           q.TagAlias.WithContext(ctx),
-		TagBindPolicy:      q.TagBindPolicy.WithContext(ctx),
-		TagTargetKind:      q.TagTargetKind.WithContext(ctx),
-		UploadSession:      q.UploadSession.WithContext(ctx),
-		User:               q.User.WithContext(ctx),
+		BrowserBookmark:        q.BrowserBookmark.WithContext(ctx),
+		BrowserFileMapping:     q.BrowserFileMapping.WithContext(ctx),
+		Library:                q.Library.WithContext(ctx),
+		MigrationTask:          q.MigrationTask.WithContext(ctx),
+		MigrationTaskItem:      q.MigrationTaskItem.WithContext(ctx),
+		Node:                   q.Node.WithContext(ctx),
+		NodeFile:               q.NodeFile.WithContext(ctx),
+		NodeResourceTarget:     q.NodeResourceTarget.WithContext(ctx),
+		NodeTagRel:             q.NodeTagRel.WithContext(ctx),
+		ResourceMonitorSamples: q.ResourceMonitorSamples.WithContext(ctx),
+		StorageObject:          q.StorageObject.WithContext(ctx),
+		Tag:                    q.Tag.WithContext(ctx),
+		TagAlias:               q.TagAlias.WithContext(ctx),
+		TagBindPolicy:          q.TagBindPolicy.WithContext(ctx),
+		TagTargetKind:          q.TagTargetKind.WithContext(ctx),
+		UploadSession:          q.UploadSession.WithContext(ctx),
+		User:                   q.User.WithContext(ctx),
 	}
 }
 

@@ -58,6 +58,8 @@
   - `of storage migration status --task-id <id> [--items] [--json]`：单任务详情；`--items` 同时拉子项列表。
   - `of storage migration cancel --task-id <id> [--dry-run] [--json]`：取消任务（已运行子项保留，pending 子项被 worker 抢到时立刻 skipped）。
   - 与 Web UI 共用 6 个 `/api/v1/migration/...` 端点，详见 `docs/architecture/storage-migration-design.md`。
+- 资源监测命令用于采集控制台历史样本：
+  - `of resource-monitor sample [--library-id <id>] [--dry-run] [--json]`：显式采集全局或资料库范围的资源监测样本。`--dry-run` 返回预览但不写入 `resource_monitor_samples`。
 - 路径演进策略：写命令保持 `id` 参数兼容，同时逐步增加 `path` 参数入口。
 
 ## 4. 错误与退出码约定

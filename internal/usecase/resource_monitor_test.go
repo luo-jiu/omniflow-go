@@ -20,6 +20,20 @@ type fakeResourceMonitorRepository struct {
 	ping       error
 	got        uint64
 	gotLibrary uint64
+	ownedBy    map[uint64]bool
+	saved      domain.Sample
+}
+
+func (r *fakeResourceMonitorRepository) LibraryBelongsToOwner(
+	_ context.Context,
+	ownerUserID uint64,
+	libraryID uint64,
+) (bool, error) {
+	r.got = ownerUserID
+	if r.ownedBy == nil {
+		return true, nil
+	}
+	return r.ownedBy[libraryID], nil
 }
 
 func (r *fakeResourceMonitorRepository) CountStorageDistribution(
@@ -37,6 +51,16 @@ func (r *fakeResourceMonitorRepository) CountStorageDistribution(
 
 func (r *fakeResourceMonitorRepository) Ping(_ context.Context) error {
 	return r.ping
+}
+
+func (r *fakeResourceMonitorRepository) SaveSample(
+	_ context.Context,
+	sample domain.Sample,
+) (domain.Sample, error) {
+	r.saved = sample
+	sample.ID = 1
+	sample.CreatedAt = time.Now().UTC()
+	return sample, nil
 }
 
 type fakeRedisProbeRepository struct {
@@ -250,6 +274,95 @@ func TestResourceMonitorSnapshotWithLibraryScope(t *testing.T) {
 	}
 	if repo.got != 42 || repo.gotLibrary != 7 {
 		t.Fatalf("scope = owner %d library %d, want owner 42 library 7", repo.got, repo.gotLibrary)
+	}
+}
+
+func TestResourceMonitorCaptureSample(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		rows: []domain.StorageDistributionRow{
+			{
+				Provider:            "local-minio",
+				Bucket:              "default",
+				ObjectCount:         2,
+				FileRefCount:        2,
+				PhysicalBytes:       1024,
+				VisibleObjectCount:  1,
+				VisibleFileRefCount: 1,
+				VisibleBytes:        512,
+				RecycleObjectCount:  1,
+				RecycleFileRefCount: 1,
+				RecycleBytes:        512,
+			},
+		},
+	}
+
+	uc := NewResourceMonitorUseCase(repo, &fakeRedisProbeRepository{}, storage.NewStorageRegistry())
+	got, err := uc.CaptureSample(
+		context.Background(),
+		actor.Actor{ID: "42", Kind: actor.KindUser},
+		ResourceMonitorSnapshotOptions{LibraryID: 7},
+	)
+	if err != nil {
+		t.Fatalf("CaptureSample() error = %v", err)
+	}
+	if got.ID != 1 || repo.saved.ActorID != "42" || repo.saved.Scope != "library" || repo.saved.LibraryID != 7 {
+		t.Fatalf("sample identity = got %+v saved %+v", got, repo.saved)
+	}
+	if repo.saved.PhysicalBytes != 1024 || repo.saved.RecycleBytes != 512 || repo.saved.ProbeTotal != 2 {
+		t.Fatalf("sample metrics = %+v", repo.saved)
+	}
+	if !strings.Contains(repo.saved.SnapshotJSON, `"physicalBytes":1024`) {
+		t.Fatalf("sample snapshot json = %s", repo.saved.SnapshotJSON)
+	}
+}
+
+func TestResourceMonitorCaptureSampleDryRun(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{
+		rows: []domain.StorageDistributionRow{
+			{
+				Provider:      "local-minio",
+				Bucket:        "default",
+				ObjectCount:   1,
+				FileRefCount:  1,
+				PhysicalBytes: 512,
+			},
+		},
+	}
+
+	uc := NewResourceMonitorUseCase(repo, nil, storage.NewStorageRegistry())
+	got, err := uc.CaptureSample(
+		context.Background(),
+		actor.Actor{ID: "42", Kind: actor.KindUser},
+		ResourceMonitorSnapshotOptions{LibraryID: 7, DryRun: true},
+	)
+	if err != nil {
+		t.Fatalf("CaptureSample(dry-run) error = %v", err)
+	}
+	if !got.DryRun || got.ID != 0 || repo.saved.ActorID != "" {
+		t.Fatalf("dry-run sample = got %+v saved %+v", got, repo.saved)
+	}
+	if got.Scope != "library" || got.LibraryID != 7 || got.PhysicalBytes != 512 {
+		t.Fatalf("dry-run sample metrics = %+v", got)
+	}
+}
+
+func TestResourceMonitorCaptureSampleRejectsUnownedLibrary(t *testing.T) {
+	repo := &fakeResourceMonitorRepository{ownedBy: map[uint64]bool{7: false}}
+	uc := NewResourceMonitorUseCase(repo, nil, storage.NewStorageRegistry())
+
+	_, err := uc.CaptureSample(
+		context.Background(),
+		actor.Actor{ID: "42", Kind: actor.KindUser},
+		ResourceMonitorSnapshotOptions{LibraryID: 7},
+	)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("CaptureSample() error = %v, want ErrNotFound", err)
+	}
+	if repo.gotLibrary != 0 {
+		t.Fatalf("distribution query libraryID = %d, want 0 before ownership passes", repo.gotLibrary)
+	}
+	if repo.saved.ActorID != "" {
+		t.Fatalf("unexpected saved sample = %+v", repo.saved)
 	}
 }
 

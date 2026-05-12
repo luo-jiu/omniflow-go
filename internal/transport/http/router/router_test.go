@@ -327,6 +327,24 @@ func TestBrowserFileMappingDeleteDryRunMarksHeader(t *testing.T) {
 	}
 }
 
+func TestResourceMonitorSampleDryRunMarksHeader(t *testing.T) {
+	engine := newTestEngine()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/resource-monitor/samples?dry_run=true", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("username", "1")
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected resource monitor sample route to hit handler and return 500 when service is nil, got %d", recorder.Code)
+	}
+	if got := recorder.Header().Get("X-Omniflow-Dry-Run"); got != "true" {
+		t.Fatalf("expected dry-run header=true, got %q", got)
+	}
+}
+
 type routerTestBrowserBookmarkRepository struct {
 	findFirstURLByMatchKeyFunc  func(ownerUserID uint64, urlMatchKey string) (domainbrowserbookmark.BrowserBookmark, error)
 	nextSortOrderFunc           func(ownerUserID uint64, parentID *uint64) (int, error)

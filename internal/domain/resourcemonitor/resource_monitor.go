@@ -24,7 +24,9 @@ type StorageDistributionRow struct {
 
 // Repository 定义资源监测所需的只读数据端口。
 type Repository interface {
+	LibraryBelongsToOwner(ctx context.Context, ownerUserID uint64, libraryID uint64) (bool, error)
 	CountStorageDistribution(ctx context.Context, ownerUserID uint64, libraryID uint64) ([]StorageDistributionRow, error)
+	SaveSample(ctx context.Context, sample Sample) (Sample, error)
 	Ping(ctx context.Context) error
 }
 
@@ -41,6 +43,38 @@ type Snapshot struct {
 	DistributionError string                    `json:"distributionError,omitempty"`
 	ProbeSummary      ProbeSummary              `json:"probeSummary"`
 	Probes            []ProbeTarget             `json:"probes"`
+}
+
+// Sample 表示一条资源监测历史采样。
+type Sample struct {
+	ID                  int64     `json:"id"`
+	DryRun              bool      `json:"dryRun"`
+	ActorID             string    `json:"actorId"`
+	Scope               string    `json:"scope"`
+	LibraryID           int64     `json:"libraryId"`
+	GeneratedAt         time.Time `json:"generatedAt"`
+	ProviderCount       int       `json:"providerCount"`
+	BucketCount         int       `json:"bucketCount"`
+	ObjectCount         int64     `json:"objectCount"`
+	FileRefCount        int64     `json:"fileRefCount"`
+	PhysicalBytes       int64     `json:"physicalBytes"`
+	VisibleObjectCount  int64     `json:"visibleObjectCount"`
+	VisibleFileRefCount int64     `json:"visibleFileRefCount"`
+	VisibleBytes        int64     `json:"visibleBytes"`
+	RecycleObjectCount  int64     `json:"recycleObjectCount"`
+	RecycleFileRefCount int64     `json:"recycleFileRefCount"`
+	RecycleBytes        int64     `json:"recycleBytes"`
+	OrphanObjectCount   int64     `json:"orphanObjectCount"`
+	OrphanBytes         int64     `json:"orphanBytes"`
+	UnmatchedCount      int       `json:"unmatchedCount"`
+	LegacyProviderCount int       `json:"legacyProviderCount"`
+	ProbeTotal          int       `json:"probeTotal"`
+	ProbeOK             int       `json:"probeOk"`
+	ProbeError          int       `json:"probeError"`
+	ProbeUnknown        int       `json:"probeUnknown"`
+	DistributionError   string    `json:"distributionError,omitempty"`
+	SnapshotJSON        string    `json:"-"`
+	CreatedAt           time.Time `json:"createdAt"`
 }
 
 // SnapshotSummary 表示快照级汇总。

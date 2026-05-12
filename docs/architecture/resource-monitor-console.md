@@ -13,6 +13,9 @@
 ```text
 GET /api/v1/resource-monitor/snapshot
 GET /api/v1/resource-monitor/snapshot?libraryId=123
+POST /api/v1/resource-monitor/samples
+POST /api/v1/resource-monitor/samples?libraryId=123
+POST /api/v1/resource-monitor/samples?libraryId=123&dryRun=true
 ```
 
 ## 2. 分层边界
@@ -136,6 +139,54 @@ GET /api/v1/resource-monitor/snapshot
 }
 ```
 
+### 3.2 显式采样
+
+```text
+POST /api/v1/resource-monitor/samples
+POST /api/v1/resource-monitor/samples?libraryId=123
+```
+
+鉴权和范围：
+
+- 需要登录态。
+- 不带 `libraryId` 时写入 actor 全部资料库范围的全局样本。
+- 带 `libraryId` 时写入 actor 指定资料库范围的样本；不拥有该资料库时返回 not found，不写入空样本。
+- 当前只支持用户显式触发，不启动后台定时器。
+- 支持 `dryRun=true`，返回将要写入的样本预览，但不持久化。
+
+响应 `data`：
+
+```json
+{
+  "id": 1,
+  "dryRun": false,
+  "actorId": "42",
+  "scope": "library",
+  "libraryId": 123,
+  "generatedAt": "2026-05-11T00:00:00Z",
+  "providerCount": 1,
+  "bucketCount": 1,
+  "objectCount": 10,
+  "fileRefCount": 10,
+  "physicalBytes": 1024,
+  "visibleObjectCount": 8,
+  "visibleFileRefCount": 8,
+  "visibleBytes": 768,
+  "recycleObjectCount": 2,
+  "recycleFileRefCount": 2,
+  "recycleBytes": 256,
+  "orphanObjectCount": 0,
+  "orphanBytes": 0,
+  "unmatchedCount": 0,
+  "legacyProviderCount": 0,
+  "probeTotal": 3,
+  "probeOk": 3,
+  "probeError": 0,
+  "probeUnknown": 0,
+  "createdAt": "2026-05-11T00:00:00Z"
+}
+```
+
 ## 4. 统计口径
 
 - `physicalBytes`：按 distinct `storage_objects` 聚合 `content_length`，代表真实对象占用。
@@ -153,6 +204,8 @@ GET /api/v1/resource-monitor/snapshot
 - `distributionError`：资源分布统计失败时的脱敏错误摘要；此时接口仍返回 partial snapshot 和探针结果。
 - `probeSummary`：对象存储、Postgres、Redis 探针状态汇总。
 - `probes`：只读探针结果，错误只返回脱敏后的简短摘要。
+- `resource_monitor_samples`：历史采样表；summary 列用于趋势查询，`snapshot_json` 保存完整快照用于后续告警、详情回放和重新聚合。
+- `dryRun`：采样写链路的标准 dry-run 参数，真实校验和快照生成照常执行，但跳过持久化。
 
 第一版暂不区分：
 
@@ -176,8 +229,8 @@ GET /api/v1/resource-monitor/snapshot
 
 后续仍未实现：
 
+- 自动周期采样、趋势曲线和阈值提醒。
 - MySQL / 外部资源探针。
-- 历史采样、趋势曲线和阈值提醒。
 
 ## 6. 验证方式
 
@@ -192,3 +245,5 @@ GOCACHE=/tmp/go-build go test ./...
 - actor id 缺失时返回参数错误。
 - provider 配置匹配时补齐 label / type / endpoint / default。
 - provider 配置缺失时保留原 provider 并标记 `matchedConfig=false`。
+- 显式采样会写入 `resource_monitor_samples`；带 `libraryId` 时必须先通过 actor ownership 校验。
+- `dryRun=true` 时返回样本预览且不写入 `resource_monitor_samples`。

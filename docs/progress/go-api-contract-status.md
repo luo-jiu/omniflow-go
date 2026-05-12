@@ -11,9 +11,9 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 
 | 指标 | 数量 | 说明 |
 |---|---:|---|
-| `/api/v1` 接口总数 | 54 | 以当前路由注册为准 |
-| 功能实现 | 54/54 | 含兼容 no-op 1 个 |
-| 日志 P1 接入 | 54/54 | 详见 API 与日志归档摘要 |
+| `/api/v1` 接口总数 | 55 | 以当前路由注册为准 |
+| 功能实现 | 55/55 | 含兼容 no-op 1 个 |
+| 日志 P1 接入 | 55/55 | 详见 API 与日志归档摘要 |
 | CLI 主要写链路 | 已覆盖 | 详见 CLI 进度台账 |
 
 ## 2. 保留契约
@@ -56,6 +56,12 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - `distributionError` 表示资源分布统计失败时的脱敏错误摘要；失败时接口仍返回 partial snapshot 和探针结果。
   - `probeSummary` 和 `probes` 返回对象存储、Postgres、Redis 的只读探针状态、耗时和错误摘要。
   - 当前接口只读；对象存储探针只检查 bucket 可访问性，不创建对象、不清理数据。
+- `POST /api/v1/resource-monitor/samples`
+  - 显式写入一条资源监测历史采样；支持可选 `libraryId` 查询参数，范围语义与 snapshot 一致。
+  - 带 `libraryId` 时会先校验资料库归属；不属于当前 actor 时返回 not found 且不写入空样本。
+  - 支持 `dryRun=true` 返回样本预览但不持久化。
+  - 样本 summary 字段用于后续趋势查询，完整快照保存到 `resource_monitor_samples.snapshot_json`。
+  - 当前不启动后台定时采样，不自动告警。
 - `POST /api/v1/directory/links/batch`
 - `PUT /api/v1/nodes/:nodeId/content`
   - 按节点 ID 原地替换文件内容，请求体使用 `libraryId`、`content`、可选 `contentType` 和 `storageProvider`。

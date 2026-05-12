@@ -162,6 +162,57 @@ func TestCreateNodeIncludesConflictPolicy(t *testing.T) {
 	}
 }
 
+func TestCaptureResourceMonitorSample(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/resource-monitor/samples" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("libraryId"); got != "7" {
+			t.Fatalf("expected libraryId=7, got %q", got)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"id":5,"dryRun":true,"actorId":"42","scope":"library","libraryId":7,"generatedAt":"2026-05-11T00:00:00Z","providerCount":1,"bucketCount":1,"objectCount":2,"fileRefCount":2,"physicalBytes":1024,"probeTotal":2,"probeOk":1,"probeError":1,"probeUnknown":0,"createdAt":"2026-05-11T00:00:01Z"},"request_id":"req-resource-sample"}`)),
+		}, nil
+	})
+
+	got, err := client.CaptureResourceMonitorSample(context.Background(), 7, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got.ID != 5 {
+		t.Fatalf("expected id=5, got %d", got.ID)
+	}
+	if !got.DryRun {
+		t.Fatalf("expected dryRun=true")
+	}
+	if got.Scope != "library" || got.LibraryID != 7 {
+		t.Fatalf("unexpected scope = %s/%d", got.Scope, got.LibraryID)
+	}
+	if got.PhysicalBytes != 1024 || got.ProbeOK != 1 || got.ProbeError != 1 {
+		t.Fatalf("unexpected sample metrics = %+v", got)
+	}
+}
+
 func TestClearRecycleBin(t *testing.T) {
 	t.Parallel()
 

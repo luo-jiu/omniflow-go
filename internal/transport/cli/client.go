@@ -375,6 +375,36 @@ type StorageDistributionResult struct {
 	ByProvider []StorageDistributionEntry `json:"byProvider"`
 }
 
+type ResourceMonitorSample struct {
+	ID                  int64     `json:"id"`
+	DryRun              bool      `json:"dryRun"`
+	ActorID             string    `json:"actorId"`
+	Scope               string    `json:"scope"`
+	LibraryID           int64     `json:"libraryId"`
+	GeneratedAt         time.Time `json:"generatedAt"`
+	ProviderCount       int       `json:"providerCount"`
+	BucketCount         int       `json:"bucketCount"`
+	ObjectCount         int64     `json:"objectCount"`
+	FileRefCount        int64     `json:"fileRefCount"`
+	PhysicalBytes       int64     `json:"physicalBytes"`
+	VisibleObjectCount  int64     `json:"visibleObjectCount"`
+	VisibleFileRefCount int64     `json:"visibleFileRefCount"`
+	VisibleBytes        int64     `json:"visibleBytes"`
+	RecycleObjectCount  int64     `json:"recycleObjectCount"`
+	RecycleFileRefCount int64     `json:"recycleFileRefCount"`
+	RecycleBytes        int64     `json:"recycleBytes"`
+	OrphanObjectCount   int64     `json:"orphanObjectCount"`
+	OrphanBytes         int64     `json:"orphanBytes"`
+	UnmatchedCount      int       `json:"unmatchedCount"`
+	LegacyProviderCount int       `json:"legacyProviderCount"`
+	ProbeTotal          int       `json:"probeTotal"`
+	ProbeOK             int       `json:"probeOk"`
+	ProbeError          int       `json:"probeError"`
+	ProbeUnknown        int       `json:"probeUnknown"`
+	DistributionError   string    `json:"distributionError,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+}
+
 func NewClient(baseURL, username, token string) *Client {
 	return &Client{
 		baseURL:  normalizeBaseURL(baseURL),
@@ -934,6 +964,29 @@ func (c *Client) StorageDistribution(
 		http.MethodGet,
 		fmt.Sprintf("/api/v1/libraries/%d/storage-distribution", libraryID),
 		query,
+		nil,
+		true,
+		&out,
+	)
+	return out, err
+}
+
+func (c *Client) CaptureResourceMonitorSample(
+	ctx context.Context,
+	libraryID int64,
+	dryRun bool,
+) (ResourceMonitorSample, error) {
+	query := url.Values{}
+	if libraryID > 0 {
+		query.Set("libraryId", strconv.FormatInt(libraryID, 10))
+	}
+
+	var out ResourceMonitorSample
+	err := c.doJSON(
+		ctx,
+		http.MethodPost,
+		"/api/v1/resource-monitor/samples",
+		withDryRunQuery(query, dryRun),
 		nil,
 		true,
 		&out,

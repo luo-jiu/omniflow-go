@@ -763,6 +763,31 @@ func (a *App) buildCommandTree() *command {
 	}
 	root.Children["upload"] = upload
 
+	resourceMonitor := &command{
+		Name:     "resource-monitor",
+		Summary:  "Resource monitor commands",
+		Usage:    "of resource-monitor <sample> [flags]",
+		Children: map[string]*command{},
+	}
+	resourceMonitor.Children["sample"] = &command{
+		Name:    "sample",
+		Summary: "Capture a resource monitor sample",
+		Usage:   "of resource-monitor sample [--library-id <id>] [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--library-id <id>   optional library scope",
+			"--base-url <url>    API base URL",
+			"--dry-run           preview only, do not commit changes",
+			"--json              output JSON",
+		},
+		Examples: []string{
+			"of resource-monitor sample",
+			"of resource-monitor sample --library-id 1 --json",
+			"of resource-monitor sample --library-id 1 --dry-run --json",
+		},
+		Run: a.runResourceMonitorSample,
+	}
+	root.Children["resource-monitor"] = resourceMonitor
+
 	storage := &command{
 		Name:     "storage",
 		Summary:  "Storage migration commands",

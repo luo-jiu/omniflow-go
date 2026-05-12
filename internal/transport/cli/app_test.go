@@ -168,6 +168,25 @@ func TestRunHelpBrowserBookmarkContainsSubcommands(t *testing.T) {
 	}
 }
 
+func TestRunHelpResourceMonitorContainsSample(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"help", "resource-monitor"})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "sample") {
+		t.Fatalf("expected sample in resource-monitor help, got: %s", stdout.String())
+	}
+}
+
 func TestRunHelpFSRecycleContainsSubcommands(t *testing.T) {
 	t.Parallel()
 
@@ -515,6 +534,95 @@ func TestRunBrowserBookmarkImportRequiresFile(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "`--file` is required") {
 		t.Fatalf("expected missing file error, got: %s", stderr.String())
+	}
+}
+
+func TestRunResourceMonitorSampleRejectsNegativeLibraryID(t *testing.T) {
+	t.Parallel()
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	exitCode := app.Run([]string{"resource-monitor", "sample", "--library-id", "-1"})
+	if exitCode != 1 {
+		t.Fatalf("unexpected exit code: %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "`--library-id` must be >= 0") {
+		t.Fatalf("expected library id error, got: %s", stderr.String())
+	}
+}
+
+func TestRunResourceMonitorSampleSuccessJSON(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	t.Setenv(envUsername, "tester")
+	t.Setenv(envToken, "token-123")
+
+	originTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/resource-monitor/samples" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("libraryId"); got != "7" {
+			t.Fatalf("expected libraryId=7, got %q", got)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body: io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":{"id":0,"dryRun":true,"actorId":"42","scope":"library","libraryId":7,"generatedAt":"2026-05-11T00:00:00Z","providerCount":1,"bucketCount":1,"objectCount":2,"fileRefCount":2,"physicalBytes":1024,"visibleObjectCount":1,"visibleFileRefCount":1,"visibleBytes":512,"recycleObjectCount":1,"recycleFileRefCount":1,"recycleBytes":512,"orphanObjectCount":0,"orphanBytes":0,"unmatchedCount":0,"legacyProviderCount":0,"probeTotal":2,"probeOk":2,"probeError":0,"probeUnknown":0,"createdAt":"2026-05-11T00:00:01Z"},"request_id":"req-resource-sample"}`)),
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originTransport
+	}()
+
+	exitCode := app.Run([]string{
+		"resource-monitor", "sample",
+		"--base-url", "http://example.test",
+		"--library-id", "7",
+		"--dry-run",
+		"--json",
+	})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got err=%v output=%s", err, stdout.String())
+	}
+	if got["dryRun"] != true {
+		t.Fatalf("expected dryRun=true, got %#v", got["dryRun"])
+	}
+	if got["scope"] != "library" {
+		t.Fatalf("expected scope=library, got %#v", got["scope"])
+	}
+	if got["libraryId"] != float64(7) {
+		t.Fatalf("expected libraryId=7, got %#v", got["libraryId"])
+	}
+	if got["physicalBytes"] != float64(1024) {
+		t.Fatalf("expected physicalBytes=1024, got %#v", got["physicalBytes"])
 	}
 }
 

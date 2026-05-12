@@ -37,3 +37,31 @@ func (h *ResourceMonitorHandler) Snapshot(ctx *gin.Context) {
 	}
 	Success(ctx, snapshot)
 }
+
+// CaptureSample 显式写入一条资源监测历史采样。
+func (h *ResourceMonitorHandler) CaptureSample(ctx *gin.Context) {
+	libraryID, ok := QueryUint64(ctx, false, "libraryId")
+	if !ok {
+		return
+	}
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+	MarkDryRunHeader(ctx, dryRun)
+
+	if h.uc == nil {
+		InternalError(ctx, "resource monitor service not configured")
+		return
+	}
+	sample, err := h.uc.CaptureSample(
+		ctx.Request.Context(),
+		actorFromContext(ctx),
+		usecase.ResourceMonitorSnapshotOptions{LibraryID: libraryID, DryRun: dryRun},
+	)
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, sample)
+}
