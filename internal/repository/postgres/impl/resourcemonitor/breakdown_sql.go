@@ -126,7 +126,7 @@ const resourceBreakdownLibrarySQL = `
 `
 
 const resourceBreakdownCategorySQL = `
-	WITH scoped_libraries AS (
+	WITH RECURSIVE scoped_libraries AS (
 		SELECT
 			l.id
 		FROM libraries l
@@ -165,24 +165,14 @@ const resourceBreakdownCategorySQL = `
 		 AND n.library_id = nf.library_id
 		GROUP BY so.id
 	),
-	ref_categories AS (
+	ref_nodes AS (
 		SELECT
 			so.id AS storage_object_id,
+			so.library_id,
 			so.content_length,
 			n.id AS node_id,
-			n.deleted_at,
-			n.archive_mode,
-			CASE
-				WHEN n.id IS NULL THEN 'UNCLASSIFIED'
-				WHEN UPPER(TRIM(COALESCE(n.built_in_type, ''))) IN ('', 'DEF') THEN 'DEF'
-				WHEN UPPER(TRIM(COALESCE(n.built_in_type, ''))) IN ('COMIC', 'ASMR', 'VIDEO', 'AUDIO') THEN
-					UPPER(TRIM(n.built_in_type))
-				ELSE 'UNKNOWN'
-			END AS category_key,
-			CASE
-				WHEN n.id IS NULL THEN ''
-				ELSE UPPER(TRIM(COALESCE(n.built_in_type, '')))
-			END AS built_in_type
+			n.parent_id AS node_parent_id,
+			n.deleted_at AS node_deleted_at
 		FROM scoped_objects so
 		LEFT JOIN node_files nf
 		  ON nf.storage_object_id = so.id
@@ -190,6 +180,87 @@ const resourceBreakdownCategorySQL = `
 		LEFT JOIN nodes n
 		  ON n.id = nf.file_id
 		 AND n.library_id = nf.library_id
+	),
+	ref_ancestors AS (
+		SELECT
+			rn.storage_object_id,
+			rn.library_id,
+			rn.content_length,
+			rn.node_id,
+			rn.node_deleted_at,
+			n.id AS ancestor_id,
+			n.parent_id AS next_parent_id,
+			UPPER(TRIM(COALESCE(n.built_in_type, ''))) AS ancestor_built_in_type,
+			0 AS depth
+		FROM ref_nodes rn
+		JOIN nodes n
+		  ON n.id = rn.node_id
+		 AND n.library_id = rn.library_id
+		WHERE rn.node_id IS NOT NULL
+
+		UNION ALL
+
+		SELECT
+			ra.storage_object_id,
+			ra.library_id,
+			ra.content_length,
+			ra.node_id,
+			ra.node_deleted_at,
+			p.id AS ancestor_id,
+			p.parent_id AS next_parent_id,
+			UPPER(TRIM(COALESCE(p.built_in_type, ''))) AS ancestor_built_in_type,
+			ra.depth + 1 AS depth
+		FROM ref_ancestors ra
+		JOIN nodes p
+		  ON p.id = ra.next_parent_id
+		 AND p.library_id = ra.library_id
+		WHERE ra.next_parent_id IS NOT NULL
+		  AND ra.next_parent_id <> 0
+		  AND ra.depth < 64
+	),
+	ref_effective_categories AS (
+		SELECT
+			ranked.storage_object_id,
+			ranked.node_id,
+			CASE
+				WHEN ranked.ancestor_built_in_type IN ('COMIC', 'ASMR', 'VIDEO', 'AUDIO') THEN
+					ranked.ancestor_built_in_type
+				ELSE 'UNKNOWN'
+			END AS category_key,
+			ranked.ancestor_built_in_type AS built_in_type
+		FROM (
+			SELECT
+				ra.storage_object_id,
+				ra.node_id,
+				ra.ancestor_built_in_type,
+				ROW_NUMBER() OVER (
+					PARTITION BY ra.storage_object_id, ra.node_id
+					ORDER BY ra.depth DESC, ra.ancestor_id ASC
+				) AS rank
+			FROM ref_ancestors ra
+			WHERE ra.ancestor_built_in_type NOT IN ('', 'DEF')
+		) ranked
+		WHERE ranked.rank = 1
+	),
+	ref_categories AS (
+		SELECT
+			rn.storage_object_id,
+			rn.content_length,
+			rn.node_id,
+			rn.node_deleted_at AS deleted_at,
+			CASE
+				WHEN rn.node_id IS NULL THEN 'UNCLASSIFIED'
+				WHEN ec.category_key IS NOT NULL THEN ec.category_key
+				ELSE 'DEF'
+			END AS category_key,
+			COALESCE(
+				ec.built_in_type,
+				CASE WHEN rn.node_id IS NULL THEN '' ELSE 'DEF' END
+			) AS built_in_type
+		FROM ref_nodes rn
+		LEFT JOIN ref_effective_categories ec
+		  ON ec.storage_object_id = rn.storage_object_id
+		 AND ec.node_id = rn.node_id
 	),
 	object_main_category AS (
 		SELECT
@@ -204,7 +275,6 @@ const resourceBreakdownCategorySQL = `
 						WHEN r.node_id IS NOT NULL AND r.deleted_at IS NOT NULL THEN 1
 						ELSE 2
 					END,
-					CASE WHEN r.archive_mode = TRUE THEN 0 ELSE 1 END,
 					CASE WHEN r.category_key NOT IN ('DEF', 'UNCLASSIFIED') THEN 0 ELSE 1 END,
 					COALESCE(r.node_id, 9223372036854775807)
 			) AS rank
@@ -255,35 +325,10 @@ const resourceBreakdownCategorySQL = `
 		FROM ref_categories r
 		GROUP BY r.category_key
 	),
-	archive_dirs AS (
-		SELECT
-			CASE
-				WHEN UPPER(TRIM(COALESCE(n.built_in_type, ''))) IN ('', 'DEF') THEN 'DEF'
-				WHEN UPPER(TRIM(COALESCE(n.built_in_type, ''))) IN ('COMIC', 'ASMR', 'VIDEO', 'AUDIO') THEN
-					UPPER(TRIM(n.built_in_type))
-				ELSE 'UNKNOWN'
-			END AS category_key,
-			COUNT(*) AS archive_directory_count
-		FROM nodes n
-		JOIN scoped_libraries l
-		  ON l.id = n.library_id
-		WHERE n.deleted_at IS NULL
-		  AND n.node_type = 0
-		  AND n.archive_mode = TRUE
-		GROUP BY
-			CASE
-				WHEN UPPER(TRIM(COALESCE(n.built_in_type, ''))) IN ('', 'DEF') THEN 'DEF'
-				WHEN UPPER(TRIM(COALESCE(n.built_in_type, ''))) IN ('COMIC', 'ASMR', 'VIDEO', 'AUDIO') THEN
-					UPPER(TRIM(n.built_in_type))
-				ELSE 'UNKNOWN'
-			END
-	),
 	category_keys AS (
 		SELECT category_key FROM physical_by_category
 		UNION
 		SELECT category_key FROM referenced_by_category
-		UNION
-		SELECT category_key FROM archive_dirs
 	)
 	SELECT
 		k.category_key AS key,
@@ -300,13 +345,11 @@ const resourceBreakdownCategorySQL = `
 		COALESCE(p.recycle_bytes, 0) AS recycle_bytes,
 		COALESCE(p.orphan_object_count, 0) AS orphan_object_count,
 		COALESCE(p.orphan_bytes, 0) AS orphan_bytes,
-		COALESCE(a.archive_directory_count, 0) AS archive_directory_count
+		0 AS archive_directory_count
 	FROM category_keys k
 	LEFT JOIN physical_by_category p
 	  ON p.category_key = k.category_key
 	LEFT JOIN referenced_by_category r
 	  ON r.category_key = k.category_key
-	LEFT JOIN archive_dirs a
-	  ON a.category_key = k.category_key
 	ORDER BY physical_bytes DESC, object_count DESC, key ASC
 `

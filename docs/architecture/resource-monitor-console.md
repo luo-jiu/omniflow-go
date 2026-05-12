@@ -241,7 +241,7 @@ POST /api/v1/resource-monitor/samples?libraryId=123
 - `distributionError`：资源分布统计失败时的脱敏错误摘要；此时接口仍返回 partial snapshot 和探针结果。
 - `probeSummary`：对象存储、Postgres、Redis 探针状态汇总。
 - `probes`：只读探针结果，错误只返回脱敏后的简短摘要。
-- `breakdown.categories`：按引用节点的 `built_in_type` 做分类；物理容量按对象主分类去重，引用容量按引用展开。
+- `breakdown.categories`：按引用节点向上寻找最外层非 `DEF` 内置类型做分类；内置类型被视为内容集合，集合内部文件都归属该外层内置类型。物理容量按对象主分类去重，引用容量按引用展开；归档模式允许嵌套，分类统计不按 `archive_mode` 递归聚合。
 - `breakdown.statuses`：沿用 visible / recycle / orphan 对象级主归属。
 - `resource_monitor_samples`：历史采样表；summary 列用于趋势查询，`snapshot_json` 保存完整快照用于后续告警、详情回放和重新聚合。
 - `dryRun`：采样写链路的标准 dry-run 参数，真实校验和快照生成照常执行，但跳过持久化。
