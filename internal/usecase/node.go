@@ -524,7 +524,8 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 		} else {
 			builtInType = strings.ToUpper(builtInType)
 		}
-		if (builtInType == "AUDIO" || builtInType == "VIDEO") && node.Type != domainnode.TypeDirectory {
+		if (builtInType == "AUDIO" || builtInType == "VIDEO" || builtInType == "GALLERY") &&
+			node.Type != domainnode.TypeDirectory {
 			return fmt.Errorf("%w: %s built-in type only supports directories", ErrInvalidArgument, builtInType)
 		}
 		updates["built_in_type"] = builtInType

@@ -252,7 +252,7 @@ func topLibraryBy(
 func normalizeBreakdownCategoryKey(value string) string {
 	key := strings.ToUpper(strings.TrimSpace(value))
 	switch key {
-	case "DEF", "COMIC", "ASMR", "VIDEO", "AUDIO", "UNKNOWN", "UNCLASSIFIED":
+	case "DEF", "COMIC", "ASMR", "VIDEO", "AUDIO", "GALLERY", "UNKNOWN", "UNCLASSIFIED":
 		return key
 	case "":
 		return "DEF"
@@ -273,6 +273,8 @@ func breakdownCategoryLabel(key string) string {
 		return "视频"
 	case "AUDIO":
 		return "音频"
+	case "GALLERY":
+		return "图集"
 	case "UNCLASSIFIED":
 		return "未归类对象"
 	default:

@@ -223,7 +223,7 @@ const resourceBreakdownCategorySQL = `
 			ranked.storage_object_id,
 			ranked.node_id,
 			CASE
-				WHEN ranked.ancestor_built_in_type IN ('COMIC', 'ASMR', 'VIDEO', 'AUDIO') THEN
+				WHEN ranked.ancestor_built_in_type IN ('COMIC', 'ASMR', 'VIDEO', 'AUDIO', 'GALLERY') THEN
 					ranked.ancestor_built_in_type
 				ELSE 'UNKNOWN'
 			END AS category_key,

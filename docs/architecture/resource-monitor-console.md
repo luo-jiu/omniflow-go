@@ -173,7 +173,7 @@ GET /api/v1/resource-monitor/breakdown?libraryId=123
 
 - `summary`：资料库数、归档目录数、物理去重容量、引用展开容量、对象数、文件引用数、visible / recycle / orphan、多引用对象等总览。
 - `libraries`：按资料库聚合的容量、对象、引用、归档目录、状态容量、最大 provider / bucket 和占比，默认按容量降序。
-- `categories`：按 `builtInType` 归类的普通资源、漫画、ASMR、视频、音频、未知类型和未归类对象。
+- `categories`：按 `builtInType` 归类的普通资源、漫画、ASMR、视频、音频、图集、未知类型和未归类对象。
 - `statuses`：可见资源、回收站、孤儿对象三类对象级主归属。
 - `anomalies`：只读诊断摘要，例如回收站占用集中、孤儿对象、多引用对象。
 - `breakdownError`：细分统计失败时的脱敏错误摘要；失败不影响 `/distribution` 和 `/probes`。
@@ -191,7 +191,7 @@ GET /api/v1/resource-monitor/dashboard?libraryId=123
 
 - `summary`：沿用细分仪表盘总览，区分物理去重容量和引用展开容量。
 - `fileTypes`：基础文件类型分布，例如视频、图片、音频、文本、压缩包、未知类型。
-- `collections`：业务集合类型分布，例如普通资源、漫画、ASMR、视频、音频、未知类型、未归类对象。
+- `collections`：业务集合类型分布，例如普通资源、漫画、ASMR、视频、音频、图集、未知类型、未归类对象。
 - `collectionFileTypeMatrix`：业务集合 x 基础文件类型交叉统计，用于解释 ASMR / 漫画等集合内部由哪些基础文件组成。
 - `libraries / statuses / anomalies`：沿用细分仪表盘中的资料库排行、资源状态和只读诊断摘要。
 - `dashboardError`：V2 统计失败时的脱敏错误摘要；该接口不影响 `/distribution`、`/breakdown` 和 `/probes`。
