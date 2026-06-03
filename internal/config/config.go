@@ -87,11 +87,12 @@ type Upload struct {
 }
 
 type MinIO struct {
-	Endpoint  string `yaml:"endpoint"`
-	AccessKey string `yaml:"access_key"`
-	SecretKey string `yaml:"secret_key"`
-	UseSSL    bool   `yaml:"use_ssl"`
-	Bucket    string `yaml:"bucket"`
+	Endpoint       string `yaml:"endpoint"`
+	PublicEndpoint string `yaml:"public_endpoint"`
+	AccessKey      string `yaml:"access_key"`
+	SecretKey      string `yaml:"secret_key"`
+	UseSSL         bool   `yaml:"use_ssl"`
+	Bucket         string `yaml:"bucket"`
 }
 
 func Load(path string) (*Config, error) {

@@ -18,14 +18,15 @@ type StorageConfig struct {
 
 // ProviderConfig 单个存储 provider 的连接配置。
 type ProviderConfig struct {
-	Type      string `yaml:"type"`
-	Endpoint  string `yaml:"endpoint"`
-	AccessKey string `yaml:"access_key"`
-	SecretKey string `yaml:"secret_key"`
-	UseSSL    bool   `yaml:"use_ssl"`
-	Bucket    string `yaml:"bucket"`
-	Region    string `yaml:"region"`
-	Label     string `yaml:"label"`
+	Type           string `yaml:"type"`
+	Endpoint       string `yaml:"endpoint"`
+	PublicEndpoint string `yaml:"public_endpoint"`
+	AccessKey      string `yaml:"access_key"`
+	SecretKey      string `yaml:"secret_key"`
+	UseSSL         bool   `yaml:"use_ssl"`
+	Bucket         string `yaml:"bucket"`
+	Region         string `yaml:"region"`
+	Label          string `yaml:"label"`
 }
 
 // RoutingRule 文件路由规则，按顺序匹配。
@@ -134,13 +135,14 @@ func DeriveStorageConfigFromLegacy(cfg *Config) *StorageConfig {
 	return &StorageConfig{
 		Providers: map[string]ProviderConfig{
 			alias: {
-				Type:      providerType,
-				Endpoint:  cfg.MinIO.Endpoint,
-				AccessKey: cfg.MinIO.AccessKey,
-				SecretKey: cfg.MinIO.SecretKey,
-				UseSSL:    cfg.MinIO.UseSSL,
-				Bucket:    cfg.MinIO.Bucket,
-				Label:     "MinIO",
+				Type:           providerType,
+				Endpoint:       cfg.MinIO.Endpoint,
+				PublicEndpoint: cfg.MinIO.PublicEndpoint,
+				AccessKey:      cfg.MinIO.AccessKey,
+				SecretKey:      cfg.MinIO.SecretKey,
+				UseSSL:         cfg.MinIO.UseSSL,
+				Bucket:         cfg.MinIO.Bucket,
+				Label:          "MinIO",
 			},
 		},
 		DefaultProvider: alias,

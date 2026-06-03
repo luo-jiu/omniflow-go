@@ -1,8 +1,13 @@
 package repository
 
 import (
+	"context"
 	"errors"
+	"net/url"
 	"testing"
+	"time"
+
+	"omniflow-go/internal/config"
 
 	"github.com/minio/minio-go/v7"
 )
@@ -75,6 +80,39 @@ func TestNormalizeMinIOEndpoint(t *testing.T) {
 				t.Fatalf("ssl mismatch: got %v, want %v", gotSSL, tc.wantSSL)
 			}
 		})
+	}
+}
+
+func TestNewStoreFromConfigUsesPublicEndpointForPresignedURL(t *testing.T) {
+	t.Parallel()
+
+	store, cleanup, err := NewStoreFromConfig("local-minio", config.ProviderConfig{
+		Type:           "minio",
+		Endpoint:       "host.docker.internal:9000",
+		PublicEndpoint: "http://localhost:9000",
+		AccessKey:      "admin",
+		SecretKey:      "admin123",
+		Bucket:         "my-bucket",
+		UseSSL:         false,
+	})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	defer cleanup()
+
+	rawURL, err := store.GetPresignedURL(context.Background(), "user/1/avatar.webp", time.Minute)
+	if err != nil {
+		t.Fatalf("get presigned url: %v", err)
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse presigned url: %v", err)
+	}
+	if parsed.Scheme != "http" {
+		t.Fatalf("scheme mismatch: got %q, want http", parsed.Scheme)
+	}
+	if parsed.Host != "localhost:9000" {
+		t.Fatalf("host mismatch: got %q, want localhost:9000", parsed.Host)
 	}
 }
 

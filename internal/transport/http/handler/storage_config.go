@@ -34,39 +34,42 @@ func NewStorageConfigHandler(
 // --- 请求/响应结构体 ---
 
 type providerResponse struct {
-	Alias    string `json:"alias"`
-	Type     string `json:"type"`
-	Endpoint string `json:"endpoint"`
-	UseSSL   bool   `json:"useSSL"`
-	Bucket   string `json:"bucket"`
-	Region   string `json:"region"`
-	Label    string `json:"label"`
+	Alias          string `json:"alias"`
+	Type           string `json:"type"`
+	Endpoint       string `json:"endpoint"`
+	PublicEndpoint string `json:"publicEndpoint"`
+	UseSSL         bool   `json:"useSSL"`
+	Bucket         string `json:"bucket"`
+	Region         string `json:"region"`
+	Label          string `json:"label"`
 	// 密钥脱敏展示
 	AccessKey string `json:"accessKey"`
 	SecretKey string `json:"secretKey"`
 }
 
 type addProviderRequest struct {
-	Alias     string `json:"alias" binding:"required"`
-	Type      string `json:"type" binding:"required"`
-	Endpoint  string `json:"endpoint" binding:"required"`
-	AccessKey string `json:"accessKey"`
-	SecretKey string `json:"secretKey"`
-	UseSSL    bool   `json:"useSSL"`
-	Bucket    string `json:"bucket" binding:"required"`
-	Region    string `json:"region"`
-	Label     string `json:"label"`
+	Alias          string `json:"alias" binding:"required"`
+	Type           string `json:"type" binding:"required"`
+	Endpoint       string `json:"endpoint" binding:"required"`
+	PublicEndpoint string `json:"publicEndpoint"`
+	AccessKey      string `json:"accessKey"`
+	SecretKey      string `json:"secretKey"`
+	UseSSL         bool   `json:"useSSL"`
+	Bucket         string `json:"bucket" binding:"required"`
+	Region         string `json:"region"`
+	Label          string `json:"label"`
 }
 
 type updateProviderRequest struct {
-	Type      string `json:"type" binding:"required"`
-	Endpoint  string `json:"endpoint" binding:"required"`
-	AccessKey string `json:"accessKey"`
-	SecretKey string `json:"secretKey"`
-	UseSSL    bool   `json:"useSSL"`
-	Bucket    string `json:"bucket" binding:"required"`
-	Region    string `json:"region"`
-	Label     string `json:"label"`
+	Type           string `json:"type" binding:"required"`
+	Endpoint       string `json:"endpoint" binding:"required"`
+	PublicEndpoint string `json:"publicEndpoint"`
+	AccessKey      string `json:"accessKey"`
+	SecretKey      string `json:"secretKey"`
+	UseSSL         bool   `json:"useSSL"`
+	Bucket         string `json:"bucket" binding:"required"`
+	Region         string `json:"region"`
+	Label          string `json:"label"`
 }
 
 type setDefaultRequest struct {
@@ -146,7 +149,17 @@ func (h *StorageConfigHandler) AddProvider(ctx *gin.Context) {
 		return
 	}
 
-	rawCfg.Providers[alias] = toProviderConfig(req.Type, req.Endpoint, req.AccessKey, req.SecretKey, req.UseSSL, req.Bucket, req.Region, req.Label)
+	rawCfg.Providers[alias] = toProviderConfig(
+		req.Type,
+		req.Endpoint,
+		req.PublicEndpoint,
+		req.AccessKey,
+		req.SecretKey,
+		req.UseSSL,
+		req.Bucket,
+		req.Region,
+		req.Label,
+	)
 	if rawCfg.DefaultProvider == "" {
 		rawCfg.DefaultProvider = alias
 	}
@@ -182,7 +195,17 @@ func (h *StorageConfigHandler) UpdateProvider(ctx *gin.Context) {
 		return
 	}
 
-	rawCfg.Providers[alias] = toProviderConfig(req.Type, req.Endpoint, req.AccessKey, req.SecretKey, req.UseSSL, req.Bucket, req.Region, req.Label)
+	rawCfg.Providers[alias] = toProviderConfig(
+		req.Type,
+		req.Endpoint,
+		req.PublicEndpoint,
+		req.AccessKey,
+		req.SecretKey,
+		req.UseSSL,
+		req.Bucket,
+		req.Region,
+		req.Label,
+	)
 
 	if err := h.saveAndReload(rawCfg); err != nil {
 		HandleUseCaseError(ctx, err)
@@ -321,14 +344,12 @@ func (h *StorageConfigHandler) TestProvider(ctx *gin.Context) {
 	testCtx, cancel := context.WithTimeout(ctx.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	// 尝试获取 bucket 信息来验证连通性
-	_, listErr := store.GetPresignedURL(testCtx, "__connectivity_test__", 1*time.Second)
-	// GetPresignedURL 对不存在的 key 也能正常返回 URL（MinIO/S3 特性），
-	// 如果连接失败才会报错
-	if listErr != nil && strings.Contains(listErr.Error(), "connect") {
+	// 用只读 Probe 验证内部 endpoint 连通性，避免 public_endpoint 预签名误报。
+	probeErr := store.Probe(testCtx)
+	if probeErr != nil {
 		Success(ctx, map[string]any{
 			"success": false,
-			"message": listErr.Error(),
+			"message": probeErr.Error(),
 		})
 		return
 	}
@@ -391,28 +412,40 @@ func (h *StorageConfigHandler) saveAndReload(cfg *config.StorageConfig) error {
 
 func toProviderResponse(alias string, p config.ProviderConfig) providerResponse {
 	return providerResponse{
-		Alias:     alias,
-		Type:      p.Type,
-		Endpoint:  p.Endpoint,
-		UseSSL:    p.UseSSL,
-		Bucket:    p.Bucket,
-		Region:    p.Region,
-		Label:     p.Label,
-		AccessKey: p.AccessKey,
-		SecretKey: p.SecretKey,
+		Alias:          alias,
+		Type:           p.Type,
+		Endpoint:       p.Endpoint,
+		PublicEndpoint: p.PublicEndpoint,
+		UseSSL:         p.UseSSL,
+		Bucket:         p.Bucket,
+		Region:         p.Region,
+		Label:          p.Label,
+		AccessKey:      p.AccessKey,
+		SecretKey:      p.SecretKey,
 	}
 }
 
-func toProviderConfig(pType, endpoint, accessKey, secretKey string, useSSL bool, bucket, region, label string) config.ProviderConfig {
+func toProviderConfig(
+	pType string,
+	endpoint string,
+	publicEndpoint string,
+	accessKey string,
+	secretKey string,
+	useSSL bool,
+	bucket string,
+	region string,
+	label string,
+) config.ProviderConfig {
 	return config.ProviderConfig{
-		Type:      strings.TrimSpace(pType),
-		Endpoint:  strings.TrimSpace(endpoint),
-		AccessKey: strings.TrimSpace(accessKey),
-		SecretKey: strings.TrimSpace(secretKey),
-		UseSSL:    useSSL,
-		Bucket:    strings.TrimSpace(bucket),
-		Region:    strings.TrimSpace(region),
-		Label:     strings.TrimSpace(label),
+		Type:           strings.TrimSpace(pType),
+		Endpoint:       strings.TrimSpace(endpoint),
+		PublicEndpoint: strings.TrimSpace(publicEndpoint),
+		AccessKey:      strings.TrimSpace(accessKey),
+		SecretKey:      strings.TrimSpace(secretKey),
+		UseSSL:         useSSL,
+		Bucket:         strings.TrimSpace(bucket),
+		Region:         strings.TrimSpace(region),
+		Label:          strings.TrimSpace(label),
 	}
 }
 

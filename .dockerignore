@@ -1,0 +1,12 @@
+.git
+.idea
+.DS_Store
+
+.cache
+.gocache
+bin
+dist
+logs
+server
+
+Dockerfile

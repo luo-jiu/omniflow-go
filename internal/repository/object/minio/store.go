@@ -21,18 +21,20 @@ var _ storage.ObjectStorage = (*Store)(nil)
 
 // Store 是 MinIO 的对象存储实现。
 type Store struct {
-	client *minio.Client
-	core   minio.Core
-	bucket string
+	client        *minio.Client
+	presignClient *minio.Client
+	core          minio.Core
+	bucket        string
 }
 
 func NewStore(cfg *config.Config) (storage.ObjectStorage, func(), error) {
 	return NewStoreFromConfig("legacy", config.ProviderConfig{
-		Endpoint:  cfg.MinIO.Endpoint,
-		AccessKey: cfg.MinIO.AccessKey,
-		SecretKey: cfg.MinIO.SecretKey,
-		UseSSL:    cfg.MinIO.UseSSL,
-		Bucket:    cfg.MinIO.Bucket,
+		Endpoint:       cfg.MinIO.Endpoint,
+		PublicEndpoint: cfg.MinIO.PublicEndpoint,
+		AccessKey:      cfg.MinIO.AccessKey,
+		SecretKey:      cfg.MinIO.SecretKey,
+		UseSSL:         cfg.MinIO.UseSSL,
+		Bucket:         cfg.MinIO.Bucket,
 	})
 }
 
@@ -42,19 +44,43 @@ func NewStoreFromConfig(_ string, pcfg config.ProviderConfig) (storage.ObjectSto
 	if err != nil {
 		return nil, nil, err
 	}
+	region := strings.TrimSpace(pcfg.Region)
+	if region == "" {
+		region = "us-east-1"
+	}
 
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(pcfg.AccessKey, pcfg.SecretKey, ""),
+		Region: region,
 		Secure: secure,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("new minio client: %w", err)
 	}
 
+	presignClient := client
+	publicEndpointRaw := strings.TrimSpace(pcfg.PublicEndpoint)
+	if publicEndpointRaw != "" {
+		publicEndpoint, publicSecure, normalizeErr := normalizeMinIOEndpoint(publicEndpointRaw, pcfg.UseSSL)
+		if normalizeErr != nil {
+			return nil, nil, fmt.Errorf("normalize minio public endpoint: %w", normalizeErr)
+		}
+		publicClient, newErr := minio.New(publicEndpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(pcfg.AccessKey, pcfg.SecretKey, ""),
+			Region: region,
+			Secure: publicSecure,
+		})
+		if newErr != nil {
+			return nil, nil, fmt.Errorf("new minio public client: %w", newErr)
+		}
+		presignClient = publicClient
+	}
+
 	return &Store{
-		client: client,
-		core:   minio.Core{Client: client},
-		bucket: pcfg.Bucket,
+		client:        client,
+		presignClient: presignClient,
+		core:          minio.Core{Client: client},
+		bucket:        pcfg.Bucket,
 	}, func() {}, nil
 }
 
@@ -128,7 +154,7 @@ func (s *Store) GetPresignedURL(
 		expiry = 60 * time.Minute
 	}
 
-	url, err := s.client.PresignedGetObject(ctx, s.bucket, objectName, expiry, nil)
+	url, err := s.presignClient.PresignedGetObject(ctx, s.bucket, objectName, expiry, nil)
 	if err != nil {
 		return "", fmt.Errorf("get presigned url: %w", err)
 	}
@@ -155,7 +181,7 @@ func (s *Store) PresignedPutObject(
 	if err := s.ensureBucket(ctx); err != nil {
 		return "", err
 	}
-	u, err := s.client.PresignedPutObject(ctx, s.bucket, objectName, expiry)
+	u, err := s.presignClient.PresignedPutObject(ctx, s.bucket, objectName, expiry)
 	if err != nil {
 		return "", fmt.Errorf("presigned put object: %w", err)
 	}
@@ -272,7 +298,7 @@ func (s *Store) PresignedUploadPart(
 	reqParams := url.Values{}
 	reqParams.Set("uploadId", uploadID)
 	reqParams.Set("partNumber", strconv.Itoa(partNumber))
-	u, err := s.client.Presign(ctx, http.MethodPut, s.bucket, objectName, expiry, reqParams)
+	u, err := s.presignClient.Presign(ctx, http.MethodPut, s.bucket, objectName, expiry, reqParams)
 	if err != nil {
 		return "", fmt.Errorf("presigned upload part: %w", err)
 	}
