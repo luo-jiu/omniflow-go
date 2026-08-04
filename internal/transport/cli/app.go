@@ -250,7 +250,7 @@ func (a *App) buildCommandTree() *command {
 	fs := &command{
 		Name:     "fs",
 		Summary:  "File system commands",
-		Usage:    "of fs <mkdir|rename|mv|rm|ls|search|archive|recycle|path> [flags]",
+		Usage:    "of fs <mkdir|rename|configure|mv|rm|ls|search|archive|recycle|path> [flags]",
 		Children: map[string]*command{},
 	}
 	fs.Children["mkdir"] = &command{
@@ -293,6 +293,26 @@ func (a *App) buildCommandTree() *command {
 			"of fs rename --node-id 123 --name notes-v2 --json",
 		},
 		Run: a.runFSRename,
+	}
+	fs.Children["configure"] = &command{
+		Name:    "configure",
+		Summary: "Configure node viewer metadata",
+		Usage:   "of fs configure --node-id <id> [--built-in-type <type>] [--archive-mode <0|1>] [--view-meta <json>] [--base-url <url>] [--dry-run] [--json]",
+		Flags: []string{
+			"--node-id <id>        target node id (required)",
+			"--built-in-type <t>   built-in viewer type",
+			"--archive-mode <0|1>  archive mode",
+			"--view-meta <json>    view metadata JSON object",
+			"--base-url <url>      API base URL",
+			"--dry-run             preview only, do not commit changes",
+			"--json                output JSON",
+		},
+		Examples: []string{
+			"of fs configure --node-id 123 --built-in-type COMIC",
+			"of fs configure --node-id 123 --archive-mode 1 --view-meta '{\"pageMode\":\"double\"}'",
+			"of fs configure --node-id 123 --built-in-type ASMR --dry-run --json",
+		},
+		Run: a.runFSConfigure,
 	}
 	fs.Children["mv"] = &command{
 		Name:    "mv",

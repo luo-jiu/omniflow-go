@@ -219,6 +219,12 @@ type RenameNodeRequest struct {
 	Name string `json:"name"`
 }
 
+type UpdateNodeRequest struct {
+	BuiltInType *string `json:"builtInType,omitempty"`
+	ArchiveMode *int    `json:"archiveMode,omitempty"`
+	ViewMeta    *string `json:"viewMeta,omitempty"`
+}
+
 type MoveNodeBatchItemRequest struct {
 	NodeID uint64 `json:"nodeId"`
 	Name   string `json:"name,omitempty"`
@@ -503,6 +509,18 @@ func (c *Client) RenameNode(ctx context.Context, nodeID uint64, req RenameNodeRe
 		ctx,
 		http.MethodPatch,
 		fmt.Sprintf("/api/v1/nodes/%d/rename", nodeID),
+		withDryRunQuery(nil, dryRun),
+		req,
+		true,
+		nil,
+	)
+}
+
+func (c *Client) UpdateNode(ctx context.Context, nodeID uint64, req UpdateNodeRequest, dryRun bool) error {
+	return c.doJSON(
+		ctx,
+		http.MethodPut,
+		fmt.Sprintf("/api/v1/nodes/%d", nodeID),
 		withDryRunQuery(nil, dryRun),
 		req,
 		true,

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,91 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestUpdateNode(t *testing.T) {
+	t.Parallel()
+
+	builtInType := "COMIC"
+	archiveMode := 1
+	viewMeta := `{"pageMode":"double"}`
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPut {
+			t.Fatalf("expected PUT method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes/123" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+		if got := r.Header.Get("username"); got != "tester" {
+			t.Fatalf("expected username header to be set, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			t.Fatalf("expected authorization header to be set, got %q", got)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["builtInType"] != "COMIC" {
+			t.Fatalf("expected builtInType=COMIC, got %#v", body["builtInType"])
+		}
+		if body["archiveMode"] != float64(1) {
+			t.Fatalf("expected archiveMode=1, got %#v", body["archiveMode"])
+		}
+		if body["viewMeta"] != viewMeta {
+			t.Fatalf("expected viewMeta=%s, got %#v", viewMeta, body["viewMeta"])
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":"0","message":"ok","data":{"dryRun":true},"request_id":"req-update"}`,
+			)),
+		}, nil
+	})
+
+	err := client.UpdateNode(context.Background(), 123, UpdateNodeRequest{
+		BuiltInType: &builtInType,
+		ArchiveMode: &archiveMode,
+		ViewMeta:    &viewMeta,
+	}, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestUpdateNodePreservesOmittedFields(t *testing.T) {
+	t.Parallel()
+
+	viewMeta := `{}`
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.URL.Query().Get("dryRun"); got != "" {
+			t.Fatalf("expected dryRun to be omitted, got %q", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if len(body) != 1 || body["viewMeta"] != viewMeta {
+			t.Fatalf("expected only viewMeta in body, got %#v", body)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"code":"0","message":"ok","data":null}`)),
+		}, nil
+	})
+
+	if err := client.UpdateNode(context.Background(), 123, UpdateNodeRequest{ViewMeta: &viewMeta}, false); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
 
 func TestWithDryRunQuery(t *testing.T) {
 	t.Parallel()

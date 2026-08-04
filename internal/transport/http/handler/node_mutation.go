@@ -11,6 +11,12 @@ import (
 
 // UpdateNode 更新节点元数据标记。
 func (h *NodeHandler) UpdateNode(ctx *gin.Context) {
+	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
+	if !ok {
+		return
+	}
+	MarkDryRunHeader(ctx, dryRun)
+
 	var uri nodeURI
 	if !BindURI(ctx, &uri) {
 		return
@@ -37,11 +43,12 @@ func (h *NodeHandler) UpdateNode(ctx *gin.Context) {
 		BuiltInType: builtInPtr,
 		ArchiveMode: req.ArchiveMode,
 		ViewMeta:    req.ViewMeta,
+		DryRun:      dryRun,
 	}); err != nil {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	SuccessNoData(ctx)
+	SuccessNoDataWithDryRun(ctx, dryRun)
 }
 
 // Rename 在同级目录下重命名节点。

@@ -1,6 +1,6 @@
 # CLI 开发计划与进度台账
 
-更新时间：2026-05-08  
+更新时间：2026-08-04
 状态：M1-M4 已完成，M5 路径体验层进行中
 
 关联文档：
@@ -21,7 +21,7 @@
 | M1 | CLI 基础框架 | 已完成 | 薄入口、命令树、模块拆分已落地 |
 | M2 | 最小可用命令 | 已完成 | health/auth/lib/fs/browser/config 可用 |
 | M3 | CLI 契约加固 | 已完成 | 退出码、参数严格、help、配置恢复已收口 |
-| M4 | 文件系统写操作 | 已完成 | mkdir/rename/mv/rm/recycle 已支持，mkdir 已补 `--conflict-policy` |
+| M4 | 文件系统写操作 | 已完成 | mkdir/rename/configure/mv/rm/recycle 已支持，mkdir 已补 `--conflict-policy` |
 | M5 | 路径体验层 | 进行中 | 已有 `fs path resolve`，部分写命令支持 path 输入 |
 | M6 | 发布与安装 | 待开始 | version、goreleaser、多平台分发未开始 |
 | M7 | RAG 命令域 | 待开始 | `kb ingest/search/reindex` 未开始 |
@@ -33,7 +33,7 @@
 | `health` | 健康检查 |
 | `auth` | login/status/whoami/logout |
 | `lib` | 资料库列表 |
-| `fs` | mkdir/rename/mv/rm/ls/search/archive/recycle/path resolve（mkdir 支持 `--conflict-policy`） |
+| `fs` | mkdir/rename/configure/mv/rm/ls/search/archive/recycle/path resolve（configure 可配置 viewer 夹具） |
 | `browser-map` | ls/resolve/create/update/rm |
 | `browser-bookmark` | tree/match/import/create/update/move/rm |
 | `config` | show |

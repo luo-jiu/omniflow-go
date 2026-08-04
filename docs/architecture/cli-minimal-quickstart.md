@@ -31,6 +31,8 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of help fs mkdir --examples
 ./bin/of fs mkdir --library-id <id> --name <name> [--parent-id <id>|--parent-path </a/b>] [--conflict-policy <error|auto_rename>]
 ./bin/of fs rename --node-id <id> --name <new_name>
+./bin/of help fs configure --examples
+./bin/of fs configure --node-id <id> [--built-in-type <type>] [--archive-mode <0|1>] [--view-meta <json>] [--dry-run] [--json]
 ./bin/of fs mv --library-id <id> (--node-id <id>|--node-path </a/b>) (--new-parent-id <id>|--new-parent-path </a/b>) [--before-node-id <id>] [--name <new_name>]
 ./bin/of fs rm --library-id <id> (--node-id <id>|--path </a/b>)
 ./bin/of fs ls --library-id <id> --node-id <id>
@@ -64,6 +66,8 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ```
 
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。
+
+`fs configure` 适合准备可重复的 viewer 测试夹具。三个可配置字段至少提供一个；未提供的字段保持原值，`--view-meta` 必须是 JSON 对象。建议先执行 `--dry-run --json`，确认后再去掉 `--dry-run` 真实写入。
 
 `fs mkdir` 的 `--conflict-policy` 与后端节点创建一致：
 

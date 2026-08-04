@@ -2,8 +2,11 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -148,6 +151,97 @@ func (a *App) runFSRename(args []string) error {
 		return nil
 	}
 	a.printf("renamed node: id=%d name=%s\n", nodeID, name)
+	return nil
+}
+
+func (a *App) runFSConfigure(args []string) error {
+	fs := a.newFlagSet("fs configure")
+
+	var (
+		baseURL     string
+		nodeID      uint64
+		builtInType string
+		archiveMode string
+		viewMeta    string
+		dryRun      bool
+		jsonOut     bool
+	)
+	fs.StringVar(&baseURL, "base-url", "", "API base url")
+	fs.Uint64Var(&nodeID, "node-id", 0, "target node id (required)")
+	fs.StringVar(&builtInType, "built-in-type", "", "built-in viewer type")
+	fs.StringVar(&archiveMode, "archive-mode", "", "archive mode: 0 or 1")
+	fs.StringVar(&viewMeta, "view-meta", "", "view metadata JSON")
+	fs.BoolVar(&dryRun, "dry-run", false, "preview only, do not commit changes")
+	fs.BoolVar(&jsonOut, "json", false, "output JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := ensureNoExtraArgs(fs); err != nil {
+		return err
+	}
+	if nodeID == 0 {
+		return errors.New("`--node-id` is required")
+	}
+
+	provided := map[string]bool{}
+	fs.Visit(func(flag *flag.Flag) {
+		provided[flag.Name] = true
+	})
+	if !provided["built-in-type"] && !provided["archive-mode"] && !provided["view-meta"] {
+		return errors.New("at least one of `--built-in-type`, `--archive-mode`, or `--view-meta` is required")
+	}
+
+	request := UpdateNodeRequest{}
+	result := map[string]any{
+		"dryRun": dryRun,
+		"ok":     true,
+		"nodeId": nodeID,
+	}
+	if provided["built-in-type"] {
+		normalized := strings.ToUpper(strings.TrimSpace(builtInType))
+		if normalized == "" {
+			return errors.New("`--built-in-type` must not be empty")
+		}
+		request.BuiltInType = &normalized
+		result["builtInType"] = normalized
+	}
+	if provided["archive-mode"] {
+		parsed, err := strconv.Atoi(strings.TrimSpace(archiveMode))
+		if err != nil || (parsed != 0 && parsed != 1) {
+			return errors.New("`--archive-mode` must be 0 or 1")
+		}
+		request.ArchiveMode = &parsed
+		result["archiveMode"] = parsed
+	}
+	if provided["view-meta"] {
+		normalized := strings.TrimSpace(viewMeta)
+		if normalized == "" {
+			return errors.New("`--view-meta` must be a valid JSON object")
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(normalized), &parsed); err != nil || parsed == nil {
+			return errors.New("`--view-meta` must be a valid JSON object")
+		}
+		request.ViewMeta = &normalized
+		result["viewMeta"] = normalized
+	}
+
+	_, client, err := a.resolveClient(baseURL, true)
+	if err != nil {
+		return err
+	}
+	if err := client.UpdateNode(context.Background(), nodeID, request, dryRun); err != nil {
+		return err
+	}
+
+	if jsonOut {
+		return a.printJSON(result)
+	}
+	if dryRun {
+		a.printf("dry-run: configure request validated: id=%d\n", nodeID)
+		return nil
+	}
+	a.printf("configured node: id=%d\n", nodeID)
 	return nil
 }
 

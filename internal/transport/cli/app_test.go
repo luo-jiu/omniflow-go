@@ -489,6 +489,69 @@ func TestRunFSArchiveBatchSetBuiltInTypeRequiresNodeID(t *testing.T) {
 	}
 }
 
+func TestRunFSConfigureValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "requires node id",
+			args: []string{"fs", "configure", "--built-in-type", "COMIC"},
+			want: "`--node-id` is required",
+		},
+		{
+			name: "requires configurable field",
+			args: []string{"fs", "configure", "--node-id", "123"},
+			want: "at least one of",
+		},
+		{
+			name: "rejects invalid archive mode",
+			args: []string{"fs", "configure", "--node-id", "123", "--archive-mode", "2"},
+			want: "`--archive-mode` must be 0 or 1",
+		},
+		{
+			name: "rejects invalid view meta",
+			args: []string{"fs", "configure", "--node-id", "123", "--view-meta", "{"},
+			want: "`--view-meta` must be a valid JSON object",
+		},
+		{
+			name: "rejects empty view meta",
+			args: []string{"fs", "configure", "--node-id", "123", "--view-meta", ""},
+			want: "`--view-meta` must be a valid JSON object",
+		},
+		{
+			name: "rejects non object view meta",
+			args: []string{"fs", "configure", "--node-id", "123", "--view-meta", "[]"},
+			want: "`--view-meta` must be a valid JSON object",
+		},
+		{
+			name: "rejects extra args",
+			args: []string{"fs", "configure", "--node-id", "123", "--built-in-type", "COMIC", "extra"},
+			want: "unexpected argument",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stdout := &bytes.Buffer{}
+			stderr := &bytes.Buffer{}
+			app := NewApp(stdout, stderr)
+			if exitCode := app.Run(tc.args); exitCode != 1 {
+				t.Fatalf("unexpected exit code: %d", exitCode)
+			}
+			if !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("expected %q, got: %s", tc.want, stderr.String())
+			}
+		})
+	}
+}
+
 func TestRunBrowserMapResolveRequiresExt(t *testing.T) {
 	t.Parallel()
 
@@ -912,6 +975,78 @@ func TestRunFSArchiveBatchSetBuiltInTypeSuccessJSON(t *testing.T) {
 	}
 	if got["updatedCount"] != float64(2) {
 		t.Fatalf("expected updatedCount=2, got %#v", got["updatedCount"])
+	}
+}
+
+func TestRunFSConfigureSuccessJSON(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+
+	t.Setenv(envUsername, "tester")
+	t.Setenv(envToken, "token-123")
+
+	originTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPut {
+			t.Fatalf("expected PUT method, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v1/nodes/123" {
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("dryRun"); got != "true" {
+			t.Fatalf("expected dryRun=true, got %q", got)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["builtInType"] != "COMIC" || body["archiveMode"] != float64(1) {
+			t.Fatalf("unexpected configure body: %#v", body)
+		}
+		if body["viewMeta"] != `{"pageMode":"double"}` {
+			t.Fatalf("unexpected viewMeta: %#v", body["viewMeta"])
+		}
+
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":"0","message":"ok","data":{"dryRun":true},"request_id":"req-configure"}`,
+			)),
+		}, nil
+	})
+	defer func() {
+		http.DefaultTransport = originTransport
+	}()
+
+	exitCode := app.Run([]string{
+		"fs", "configure",
+		"--base-url", "http://example.test",
+		"--node-id", "123",
+		"--built-in-type", "comic",
+		"--archive-mode", "1",
+		"--view-meta", `{"pageMode":"double"}`,
+		"--dry-run",
+		"--json",
+	})
+	if exitCode != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("expected valid JSON output, got err=%v output=%s", err, stdout.String())
+	}
+	if got["dryRun"] != true || got["ok"] != true || got["nodeId"] != float64(123) {
+		t.Fatalf("unexpected configure output: %#v", got)
+	}
+	if got["builtInType"] != "COMIC" || got["archiveMode"] != float64(1) {
+		t.Fatalf("unexpected configure output fields: %#v", got)
 	}
 }
 

@@ -63,6 +63,7 @@ type UpdateNodeCommand struct {
 	BuiltInType *string
 	ArchiveMode *int
 	ViewMeta    *string
+	DryRun      bool
 }
 
 type RenameNodeCommand struct {
@@ -586,7 +587,7 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 	}
 
 	ok := false
-	err = u.withinTx(ctx, func(txCtx context.Context) error {
+	err = u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
 		updated, updateErr := u.nodes.UpdateNodeFields(txCtx, nodeID, node.LibraryID, updates)
 		if updateErr != nil {
 			return updateErr
@@ -607,7 +608,7 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 		return ErrNotFound
 	}
 
-	if node.Type == domainnode.TypeDirectory && cmd.BuiltInType != nil {
+	if !cmd.DryRun && node.Type == domainnode.TypeDirectory && cmd.BuiltInType != nil {
 		if normalizedBuiltIn := normalizeArchiveCardBuiltInType(normalizedNextBuiltInType); normalizedBuiltIn != "" {
 			_ = u.warmupArchiveCoverMetaForNodes(ctx, node.LibraryID, normalizedBuiltIn, []ArchiveCardItem{
 				{
@@ -621,6 +622,8 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 	_ = u.writeAudit(ctx, cmd.Actor, "node.update", true, map[string]any{
 		"node_id":    nodeID,
 		"library_id": node.LibraryID,
+		"mode":       resolveMutationMode(cmd.DryRun),
+		"dry_run":    cmd.DryRun,
 	})
 	slog.InfoContext(ctx, "node.updated",
 		"node_id", nodeID,
@@ -628,6 +631,8 @@ func (u *NodeUseCase) Update(ctx context.Context, nodeID uint64, cmd UpdateNodeC
 		"has_built_in_type", cmd.BuiltInType != nil,
 		"has_archive_mode", cmd.ArchiveMode != nil,
 		"has_view_meta", cmd.ViewMeta != nil,
+		"mode", resolveMutationMode(cmd.DryRun),
+		"dry_run", cmd.DryRun,
 	)
 	return nil
 }

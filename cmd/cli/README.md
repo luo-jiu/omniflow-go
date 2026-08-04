@@ -42,7 +42,7 @@
   - `of help <domain> <command>` 看 usage + flags。
   - `of help <domain> <command> --examples` 看完整示例。
 - 文件系统命令分层组织：
-  - 节点操作：`mkdir` / `rename` / `mv` / `rm`
+  - 节点操作：`mkdir` / `rename` / `configure` / `mv` / `rm`
   - 归档操作：`archive batch-set-built-in-type`
   - 回收站操作：`recycle ls|clear|restore|hard`
   - 路径工具：`path resolve`
@@ -61,6 +61,18 @@
 - 资源监测命令用于采集控制台历史样本：
   - `of resource-monitor sample [--library-id <id>] [--dry-run] [--json]`：显式采集全局或资料库范围的资源监测样本。`--dry-run` 返回预览但不写入 `resource_monitor_samples`。
 - 路径演进策略：写命令保持 `id` 参数兼容，同时逐步增加 `path` 参数入口。
+
+`of fs configure` 用于非交互配置 viewer 测试夹具：
+
+```bash
+of fs configure --node-id 123 --built-in-type COMIC --archive-mode 1 \
+  --view-meta '{"pageMode":"double"}' --dry-run --json
+```
+
+- `--built-in-type`、`--archive-mode`、`--view-meta` 至少提供一项。
+- 未提供的字段不会出现在请求体中，不会覆盖节点现值。
+- `--archive-mode` 只接受 `0` 或 `1`；`--view-meta` 必须是合法 JSON 对象，空字符串、数组和 `null` 都会失败。
+- 写入前可先用 `--dry-run` 运行同一校验链路。
 
 ## 4. 错误与退出码约定
 
