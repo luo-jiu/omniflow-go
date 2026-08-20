@@ -1,8 +1,8 @@
 # Docker 镜像构建与运行说明
 
-更新时间：2026-06-03
+更新时间：2026-08-13
 
-适用范围：`omniflow-go` HTTP 服务镜像构建、本地 Docker Desktop 试运行、运行时配置挂载与后续版本替换流程。
+适用范围：`omniflow-go` HTTP 服务镜像构建、本地 Docker Desktop 试运行、单机 Docker Compose 生产部署、运行时配置挂载与后续版本替换流程。
 
 ## 1. 概述
 
@@ -129,6 +129,22 @@ HTTP/1.1 200 OK
 
 ## 6. 配置约束
 
+配置优先级为：代码默认值 < YAML < `OMNIFLOW_*` 环境变量。生产部署通过服务器 `.env` 注入秘密和少量环境差异；`.env` 不提交 Git，也不复制进 image。
+
+当前支持的环境变量：
+
+- `OMNIFLOW_APP_ENV`、`OMNIFLOW_APP_VERSION`
+- `OMNIFLOW_SERVER_HOST`、`OMNIFLOW_SERVER_PORT`、`OMNIFLOW_SERVER_MODE`
+- `OMNIFLOW_LOG_LEVEL`、`OMNIFLOW_LOG_FORMAT`、`OMNIFLOW_LOG_ADD_SOURCE`
+- `OMNIFLOW_DATABASE_DSN`，或结构化连接变量 `OMNIFLOW_DATABASE_HOST`、`OMNIFLOW_DATABASE_PORT`、`OMNIFLOW_DATABASE_USER`、`OMNIFLOW_DATABASE_PASSWORD`、`OMNIFLOW_DATABASE_NAME`、`OMNIFLOW_DATABASE_SSLMODE`
+- `OMNIFLOW_DATABASE_MAX_OPEN_CONNS`、`OMNIFLOW_DATABASE_MAX_IDLE_CONNS`
+- `OMNIFLOW_DATABASE_LOG_LEVEL`、`OMNIFLOW_DATABASE_DEBUG_SQL`
+- `OMNIFLOW_REDIS_ADDR`、`OMNIFLOW_REDIS_PASSWORD`、`OMNIFLOW_REDIS_DB`
+
+空字符串不覆盖 YAML；整数或布尔值格式错误时服务启动失败。生产配置结构模板见 `configs/config.production.yaml.example`。
+
+生产 Compose 优先使用结构化数据库变量，并由程序生成正确转义的 DSN，避免随机密码中的 `@`、`:`、`/` 等 URL 保留字符破坏连接串。显式设置 `OMNIFLOW_DATABASE_DSN` 时，其优先级高于结构化变量。
+
 `configs/config.docker.yaml` 面向 Docker 本地运行，关键差异是将中间件地址切换为容器可达地址。MinIO 需要同时配置 `public_endpoint`，用于生成前端 / Electron 可直接访问的预签名 URL：
 
 ```yaml
@@ -190,6 +206,60 @@ docker run -d --name omniflow-go-test \
 docker restart omniflow-go-test
 ```
 
+### 7.1 单机 Compose 生产发布
+
+推荐服务器目录：
+
+```text
+/srv/omniflow/
+├── .env
+├── compose.yaml
+├── app/
+├── configs/
+├── data/
+├── backups/
+└── scripts/
+```
+
+边界规则：
+
+- `.env` 保存 PG / Redis 原始连接字段与密码，权限必须为 `0600`；可从 `deploy/.env.production.example` 创建，禁止提交真实文件。
+- `configs/config.yaml` 保存非敏感生产配置，基于示例模板创建。
+- `configs/storage.yaml` 保存 provider 结构和存储凭据，权限必须为 `0600`。
+- PostgreSQL / Redis 只加入 Compose 私有网络，不映射宿主机端口。
+- API 可先绑定 `127.0.0.1:8850`，由 Tailscale 或反向代理决定外部入口。
+- 发版只重建 `api`；PG / Redis 容器及宿主机数据目录不随发版替换。
+
+首次部署或排障时，可以手工执行最小发布命令：
+
+```bash
+cd /srv/omniflow
+docker compose build api
+docker compose up -d --no-deps api
+curl --fail http://127.0.0.1:8850/healthz
+curl --fail "http://127.0.0.1:8850/api/v1/user/exists?username=__omniflow_deploy_probe__"
+```
+
+目录初始化完成后，日常发版统一执行：
+
+```bash
+cd /srv/omniflow
+./scripts/deploy.sh
+```
+
+脚本会生成可追溯的 image tag，只重建并替换 API 容器，然后依次验证 HTTP 健康接口和 PostgreSQL 只读查询链路。PostgreSQL、Redis 容器及其数据目录不会被替换。
+
+正式发布应固定 Git commit 或 tag，并给 image 写入对应 tag；不要把无法追溯的 `latest` 当成唯一版本标识。数据库 schema 发生变化时，必须在应用替换前执行备份与迁移。
+
+如果生产服务器无法访问默认 Go / Alpine 源，可通过 Compose `.env` 覆盖构建源：
+
+```dotenv
+OMNIFLOW_BUILD_GOPROXY=https://goproxy.cn,direct
+OMNIFLOW_BUILD_ALPINE_MIRROR=mirrors.cloud.tencent.com
+```
+
+这些变量只影响 image 构建，不进入应用运行时配置；Go module 仍由 `go.sum` 校验完整性。
+
 ## 8. 验证方式
 
 本次已完成以下验证：
@@ -204,7 +274,7 @@ docker restart omniflow-go-test
 
 未覆盖风险：
 
-- 只验证了健康检查，没有验证依赖 PostgreSQL、Redis、MinIO 的业务接口。
+- 生产发布脚本会额外调用用户存在性只读接口，验证 PostgreSQL 查询链路；Redis 与 MinIO 仍需通过对应业务接口单独验证。
 - 当前文档覆盖本地 Docker Desktop 单容器运行，不覆盖正式环境镜像仓库推送、CI 构建缓存、生产发布编排。
 
 ## 9. 后续维护
@@ -215,3 +285,4 @@ docker restart omniflow-go-test
 - 服务端口、配置路径、`storage.yaml` 加载规则变化。
 - Docker 专用配置文件路径或挂载方式变化。
 - 发布流程从本地 `docker run` 切换为 Compose、Kubernetes 或 CI/CD。
+- `OMNIFLOW_*` 环境变量白名单、生产目录或单机发布流程变化。

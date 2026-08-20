@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -139,6 +140,107 @@ database:
 	}
 	if !strings.Contains(err.Error(), "invalid database.log_level") {
 		t.Fatalf("error = %v, want contains %q", err, "invalid database.log_level")
+	}
+}
+
+func TestLoad_EnvironmentOverridesYAML(t *testing.T) {
+	path := writeTempConfig(t, `
+app:
+  env: local
+server:
+  port: 8850
+  mode: debug
+database:
+  dsn: postgres://local
+redis:
+  addr: 127.0.0.1:6379
+  password: local
+`)
+	t.Setenv("OMNIFLOW_APP_ENV", "production")
+	t.Setenv("OMNIFLOW_SERVER_PORT", "9080")
+	t.Setenv("OMNIFLOW_SERVER_MODE", "release")
+	t.Setenv("OMNIFLOW_DATABASE_DSN", "postgres://production")
+	t.Setenv("OMNIFLOW_REDIS_ADDR", "redis:6379")
+	t.Setenv("OMNIFLOW_REDIS_PASSWORD", "secret")
+	t.Setenv("OMNIFLOW_DATABASE_DEBUG_SQL", "true")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.App.Env != "production" {
+		t.Fatalf("App.Env = %q, want %q", cfg.App.Env, "production")
+	}
+	if cfg.Server.Port != 9080 || cfg.Server.Mode != "release" {
+		t.Fatalf("Server = %+v, want port 9080 and release mode", cfg.Server)
+	}
+	if cfg.Database.DSN != "postgres://production" || !cfg.Database.DebugSQL {
+		t.Fatalf("Database = %+v, want environment overrides", cfg.Database)
+	}
+	if cfg.Redis.Addr != "redis:6379" || cfg.Redis.Password != "secret" {
+		t.Fatalf("Redis = %+v, want environment overrides", cfg.Redis)
+	}
+}
+
+func TestLoad_InvalidEnvironmentOverrideReturnsError(t *testing.T) {
+	t.Setenv("OMNIFLOW_SERVER_PORT", "not-a-port")
+
+	_, err := Load("")
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "OMNIFLOW_SERVER_PORT must be an integer") {
+		t.Fatalf("error = %v, want environment variable name", err)
+	}
+}
+
+func TestLoad_EmptyEnvironmentOverrideIsIgnored(t *testing.T) {
+	t.Setenv("OMNIFLOW_DATABASE_DSN", "  ")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Database.DSN != "postgres://postgres:123456@127.0.0.1:5432/omniflow?sslmode=disable" {
+		t.Fatalf("Database.DSN = %q, want default", cfg.Database.DSN)
+	}
+}
+
+func TestLoad_StructuredDatabaseEnvironmentEscapesCredentials(t *testing.T) {
+	t.Setenv("OMNIFLOW_DATABASE_HOST", "postgres")
+	t.Setenv("OMNIFLOW_DATABASE_PORT", "5432")
+	t.Setenv("OMNIFLOW_DATABASE_USER", "omniflow")
+	t.Setenv("OMNIFLOW_DATABASE_PASSWORD", "colon:at@slash/value")
+	t.Setenv("OMNIFLOW_DATABASE_NAME", "omniflow")
+	t.Setenv("OMNIFLOW_DATABASE_SSLMODE", "disable")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	parsed, err := url.Parse(cfg.Database.DSN)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	password, ok := parsed.User.Password()
+	if !ok || password != "colon:at@slash/value" {
+		t.Fatalf("parsed password = %q, %v, want original password", password, ok)
+	}
+	if parsed.Host != "postgres:5432" || parsed.User.Username() != "omniflow" || parsed.Path != "/omniflow" {
+		t.Fatalf("parsed DSN = %#v, want production database fields", parsed)
+	}
+}
+
+func TestLoad_StructuredDatabaseEnvironmentRequiresCompleteCredentials(t *testing.T) {
+	t.Setenv("OMNIFLOW_DATABASE_HOST", "postgres")
+
+	_, err := Load("")
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "OMNIFLOW_DATABASE_USER is required") {
+		t.Fatalf("error = %v, want missing environment variable", err)
 	}
 }
 

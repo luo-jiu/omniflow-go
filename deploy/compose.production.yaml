@@ -1,0 +1,73 @@
+name: omniflow
+
+services:
+  api:
+    build:
+      context: ./app
+      args:
+        GOPROXY: ${OMNIFLOW_BUILD_GOPROXY:-https://proxy.golang.org,direct}
+        ALPINE_MIRROR: ${OMNIFLOW_BUILD_ALPINE_MIRROR:-dl-cdn.alpinelinux.org}
+    image: omniflow-go:${OMNIFLOW_IMAGE_TAG:-local}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      OMNIFLOW_DATABASE_HOST: postgres
+      OMNIFLOW_DATABASE_PORT: "5432"
+      OMNIFLOW_DATABASE_USER: ${POSTGRES_USER}
+      OMNIFLOW_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      OMNIFLOW_DATABASE_NAME: ${POSTGRES_DB}
+      OMNIFLOW_DATABASE_SSLMODE: disable
+    volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - ./configs/storage.yaml:/app/configs/storage.yaml:ro
+    ports:
+      - 127.0.0.1:8850:8850
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8850/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+networks:
+  backend:
+    name: omniflow-backend

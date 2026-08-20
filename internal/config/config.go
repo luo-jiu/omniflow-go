@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,32 +100,173 @@ type MinIO struct {
 func Load(path string) (*Config, error) {
 	cfg := defaultConfig()
 
-	if path == "" {
-		if err := cfg.applyDefaults(); err != nil {
-			return nil, fmt.Errorf("apply config defaults: %w", err)
+	if path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read config: %w", err)
 		}
-		return cfg, nil
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			if applyErr := cfg.applyDefaults(); applyErr != nil {
-				return nil, fmt.Errorf("apply config defaults: %w", applyErr)
+		if err == nil {
+			if err := yaml.Unmarshal(data, cfg); err != nil {
+				return nil, fmt.Errorf("unmarshal config: %w", err)
 			}
-			return cfg, nil
 		}
-		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+	if err := cfg.applyEnvironmentOverrides(); err != nil {
+		return nil, fmt.Errorf("apply environment overrides: %w", err)
 	}
-
 	if err := cfg.applyDefaults(); err != nil {
 		return nil, fmt.Errorf("apply config defaults: %w", err)
 	}
 	return cfg, nil
+}
+
+func (c *Config) applyEnvironmentOverrides() error {
+	applyStringEnvironment("OMNIFLOW_APP_ENV", &c.App.Env)
+	applyStringEnvironment("OMNIFLOW_APP_VERSION", &c.App.Version)
+	applyStringEnvironment("OMNIFLOW_SERVER_HOST", &c.Server.Host)
+	applyStringEnvironment("OMNIFLOW_SERVER_MODE", &c.Server.Mode)
+	applyStringEnvironment("OMNIFLOW_LOG_LEVEL", &c.Log.Level)
+	applyStringEnvironment("OMNIFLOW_LOG_FORMAT", &c.Log.Format)
+	applyStringEnvironment("OMNIFLOW_DATABASE_LOG_LEVEL", &c.Database.LogLevel)
+	applyStringEnvironment("OMNIFLOW_REDIS_ADDR", &c.Redis.Addr)
+	applyStringEnvironment("OMNIFLOW_REDIS_PASSWORD", &c.Redis.Password)
+
+	if err := applyIntEnvironment("OMNIFLOW_SERVER_PORT", &c.Server.Port); err != nil {
+		return err
+	}
+	if err := applyIntEnvironment("OMNIFLOW_DATABASE_MAX_OPEN_CONNS", &c.Database.MaxOpenConns); err != nil {
+		return err
+	}
+	if err := applyIntEnvironment("OMNIFLOW_DATABASE_MAX_IDLE_CONNS", &c.Database.MaxIdleConns); err != nil {
+		return err
+	}
+	if err := applyIntEnvironment("OMNIFLOW_REDIS_DB", &c.Redis.DB); err != nil {
+		return err
+	}
+	if err := applyBoolEnvironment("OMNIFLOW_LOG_ADD_SOURCE", &c.Log.AddSource); err != nil {
+		return err
+	}
+	if err := applyBoolEnvironment("OMNIFLOW_DATABASE_DEBUG_SQL", &c.Database.DebugSQL); err != nil {
+		return err
+	}
+	if err := c.applyDatabaseEnvironment(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) applyDatabaseEnvironment() error {
+	if dsn, ok := nonEmptyEnvironment("OMNIFLOW_DATABASE_DSN"); ok {
+		c.Database.DSN = dsn
+		return nil
+	}
+
+	names := []string{
+		"OMNIFLOW_DATABASE_HOST",
+		"OMNIFLOW_DATABASE_PORT",
+		"OMNIFLOW_DATABASE_USER",
+		"OMNIFLOW_DATABASE_PASSWORD",
+		"OMNIFLOW_DATABASE_NAME",
+		"OMNIFLOW_DATABASE_SSLMODE",
+	}
+	configured := false
+	for _, name := range names {
+		if _, ok := nonEmptyEnvironment(name); ok {
+			configured = true
+			break
+		}
+	}
+	if !configured {
+		return nil
+	}
+
+	host, err := requiredEnvironment("OMNIFLOW_DATABASE_HOST")
+	if err != nil {
+		return err
+	}
+	user, err := requiredEnvironment("OMNIFLOW_DATABASE_USER")
+	if err != nil {
+		return err
+	}
+	password, err := requiredEnvironment("OMNIFLOW_DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
+	databaseName, err := requiredEnvironment("OMNIFLOW_DATABASE_NAME")
+	if err != nil {
+		return err
+	}
+	port := "5432"
+	if value, ok := nonEmptyEnvironment("OMNIFLOW_DATABASE_PORT"); ok {
+		parsed, parseErr := strconv.Atoi(value)
+		if parseErr != nil || parsed < 1 || parsed > 65535 {
+			return fmt.Errorf("OMNIFLOW_DATABASE_PORT must be an integer between 1 and 65535")
+		}
+		port = value
+	}
+	sslMode := "disable"
+	if value, ok := nonEmptyEnvironment("OMNIFLOW_DATABASE_SSLMODE"); ok {
+		sslMode = value
+	}
+
+	dsn := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, password),
+		Host:   net.JoinHostPort(host, port),
+		Path:   databaseName,
+	}
+	query := dsn.Query()
+	query.Set("sslmode", sslMode)
+	dsn.RawQuery = query.Encode()
+	c.Database.DSN = dsn.String()
+	return nil
+}
+
+func requiredEnvironment(name string) (string, error) {
+	value, ok := nonEmptyEnvironment(name)
+	if !ok {
+		return "", fmt.Errorf("%s is required when using structured database environment variables", name)
+	}
+	return value, nil
+}
+
+func applyStringEnvironment(name string, target *string) {
+	if value, ok := nonEmptyEnvironment(name); ok {
+		*target = value
+	}
+}
+
+func applyIntEnvironment(name string, target *int) error {
+	value, ok := nonEmptyEnvironment(name)
+	if !ok {
+		return nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("%s must be an integer: %w", name, err)
+	}
+	*target = parsed
+	return nil
+}
+
+func applyBoolEnvironment(name string, target *bool) error {
+	value, ok := nonEmptyEnvironment(name)
+	if !ok {
+		return nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fmt.Errorf("%s must be a boolean: %w", name, err)
+	}
+	*target = parsed
+	return nil
+}
+
+func nonEmptyEnvironment(name string) (string, bool) {
+	value, ok := os.LookupEnv(name)
+	value = strings.TrimSpace(value)
+	return value, ok && value != ""
 }
 
 func (s Server) Address() string {
