@@ -9,11 +9,23 @@ import (
 )
 
 type UserHandler struct {
-	userUseCase *usecase.UserUseCase
+	userUseCase       *usecase.UserUseCase
+	preferenceUseCase *usecase.UserPreferenceUseCase
 }
 
 func NewUserHandler(userUseCase *usecase.UserUseCase) *UserHandler {
 	return &UserHandler{userUseCase: userUseCase}
+}
+
+// NewUserHandlerWithPreferences 创建同时支持用户资料与偏好接口的 handler。
+func NewUserHandlerWithPreferences(
+	userUseCase *usecase.UserUseCase,
+	preferenceUseCase *usecase.UserPreferenceUseCase,
+) *UserHandler {
+	return &UserHandler{
+		userUseCase:       userUseCase,
+		preferenceUseCase: preferenceUseCase,
+	}
 }
 
 type userNameURI struct {

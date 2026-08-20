@@ -32,6 +32,7 @@ var (
 	TagTargetKind          *tagTargetKind
 	UploadSession          *uploadSession
 	User                   *user
+	UserPreference         *userPreference
 )
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
@@ -53,6 +54,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	TagTargetKind = &Q.TagTargetKind
 	UploadSession = &Q.UploadSession
 	User = &Q.User
+	UserPreference = &Q.UserPreference
 }
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
@@ -75,6 +77,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		TagTargetKind:          newTagTargetKind(db, opts...),
 		UploadSession:          newUploadSession(db, opts...),
 		User:                   newUser(db, opts...),
+		UserPreference:         newUserPreference(db, opts...),
 	}
 }
 
@@ -98,6 +101,7 @@ type Query struct {
 	TagTargetKind          tagTargetKind
 	UploadSession          uploadSession
 	User                   user
+	UserPreference         userPreference
 }
 
 func (q *Query) Available() bool { return q.db != nil }
@@ -122,6 +126,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		TagTargetKind:          q.TagTargetKind.clone(db),
 		UploadSession:          q.UploadSession.clone(db),
 		User:                   q.User.clone(db),
+		UserPreference:         q.UserPreference.clone(db),
 	}
 }
 
@@ -153,6 +158,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		TagTargetKind:          q.TagTargetKind.replaceDB(db),
 		UploadSession:          q.UploadSession.replaceDB(db),
 		User:                   q.User.replaceDB(db),
+		UserPreference:         q.UserPreference.replaceDB(db),
 	}
 }
 
@@ -174,6 +180,7 @@ type queryCtx struct {
 	TagTargetKind          ITagTargetKindDo
 	UploadSession          IUploadSessionDo
 	User                   IUserDo
+	UserPreference         IUserPreferenceDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
@@ -195,6 +202,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		TagTargetKind:          q.TagTargetKind.WithContext(ctx),
 		UploadSession:          q.UploadSession.WithContext(ctx),
 		User:                   q.User.WithContext(ctx),
+		UserPreference:         q.UserPreference.WithContext(ctx),
 	}
 }
 

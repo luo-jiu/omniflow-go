@@ -51,6 +51,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	}
 
 	userRepository := repository.NewUserRepository(database)
+	userPreferenceRepository := repository.NewUserPreferenceRepository(database)
 	libraryRepository := repository.NewLibraryRepository(database)
 	nodeRepository := repository.NewNodeRepository(database)
 	tagRepository := repository.NewTagRepository(database)
@@ -66,6 +67,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	healthUseCase := usecase.NewHealthUseCase(cfg)
 	authUseCase := usecase.NewAuthUseCase(userRepository, sessionRepository, logSink)
 	userUseCase := usecase.NewUserUseCase(userRepository, objectStorage, transactor, logSink)
+	userPreferenceUseCase := usecase.NewUserPreferenceUseCase(userPreferenceRepository, transactor, logSink)
 	libraryUseCase := usecase.NewLibraryUseCase(libraryRepository, transactor, allowAll, logSink)
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink, storageRegistry)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink)
@@ -80,7 +82,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 
 	healthHandler := httpHandler.NewHealthHandler(healthUseCase)
 	authHandler := httpHandler.NewAuthHandler(authUseCase)
-	userHandler := httpHandler.NewUserHandler(userUseCase)
+	userHandler := httpHandler.NewUserHandlerWithPreferences(userUseCase, userPreferenceUseCase)
 	libraryHandler := httpHandler.NewLibraryHandler(libraryUseCase)
 	nodeHandler := httpHandler.NewNodeHandler(nodeUseCase)
 	directoryHandler := httpHandler.NewDirectoryHandler(directoryUseCase)

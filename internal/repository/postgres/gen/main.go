@@ -20,6 +20,7 @@ var defaultTableModels = map[string]string{
 	"browser_bookmarks":     "BrowserBookmark",
 	"browser_file_mappings": "BrowserFileMapping",
 	"users":                 "User",
+	"user_preferences":      "UserPreference",
 	"libraries":             "Library",
 	"nodes":                 "Node",
 	"node_tag_rel":          "NodeTagRel",

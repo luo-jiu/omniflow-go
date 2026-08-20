@@ -195,6 +195,43 @@ func TestBrowserFileMappingResolveRouteIsRegistered(t *testing.T) {
 	}
 }
 
+func TestUserPreferenceRoutesAreRegistered(t *testing.T) {
+	engine := newTestEngine()
+
+	testCases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/user/me/preferences"},
+		{method: http.MethodGet, path: "/api/v1/user/me/preferences/tool-workspace"},
+		{
+			method: http.MethodPut,
+			path:   "/api/v1/user/me/preferences/tool-workspace",
+			body:   `{"schemaVersion":1,"expectedRevision":0,"preferences":{}}`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		req := httptest.NewRequest(testCase.method, testCase.path, strings.NewReader(testCase.body))
+		req.Header.Set("Authorization", "Bearer test-token")
+		req.Header.Set("username", "1")
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+
+		engine.ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusInternalServerError {
+			t.Fatalf(
+				"expected %s %s to hit preference handler and return 500 when service is nil, got %d",
+				testCase.method,
+				testCase.path,
+				recorder.Code,
+			)
+		}
+	}
+}
+
 func TestBrowserBookmarkMatchRouteIsRegistered(t *testing.T) {
 	engine := newTestEngine()
 

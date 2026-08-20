@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 CONFIG_PATH="${CONFIG_PATH:-configs/config.yaml}"
 OUT_PATH="${OUT_PATH:-internal/repository/postgres/query}"
 MODEL_PATH="${MODEL_PATH:-internal/repository/postgres/model}"
-TABLES="${TABLES:-browser_bookmarks,browser_file_mappings,users,libraries,nodes,node_tag_rel,node_resource_targets,node_files,storage_objects,tags,tag_aliases,tag_bind_policies,tag_target_kinds,upload_sessions,migration_tasks,migration_task_items,resource_monitor_samples}"
+TABLES="${TABLES:-browser_bookmarks,browser_file_mappings,users,user_preferences,libraries,nodes,node_tag_rel,node_resource_targets,node_files,storage_objects,tags,tag_aliases,tag_bind_policies,tag_target_kinds,upload_sessions,migration_tasks,migration_task_items,resource_monitor_samples}"
 
 go run ./internal/repository/postgres/gen \
   -config "$CONFIG_PATH" \

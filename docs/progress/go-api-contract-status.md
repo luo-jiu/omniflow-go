@@ -1,6 +1,6 @@
 # Go API 契约状态摘要
 
-更新时间：2026-05-12
+更新时间：2026-08-19
 状态：Go API 当前契约已收口，持续维护
 
 ## 1. 当前结论
@@ -11,9 +11,9 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 
 | 指标 | 数量 | 说明 |
 |---|---:|---|
-| `/api/v1` 接口总数 | 56 | 以当前路由注册为准 |
-| 功能实现 | 56/56 | 含兼容 no-op 1 个 |
-| 日志 P1 接入 | 56/56 | 详见 API 与日志归档摘要 |
+| `/api/v1` 接口总数 | 59 | 以当前路由注册为准 |
+| 功能实现 | 59/59 | 含兼容 no-op 1 个 |
+| 日志 P1 接入 | 59/59 | 详见 API 与日志归档摘要 |
 | CLI 主要写链路 | 已覆盖 | 详见 CLI 进度台账 |
 
 ## 2. 保留契约
@@ -34,7 +34,7 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 | 模块 | 当前能力 |
 |---|---|
 | Auth | login/status/logout |
-| User | me、公开用户、注册、更新、密码、头像、用户名可用性 |
+| User | me、公开用户、注册、更新、密码、头像、用户名可用性、跨设备偏好 |
 | Library | scroll/create/update/delete |
 | Node | 创建、查询、树关系、路径、移动、重命名、回收站、归档批量能力 |
 | File/Directory | 上传、链接、批量链接 |
@@ -49,6 +49,11 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 
 - `GET /api/v1/health`
+- 用户偏好同步：
+  - `GET /api/v1/user/me/preferences`：返回当前用户全部偏好，没有记录时返回空数组。
+  - `GET /api/v1/user/me/preferences/:namespace`：读取单命名空间偏好，不存在时返回 `404`。
+  - `PUT /api/v1/user/me/preferences/:namespace`：按 `expectedRevision` 创建或完整替换单命名空间；版本冲突返回 `409`，支持 `dryRun=true`。
+  - 偏好按 `user_id + namespace` 存入 `user_preferences`，详细契约见 `docs/architecture/user-preferences.md`。
 - `GET /api/v1/resource-monitor/snapshot`
   - 返回当前 actor 拥有资料库范围内的资源分布快照；支持可选 `libraryId` 查询参数收敛到指定资料库。
   - `summary` 包含 `providerCount / bucketCount / objectCount / fileRefCount / physicalBytes / visible* / recycle* / orphan* / unmatchedCount / legacyProviderCount`。
