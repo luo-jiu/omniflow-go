@@ -1,6 +1,6 @@
 # 直传 MinIO 上传链路（终态）
 
-更新时间：2026-05-07
+更新时间：2026-08-24
 状态：已落地（前端 + 后端 + CLI）
 
 ## 1. 背景与决策
@@ -15,6 +15,7 @@ OmniFlow 的上传链路从 proxy 模式（client → backend → MinIO）切换
 - **会话存储**：Postgres `upload_sessions` 表（多实例就绪、崩溃可恢复）。
 - **续约模型**：双层 TTL：会话 lease（DB `expires_at`，24h 可续）+ presigned URL 签名（1h 不可改，按需重发）。
 - **客户端覆盖**：Electron 主进程 + CLI 共用同一套后端 7 端点。
+- **完成语义**：客户端为 complete 生成稳定 `clientOperationId`；后端保留 7 天完成回执并支持结果核对。
 - **proxy 旧链路**：上传相关的 `UploadAndCreateNode` / multipart proxy / 进度轮询基础设施 整套删除。
 - **存储 key 命名**：`libraries/{libraryId}/{uuid}.{ext}` 由后端 `init` 阶段生成，客户端不可写——避免越权。
 
@@ -26,12 +27,22 @@ OmniFlow 的上传链路从 proxy 模式（client → backend → MinIO）切换
 | POST | `/api/v1/upload/parts/sign` | 颁发分片预签名 URL（默认 1h），隐式续约 lease |
 | GET | `/api/v1/upload/parts?uploadId=…` | 透传 MinIO ListParts，断点续传支持 |
 | POST | `/api/v1/upload/:uploadId/renew` | 心跳续约，仅刷 lease 不签 URL |
-| POST | `/api/v1/upload/complete` | 提交分片清单（multipart）/ 校验对象（single），创建 node |
+| POST | `/api/v1/upload/complete` | 提交分片清单（multipart）/ 校验对象（single），幂等创建 node |
+| GET | `/api/v1/upload/complete/status?clientOperationId=…` | 核对 complete 的权威结果 |
 | DELETE | `/api/v1/upload/:uploadId` | MinIO Abort + 删 session 行 |
 
 **模式分流**：`fileSize ≤ 16 MiB` → `single`（1 个 PUT，无 InitiateMultipart）；否则 `multipart`，`partSize=16 MiB`。
 
 **conflictPolicy** 在 `complete` 阶段透传给 `NodeUseCase.Create`，支持 `error / auto_rename / replace`。Session 表不存策略，避免 schema 漂移。
+
+**complete / reconciliation 契约**：
+
+- 新客户端在 complete body 中传稳定、最长 128 字符的 `clientOperationId`；旧客户端未传时，后端使用 `upload:<uploadId>` 保持兼容。
+- `upload_sessions.status` 从 `pending` 转为 `committed`，并保存 `completed_node_id / completion_result / completed_at`；node 创建与回执写入同一个 PostgreSQL 事务。
+- 重复 complete 使用同一 operation 时直接重放已保存的 node；multipart complete 响应丢失时，后端可用对象 `HEAD + size` 确认 MinIO 是否已完成。
+- status 查询返回 `unknown / uncommitted / committed`；`committed` 同时返回 node。未命中和其他 actor 的 operation 都返回 `unknown`，避免枚举。
+- 网络错误、`408 / 429 / 5xx` 属于提交结果不确定，客户端先查询 status；仍不明确时保留 session，禁止自动 abort、重传或创建第二份结果。
+- `404 / 410` 和其他明确 `4xx` 属于确定失败，可按普通失败路径收尾。
 
 **鉴权语义**：
 - 所有端点校验 actor 与 `upload_sessions.actor_id` 一致；
@@ -41,15 +52,18 @@ OmniFlow 的上传链路从 proxy 模式（client → backend → MinIO）切换
 ## 3. 双层 TTL 模型
 
 ```
-init  ──→ lease 24h, no URL
-sign  ──→ URL 1h, lease 顺手刷新到 now+24h
-PUT  (URL: 1h) ──→ MinIO 直接验签
-renew ──→ lease 顺手刷新（心跳兜底，不签 URL）
-complete / abort ──→ 删 session 行
+init     ──→ pending lease 24h, no URL
+sign     ──→ URL 1h, lease 顺手刷新到 now+24h
+PUT      ──→ MinIO 直接验签
+renew    ──→ pending 且未认领时刷新 lease
+complete ──→ committed receipt 7d
+abort    ──→ 原子认领 cleanup，回收对象后删行
 ```
 
 - **lease（DB 字段）**：粗粒度的“会话还活着”信号。前端心跳每 8h 一次（TTL/3）显式 renew；任何 sign / list-parts 请求都会顺手刷。
 - **URL 签名**：细粒度的“这个 URL 还能用”信号。无状态，不可改。过期或 5xx 时客户端重新 sign，不需重新 init。
+- **operation 认领**：complete、abort 和 janitor 通过数据库条件更新互斥。complete 在临界过期时至少续出 15 分钟操作租约，janitor 不会根据过期快照误删正在提交的对象。
+- **完成回执**：committed 行仅用于短期结果重放；7 天后 janitor 只删回执，不删除 node 或对象。
 
 后端不需要持久化签名状态，所有 URL 校验由 MinIO 自己完成。
 
@@ -65,9 +79,9 @@ complete / abort ──→ 删 session 行
 
 `UploadSessionUseCase.NewWithJanitor` 启动 5 min ticker：
 - 扫 `repo.ListExpiredBefore(now)`；
-- multipart session 调 MinIO `AbortMultipartUpload` 回收已上传分片；
-- single session 在用户主动取消时会 best-effort 删除已 PUT 的对象；janitor 对过期 single session 仅删除会话行；
-- `repo.Delete(uploadId)` 删 session 行。
+- 对 pending 行先用 `expires_at` 条件原子认领；认领成功后回收 multipart 分片及可能已经合并的对象，single 同样删除已 PUT 对象；
+- 对 committed 行只删除过期回执；
+- provider 暂时不可用时保留已认领行，短租约过期后重试。
 
 模式直抄 `multipart_upload.go` janitor pattern，bootstrap 注册 stop 钩子。
 
@@ -75,7 +89,8 @@ complete / abort ──→ 删 session 行
 
 - `upload_sessions` 表的所有 CRUD 走 gorm/gen 生成的 query 方法（`q.UploadSession.WithContext(ctx)…`）；
 - 唯一例外是迁移文件 `docs/schema/2026-05-07-upload-sessions.sql`；
-- 事务边界放在 usecase 层：`Complete` 内的 “MinIO complete + node 创建 + session 删除” 不原子化（节点 audit 已经容错），单点失败 janitor 兜底。
+- 事务边界放在 usecase 层：MinIO complete 是事务外副作用；node 创建与 `committed` 回执写入同一个 PostgreSQL 事务，成功审计只在事务提交后记录。
+- `upload_session_completion.go` 收口 complete、operation 认领、回执解码和 reconciliation；`upload_session.go` 保留 init/sign/list/renew/abort/janitor。
 
 ## 7. 不变约束
 
@@ -85,6 +100,7 @@ complete / abort ──→ 删 session 行
 4. `ObjectStorage` 是 port → 未来加 STS 临时凭证只换 sign 内部，对外契约不变。
 5. 续约抽象到 lease（DB）+ URL（无状态）两层 → 切 Redis lease 只动 repo。
 6. CLI 与 Electron 共用同一套后端流程 → 后端动一处，所有客户端受益。
+7. complete 的 operation ID 是幂等身份，不是权限；actor 校验、资料库写权限和 node 创建校验仍独立执行。
 
 ## 8. 已删除的旧链路
 

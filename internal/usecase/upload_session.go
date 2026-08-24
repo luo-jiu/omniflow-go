@@ -14,7 +14,6 @@ import (
 	"omniflow-go/internal/audit"
 	"omniflow-go/internal/authz"
 	"omniflow-go/internal/config"
-	domainnode "omniflow-go/internal/domain/node"
 	domainsession "omniflow-go/internal/domain/uploadsession"
 	"omniflow-go/internal/repository"
 	uploadsessionpg "omniflow-go/internal/repository/postgres/impl/uploadsession"
@@ -32,6 +31,9 @@ const directUploadDefaultPartSizeBytes int64 = 16 * 1024 * 1024
 
 // presigned URL 默认 1h；与会话 lease（24h）解耦。
 const presignedURLDefaultExpiry = time.Hour
+
+// cleanup 认领必须跨过 janitor 的扫描窗口，避免临界过期时并发清理对象。
+const uploadCleanupClaimTTL = 5 * time.Minute
 
 // InitUploadSessionCommand 创建直传会话所需参数。
 type InitUploadSessionCommand struct {
@@ -76,22 +78,6 @@ type SignUploadPartsResult struct {
 	ExpiresAt time.Time          `json:"expiresAt"`
 }
 
-// CompleteUploadSessionCommand 完成上传所需参数。
-// Parts 仅 multipart 模式必填；single 模式忽略。
-// ConflictPolicy 在 Complete 阶段决定同名节点处理策略；空串走 NodeUseCase.Create 默认（error）。
-type CompleteUploadSessionCommand struct {
-	Actor          actor.Actor
-	UploadID       string
-	Parts          []CompletedPart
-	ConflictPolicy NodeNameConflictPolicy
-}
-
-// CompletedPart 客户端在 complete 阶段提交的分片清单条目。
-type CompletedPart struct {
-	PartNumber int
-	ETag       string
-}
-
 // UploadSessionPart 透传 ListParts 的单条分片信息。
 type UploadSessionPart struct {
 	PartNumber int    `json:"partNumber"`
@@ -103,6 +89,7 @@ type UploadSessionPart struct {
 // 状态持久化在 Postgres upload_sessions 表，多实例就绪、崩溃可恢复。
 type UploadSessionUseCase struct {
 	repo       *repository.UploadSessionRepository
+	tx         repository.Transactor
 	nodes      *NodeUseCase
 	registry   *storage.StorageRegistry
 	authorizer authz.Authorizer
@@ -114,6 +101,7 @@ type UploadSessionUseCase struct {
 // NewUploadSessionUseCase 仅构造，不启动 janitor。bootstrap 调 NewUploadSessionUseCaseWithJanitor。
 func NewUploadSessionUseCase(
 	repo *repository.UploadSessionRepository,
+	tx repository.Transactor,
 	nodes *NodeUseCase,
 	registry *storage.StorageRegistry,
 	authorizer authz.Authorizer,
@@ -122,6 +110,7 @@ func NewUploadSessionUseCase(
 ) *UploadSessionUseCase {
 	return &UploadSessionUseCase{
 		repo:       repo,
+		tx:         tx,
 		nodes:      nodes,
 		registry:   registry,
 		authorizer: authorizer,
@@ -134,13 +123,14 @@ func NewUploadSessionUseCase(
 // NewUploadSessionUseCaseWithJanitor 构造 UC 并启动后台 janitor，返回 stop 钩子。
 func NewUploadSessionUseCaseWithJanitor(
 	repo *repository.UploadSessionRepository,
+	tx repository.Transactor,
 	nodes *NodeUseCase,
 	registry *storage.StorageRegistry,
 	authorizer authz.Authorizer,
 	auditLog audit.Sink,
 	cfg *config.Config,
 ) (*UploadSessionUseCase, func()) {
-	uc := NewUploadSessionUseCase(repo, nodes, registry, authorizer, auditLog, cfg)
+	uc := NewUploadSessionUseCase(repo, tx, nodes, registry, authorizer, auditLog, cfg)
 	go uc.runJanitor()
 	return uc, func() {
 		close(uc.stopCh)
@@ -333,107 +323,21 @@ func (u *UploadSessionUseCase) Renew(ctx context.Context, act actor.Actor, uploa
 	return u.renewLease(ctx, session.ID)
 }
 
-// Complete 完成上传：提交 MinIO（multipart）或 HEAD 校验（single）→ 创建 node → 删 session 行 → audit。
-func (u *UploadSessionUseCase) Complete(ctx context.Context, cmd CompleteUploadSessionCommand) (domainnode.Node, error) {
-	session, err := u.loadSession(ctx, cmd.Actor, cmd.UploadID)
-	if err != nil {
-		return domainnode.Node{}, err
-	}
-
-	store, err := u.registry.Get(session.StorageProvider)
-	if err != nil {
-		return domainnode.Node{}, fmt.Errorf("storage provider %q: %w", session.StorageProvider, err)
-	}
-
-	if session.Mode == domainsession.ModeMultipart {
-		if len(cmd.Parts) == 0 {
-			return domainnode.Node{}, fmt.Errorf("%w: parts must not be empty for multipart upload", ErrInvalidArgument)
-		}
-		storageParts := make([]storage.MultipartUploadPart, len(cmd.Parts))
-		for i, p := range cmd.Parts {
-			storageParts[i] = storage.MultipartUploadPart{
-				PartNumber: p.PartNumber,
-				ETag:       p.ETag,
-			}
-		}
-		if err := store.CompleteMultipartUpload(ctx, session.StorageKey, session.MinioUploadID, storageParts); err != nil {
-			return domainnode.Node{}, fmt.Errorf("complete multipart: %w", err)
-		}
-	} else {
-		// single 模式：HEAD 校验对象已写入且大小匹配。
-		info, statErr := store.StatObject(ctx, session.StorageKey)
-		if statErr != nil {
-			return domainnode.Node{}, fmt.Errorf("%w: object not uploaded yet", ErrInvalidArgument)
-		}
-		if info.Size != session.FileSize {
-			return domainnode.Node{}, fmt.Errorf("%w: stored size %d does not match declared size %d", ErrInvalidArgument, info.Size, session.FileSize)
-		}
-	}
-
-	base := extractUploadBaseName(session.FileName)
-	extWithDot := path.Ext(base)
-	name := strings.TrimSuffix(base, extWithDot)
-	if name == "" {
-		name = base
-	}
-	ext := strings.TrimPrefix(extWithDot, ".")
-
-	node, err := u.nodes.Create(ctx, CreateNodeCommand{
-		Actor:           cmd.Actor,
-		Name:            name,
-		Type:            domainnode.TypeFile,
-		ParentID:        session.ParentID,
-		LibraryID:       session.LibraryID,
-		Ext:             ext,
-		MIMEType:        session.ContentType,
-		FileSize:        session.FileSize,
-		StorageKey:      session.StorageKey,
-		StorageProvider: session.StorageProvider,
-		StorageBucket:   store.Bucket(),
-		ConflictPolicy:  cmd.ConflictPolicy,
-	})
-	if err != nil {
-		// node 创建失败：回收 MinIO 对象，避免孤儿；session 行保留，等 janitor 收尾。
-		_ = store.Delete(context.Background(), session.StorageKey)
-		return domainnode.Node{}, err
-	}
-
-	if _, delErr := u.repo.Delete(ctx, session.ID); delErr != nil {
-		slog.WarnContext(ctx, "upload_session.complete.delete_session_failed",
-			"upload_id", session.ID,
-			"error", delErr,
-		)
-	}
-
-	_ = u.writeAudit(ctx, cmd.Actor, "upload.completed", true, map[string]any{
-		"library_id":  session.LibraryID,
-		"parent_id":   session.ParentID,
-		"node_id":     node.ID,
-		"name":        node.Name,
-		"storage_key": session.StorageKey,
-		"size":        session.FileSize,
-		"mime_type":   session.ContentType,
-		"mode":        session.Mode,
-	})
-	slog.InfoContext(ctx, "upload_session.complete",
-		"upload_id", session.ID,
-		"library_id", session.LibraryID,
-		"node_id", node.ID,
-		"size", session.FileSize,
-	)
-	return node, nil
-}
-
 // Abort 取消上传：回收 MinIO multipart（如适用）+ 删 session 行。
 func (u *UploadSessionUseCase) Abort(ctx context.Context, act actor.Actor, uploadID string) error {
-	session, err := u.loadSession(ctx, act, uploadID)
+	session, operationID, committed, err := u.claimAbort(ctx, act, uploadID)
 	if err != nil {
 		return err
+	}
+	if committed {
+		// complete 响应丢失后客户端可能仍发出 best-effort abort；绝不能删除已提交 node 的对象。
+		return nil
 	}
 
 	if session.Mode == domainsession.ModeMultipart && session.MinioUploadID != "" {
 		store, storeErr := u.registry.Get(session.StorageProvider)
 		if storeErr != nil {
+			u.releaseOperationClaim(session.ID, operationID)
 			return fmt.Errorf("storage provider %q: %w", session.StorageProvider, storeErr)
 		}
 		if abortErr := store.AbortMultipartUpload(ctx, session.StorageKey, session.MinioUploadID); abortErr != nil {
@@ -441,10 +345,19 @@ func (u *UploadSessionUseCase) Abort(ctx context.Context, act actor.Actor, uploa
 				"upload_id", session.ID,
 				"error", abortErr,
 			)
+			// CompleteMultipartUpload 可能已经成功，此时 multipart upload 已不存在，但对象仍需回收。
+			if deleteErr := store.Delete(ctx, session.StorageKey); deleteErr != nil {
+				slog.WarnContext(ctx, "upload_session.abort.completed_object_delete_failed",
+					"upload_id", session.ID,
+					"error", deleteErr,
+				)
+				return fmt.Errorf("cleanup aborted upload object: %w", deleteErr)
+			}
 		}
 	} else if session.Mode == domainsession.ModeSingle && strings.TrimSpace(session.StorageKey) != "" {
 		store, storeErr := u.registry.Get(session.StorageProvider)
 		if storeErr != nil {
+			u.releaseOperationClaim(session.ID, operationID)
 			return fmt.Errorf("storage provider %q: %w", session.StorageProvider, storeErr)
 		}
 		if deleteErr := store.Delete(ctx, session.StorageKey); deleteErr != nil {
@@ -452,11 +365,16 @@ func (u *UploadSessionUseCase) Abort(ctx context.Context, act actor.Actor, uploa
 				"upload_id", session.ID,
 				"error", deleteErr,
 			)
+			return fmt.Errorf("delete single upload object: %w", deleteErr)
 		}
 	}
 
-	if _, delErr := u.repo.Delete(ctx, session.ID); delErr != nil {
+	deleted, delErr := u.repo.DeleteClaimedPending(ctx, session.ID, operationID)
+	if delErr != nil {
 		return fmt.Errorf("delete upload session: %w", delErr)
+	}
+	if !deleted {
+		return fmt.Errorf("%w: upload abort state changed", ErrConflict)
 	}
 
 	slog.InfoContext(ctx, "upload_session.abort",
@@ -466,8 +384,69 @@ func (u *UploadSessionUseCase) Abort(ctx context.Context, act actor.Actor, uploa
 	return nil
 }
 
-// loadSession 拉取并校验 actor + 过期。actor 不匹配按 ErrNotFound 返回防枚举。
+func (u *UploadSessionUseCase) claimAbort(
+	ctx context.Context,
+	act actor.Actor,
+	uploadID string,
+) (domainsession.UploadSession, string, bool, error) {
+	id := strings.TrimSpace(uploadID)
+	if id == "" {
+		return domainsession.UploadSession{}, "", false, fmt.Errorf("%w: uploadId is required", ErrInvalidArgument)
+	}
+	operationID := "internal:abort:" + id
+	var (
+		claimed   domainsession.UploadSession
+		committed bool
+	)
+	err := u.withinTx(ctx, func(txCtx context.Context) error {
+		session, loadErr := u.repo.GetForUpdate(txCtx, id)
+		if loadErr != nil {
+			return mapUploadSessionLoadError(loadErr)
+		}
+		if session.ActorID != act.ID {
+			return fmt.Errorf("%w: upload session not found", ErrNotFound)
+		}
+		if !session.ExpiresAt.IsZero() && time.Now().UTC().After(session.ExpiresAt) {
+			return fmt.Errorf("%w: upload session lease expired", ErrExpired)
+		}
+		if session.Status == domainsession.StatusCommitted {
+			claimed = session
+			committed = true
+			return nil
+		}
+		if session.Status != domainsession.StatusPending || session.ClientOperationID != "" {
+			return fmt.Errorf("%w: upload completion or cleanup is already in progress", ErrConflict)
+		}
+		expiresAt := time.Now().UTC().Add(uploadCleanupClaimTTL)
+		ok, claimErr := u.repo.ClaimOperation(txCtx, session.ID, operationID, expiresAt)
+		if claimErr != nil {
+			return fmt.Errorf("claim upload abort: %w", claimErr)
+		}
+		if !ok {
+			return fmt.Errorf("%w: upload abort state changed", ErrConflict)
+		}
+		session.ClientOperationID = operationID
+		session.ExpiresAt = expiresAt
+		claimed = session
+		return nil
+	})
+	return claimed, operationID, committed, err
+}
+
+// loadSession 拉取可继续上传的 pending 会话；已提交回执不能再 sign/list/renew。
 func (u *UploadSessionUseCase) loadSession(ctx context.Context, act actor.Actor, uploadID string) (domainsession.UploadSession, error) {
+	session, err := u.loadOwnedSession(ctx, act, uploadID)
+	if err != nil {
+		return domainsession.UploadSession{}, err
+	}
+	if session.Status != domainsession.StatusPending || session.ClientOperationID != "" {
+		return domainsession.UploadSession{}, fmt.Errorf("%w: upload session is completing or completed", ErrConflict)
+	}
+	return session, nil
+}
+
+// loadOwnedSession 拉取并校验 actor + 过期。actor 不匹配按 ErrNotFound 返回防枚举。
+func (u *UploadSessionUseCase) loadOwnedSession(ctx context.Context, act actor.Actor, uploadID string) (domainsession.UploadSession, error) {
 	id := strings.TrimSpace(uploadID)
 	if id == "" {
 		return domainsession.UploadSession{}, fmt.Errorf("%w: uploadId is required", ErrInvalidArgument)
@@ -495,7 +474,7 @@ func (u *UploadSessionUseCase) renewLease(ctx context.Context, uploadID string) 
 		return time.Time{}, fmt.Errorf("renew upload session: %w", err)
 	}
 	if !ok {
-		return time.Time{}, fmt.Errorf("%w: upload session not found", ErrNotFound)
+		return time.Time{}, fmt.Errorf("%w: upload session is completing or completed", ErrConflict)
 	}
 	return expiresAt, nil
 }
@@ -546,7 +525,7 @@ func (u *UploadSessionUseCase) writeAudit(ctx context.Context, principal actor.A
 	})
 }
 
-// runJanitor 5 分钟扫一次 expires_at <= now 的会话：multipart 调 MinIO Abort，然后删行。
+// runJanitor 5 分钟扫一次 expires_at <= now：pending 回收对象，committed 只删除过期回执。
 func (u *UploadSessionUseCase) runJanitor() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
@@ -571,19 +550,55 @@ func (u *UploadSessionUseCase) sweepExpired() {
 		return
 	}
 	for _, s := range sessions {
-		if s.Mode == domainsession.ModeMultipart && s.MinioUploadID != "" {
+		switch s.Status {
+		case domainsession.StatusCommitted:
+			if _, delErr := u.repo.DeleteExpiredCommitted(ctx, s.ID, now); delErr != nil {
+				slog.WarnContext(ctx, "upload_session.sweep.delete_receipt_failed",
+					"upload_id", s.ID, "error", delErr)
+			}
+			continue
+		case domainsession.StatusPending:
+			operationID := "internal:janitor:" + s.ID
+			claimed, claimErr := u.repo.ClaimExpiredForCleanup(
+				ctx,
+				s.ID,
+				now,
+				operationID,
+				time.Now().UTC().Add(uploadCleanupClaimTTL),
+			)
+			if claimErr != nil {
+				slog.WarnContext(ctx, "upload_session.sweep.claim_failed",
+					"upload_id", s.ID, "error", claimErr)
+				continue
+			}
+			if !claimed {
+				continue
+			}
 			store, storeErr := u.registry.Get(s.StorageProvider)
 			if storeErr != nil {
 				slog.WarnContext(ctx, "upload_session.sweep.provider_not_found",
 					"upload_id", s.ID, "provider", s.StorageProvider, "error", storeErr)
-			} else if abortErr := store.AbortMultipartUpload(ctx, s.StorageKey, s.MinioUploadID); abortErr != nil {
-				slog.WarnContext(ctx, "upload_session.sweep.abort_failed",
-					"upload_id", s.ID, "error", abortErr)
+				continue
 			}
-		}
-		if _, delErr := u.repo.Delete(ctx, s.ID); delErr != nil {
-			slog.WarnContext(ctx, "upload_session.sweep.delete_failed",
-				"upload_id", s.ID, "error", delErr)
+			if s.Mode == domainsession.ModeMultipart && s.MinioUploadID != "" {
+				if abortErr := store.AbortMultipartUpload(ctx, s.StorageKey, s.MinioUploadID); abortErr != nil {
+					slog.WarnContext(ctx, "upload_session.sweep.abort_failed",
+						"upload_id", s.ID, "error", abortErr)
+				}
+			}
+			// multipart 可能已完成但 DB 提交尚未发生；Delete 同时覆盖这种孤儿对象和 single 对象。
+			if deleteErr := store.Delete(ctx, s.StorageKey); deleteErr != nil {
+				slog.WarnContext(ctx, "upload_session.sweep.delete_object_failed",
+					"upload_id", s.ID, "error", deleteErr)
+				continue
+			}
+			if _, delErr := u.repo.DeleteClaimedPending(ctx, s.ID, operationID); delErr != nil {
+				slog.WarnContext(ctx, "upload_session.sweep.delete_failed",
+					"upload_id", s.ID, "error", delErr)
+			}
+		default:
+			slog.WarnContext(ctx, "upload_session.sweep.unknown_status",
+				"upload_id", s.ID, "status", s.Status)
 		}
 	}
 }

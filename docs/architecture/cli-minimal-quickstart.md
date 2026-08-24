@@ -65,6 +65,8 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 ./bin/of resource-monitor sample [--library-id <id>] [--dry-run] [--json]
 ```
 
+上传 complete 遇到网络错误、限流或服务端 `5xx` 时，CLI 会先用本次稳定 operation ID 查询服务端完成状态。若仍无法确认，CLI 会输出 operation ID 并保留上传会话，不会自动 abort 或再次上传。
+
 支持 `--json` 的命令会输出结构化结果，便于脚本和 AI 调用。
 
 `fs configure` 适合准备可重复的 viewer 测试夹具。三个可配置字段至少提供一个；未提供的字段保持原值，`--view-meta` 必须是 JSON 对象。建议先执行 `--dry-run --json`，确认后再去掉 `--dry-run` 真实写入。

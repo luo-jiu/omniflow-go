@@ -95,6 +95,23 @@ func TestHealthRoutes(t *testing.T) {
 	}
 }
 
+func TestUploadCompletionStatusRouteRequiresAuth(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine()
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/upload/complete/status?clientOperationId=operation-1",
+		nil,
+	)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected upload completion status route to return 401 without auth, got %d", recorder.Code)
+	}
+}
+
 func TestProtectedRouteRequiresAuthHeaders(t *testing.T) {
 	cfg := &config.Config{
 		App: config.App{

@@ -297,9 +297,15 @@ type UploadCompletedPart struct {
 }
 
 type UploadCompleteRequest struct {
-	UploadID       string                `json:"uploadId"`
-	Parts          []UploadCompletedPart `json:"parts"`
-	ConflictPolicy string                `json:"conflictPolicy,omitempty"`
+	UploadID          string                `json:"uploadId"`
+	ClientOperationID string                `json:"clientOperationId,omitempty"`
+	Parts             []UploadCompletedPart `json:"parts"`
+	ConflictPolicy    string                `json:"conflictPolicy,omitempty"`
+}
+
+type UploadCompletionStatusResult struct {
+	State string `json:"state"`
+	Node  *Node  `json:"node,omitempty"`
 }
 
 type UploadRenewResult struct {
@@ -835,6 +841,17 @@ func (c *Client) UploadRenew(ctx context.Context, uploadID string) (UploadRenewR
 func (c *Client) UploadComplete(ctx context.Context, req UploadCompleteRequest) (Node, error) {
 	var out Node
 	err := c.doJSON(ctx, http.MethodPost, "/api/v1/upload/complete", nil, req, true, &out)
+	return out, err
+}
+
+func (c *Client) UploadCompletionStatus(
+	ctx context.Context,
+	clientOperationID string,
+) (UploadCompletionStatusResult, error) {
+	query := url.Values{}
+	query.Set("clientOperationId", clientOperationID)
+	var out UploadCompletionStatusResult
+	err := c.doJSON(ctx, http.MethodGet, "/api/v1/upload/complete/status", query, nil, true, &out)
 	return out, err
 }
 

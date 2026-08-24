@@ -71,7 +71,7 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 	libraryUseCase := usecase.NewLibraryUseCase(libraryRepository, transactor, allowAll, logSink)
 	nodeUseCase := usecase.NewNodeUseCase(nodeRepository, transactor, allowAll, logSink, storageRegistry)
 	directoryUseCase := usecase.NewDirectoryUseCase(nodeUseCase, storageRegistry, allowAll, logSink)
-	uploadSessionUseCase, uploadSessionCleanup := usecase.NewUploadSessionUseCaseWithJanitor(uploadSessionRepository, nodeUseCase, storageRegistry, allowAll, logSink, cfg)
+	uploadSessionUseCase, uploadSessionCleanup := usecase.NewUploadSessionUseCaseWithJanitor(uploadSessionRepository, transactor, nodeUseCase, storageRegistry, allowAll, logSink, cfg)
 	migrationUseCase := usecase.NewMigrationUseCase(migrationRepository, storageRegistry, allowAll, logSink, transactor, cfg)
 	resourceMonitorUseCase := usecase.NewResourceMonitorUseCase(resourceMonitorRepository, resourceMonitorRedisProbeRepository, storageRegistry)
 	_, migrationWorkerCleanup := usecase.NewMigrationWorkerPool(migrationUseCase, 0)

@@ -1,6 +1,6 @@
 # Go API 契约状态摘要
 
-更新时间：2026-08-19
+更新时间：2026-08-24
 状态：Go API 当前契约已收口，持续维护
 
 ## 1. 当前结论
@@ -11,9 +11,9 @@ Go 后端当前 `/api/v1` 接口功能已覆盖核心业务，并包含 Go 侧�
 
 | 指标 | 数量 | 说明 |
 |---|---:|---|
-| `/api/v1` 接口总数 | 59 | 以当前路由注册为准 |
-| 功能实现 | 59/59 | 含兼容 no-op 1 个 |
-| 日志 P1 接入 | 59/59 | 详见 API 与日志归档摘要 |
+| `/api/v1` 接口总数 | 60 | 以当前路由注册为准 |
+| 功能实现 | 60/60 | 含兼容 no-op 1 个 |
+| 日志 P1 接入 | 60/60 | 详见 API 与日志归档摘要 |
 | CLI 主要写链路 | 已覆盖 | 详见 CLI 进度台账 |
 
 ## 2. 保留契约
@@ -104,10 +104,12 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - `POST /api/v1/upload/parts/sign`：颁发分片预签名 PUT URL（默认 1h），顺手刷新会话 lease 至 `now + 24h`（隐式续约）。
   - `GET /api/v1/upload/parts?uploadId=...`：透传 MinIO ListParts 返回 `partNumber / etag / size`，断点续传支持，顺手刷 lease。
   - `POST /api/v1/upload/:uploadId/renew`：心跳续约，仅刷 lease 不签 URL。
-  - `POST /api/v1/upload/complete`：multipart 调 CompleteMultipartUpload，single 校验对象存在；落库由 `NodeUseCase.Create` 兜底，支持 `conflictPolicy=error|auto_rename|replace`。
+  - `POST /api/v1/upload/complete`：接收可选 `clientOperationId`；multipart 调 CompleteMultipartUpload，single 校验对象存在；node 与完成回执在同一个 PostgreSQL 事务内提交，支持 `conflictPolicy=error|auto_rename|replace`，重复 operation 重放同一 node。
+  - `GET /api/v1/upload/complete/status?clientOperationId=...`：返回 `unknown / uncommitted / committed`；committed 同时返回 node，未命中与其他 actor 的 operation 均返回 unknown。
   - `DELETE /api/v1/upload/:uploadId`：MinIO AbortMultipartUpload + 删 session 行。
   - 鉴权语义：actor 与 session.actor 不一致 / session 不存在统一返回 `404`（防 uploadId 枚举）；lease 过期返回 `410 Gone`。
   - 双层 TTL：DB lease（24h，可续）与 presigned URL 签名（1h，不可改）解耦；URL 过期可重新 sign 而无需重新 init。
+  - 完成回执保留 7 天；complete、abort 与 janitor 通过数据库 operation 认领互斥，避免临界过期或响应丢失时误删已提交对象。
   - 客户端覆盖：Electron 主进程 `http:upload:presigned-put` 走 `https.request` 流式 PUT；CLI `of upload file` 走 Go `http.Client` 直传，复用同一套后端流程。
 - 存储迁移（migration）：把节点子树下的 `storage_objects` 物理对象从一个 provider 搬到另一个 provider，节点元数据保持不变。
   - `POST /api/v1/migration/tasks`：入队迁移任务，请求体 `{libraryId, rootNodeId, targetProvider}`；支持 `?dryRun=true` 仅返回 `{plannedObjects, plannedBytes, targetProvider, targetBucket, storageObjectIds}` 不落库。

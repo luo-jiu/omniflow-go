@@ -41,6 +41,11 @@ func newUploadSession(db *gorm.DB, opts ...gen.DOOption) uploadSession {
 	_uploadSession.ExpiresAt = field.NewTime(tableName, "expires_at")
 	_uploadSession.CreatedAt = field.NewTime(tableName, "created_at")
 	_uploadSession.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_uploadSession.Status = field.NewString(tableName, "status")
+	_uploadSession.ClientOperationID = field.NewString(tableName, "client_operation_id")
+	_uploadSession.CompletedNodeID = field.NewInt64(tableName, "completed_node_id")
+	_uploadSession.CompletedAt = field.NewTime(tableName, "completed_at")
+	_uploadSession.CompletionResult = field.NewString(tableName, "completion_result")
 
 	_uploadSession.fillFieldMap()
 
@@ -50,22 +55,27 @@ func newUploadSession(db *gorm.DB, opts ...gen.DOOption) uploadSession {
 type uploadSession struct {
 	uploadSessionDo uploadSessionDo
 
-	ALL             field.Asterisk
-	ID              field.String
-	LibraryID       field.Int64
-	ParentID        field.Int64
-	ActorID         field.String
-	StorageKey      field.String
-	FileName        field.String
-	FileSize        field.Int64
-	ContentType     field.String
-	StorageProvider field.String
-	Mode            field.String
-	MinioUploadID   field.String
-	PartSize        field.Int64
-	ExpiresAt       field.Time
-	CreatedAt       field.Time
-	UpdatedAt       field.Time
+	ALL               field.Asterisk
+	ID                field.String
+	LibraryID         field.Int64
+	ParentID          field.Int64
+	ActorID           field.String
+	StorageKey        field.String
+	FileName          field.String
+	FileSize          field.Int64
+	ContentType       field.String
+	StorageProvider   field.String
+	Mode              field.String
+	MinioUploadID     field.String
+	PartSize          field.Int64
+	ExpiresAt         field.Time
+	CreatedAt         field.Time
+	UpdatedAt         field.Time
+	Status            field.String
+	ClientOperationID field.String
+	CompletedNodeID   field.Int64
+	CompletedAt       field.Time
+	CompletionResult  field.String
 
 	fieldMap map[string]field.Expr
 }
@@ -97,6 +107,11 @@ func (u *uploadSession) updateTableName(table string) *uploadSession {
 	u.ExpiresAt = field.NewTime(table, "expires_at")
 	u.CreatedAt = field.NewTime(table, "created_at")
 	u.UpdatedAt = field.NewTime(table, "updated_at")
+	u.Status = field.NewString(table, "status")
+	u.ClientOperationID = field.NewString(table, "client_operation_id")
+	u.CompletedNodeID = field.NewInt64(table, "completed_node_id")
+	u.CompletedAt = field.NewTime(table, "completed_at")
+	u.CompletionResult = field.NewString(table, "completion_result")
 
 	u.fillFieldMap()
 
@@ -125,7 +140,7 @@ func (u *uploadSession) GetFieldByName(fieldName string) (field.OrderExpr, bool)
 }
 
 func (u *uploadSession) fillFieldMap() {
-	u.fieldMap = make(map[string]field.Expr, 15)
+	u.fieldMap = make(map[string]field.Expr, 20)
 	u.fieldMap["id"] = u.ID
 	u.fieldMap["library_id"] = u.LibraryID
 	u.fieldMap["parent_id"] = u.ParentID
@@ -141,6 +156,11 @@ func (u *uploadSession) fillFieldMap() {
 	u.fieldMap["expires_at"] = u.ExpiresAt
 	u.fieldMap["created_at"] = u.CreatedAt
 	u.fieldMap["updated_at"] = u.UpdatedAt
+	u.fieldMap["status"] = u.Status
+	u.fieldMap["client_operation_id"] = u.ClientOperationID
+	u.fieldMap["completed_node_id"] = u.CompletedNodeID
+	u.fieldMap["completed_at"] = u.CompletedAt
+	u.fieldMap["completion_result"] = u.CompletionResult
 }
 
 func (u uploadSession) clone(db *gorm.DB) uploadSession {

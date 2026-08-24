@@ -660,6 +660,9 @@ func TestUploadCompleteIncludesConflictPolicy(t *testing.T) {
 		if !strings.Contains(text, `"conflictPolicy":"auto_rename"`) {
 			t.Fatalf("expected conflictPolicy in body, got %s", text)
 		}
+		if !strings.Contains(text, `"clientOperationId":"operation-1"`) {
+			t.Fatalf("expected clientOperationId in body, got %s", text)
+		}
 		if !strings.Contains(text, `"partNumber":1`) || !strings.Contains(text, `"etag":"abc"`) {
 			t.Fatalf("expected parts in body, got %s", text)
 		}
@@ -672,15 +675,44 @@ func TestUploadCompleteIncludesConflictPolicy(t *testing.T) {
 	})
 
 	node, err := client.UploadComplete(context.Background(), UploadCompleteRequest{
-		UploadID:       "u-1",
-		Parts:          []UploadCompletedPart{{PartNumber: 1, ETag: "abc"}},
-		ConflictPolicy: "auto_rename",
+		UploadID:          "u-1",
+		ClientOperationID: "operation-1",
+		Parts:             []UploadCompletedPart{{PartNumber: 1, ETag: "abc"}},
+		ConflictPolicy:    "auto_rename",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if node.ID != 42 {
 		t.Fatalf("unexpected node id: %d", node.ID)
+	}
+}
+
+func TestUploadCompletionStatus(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("http://example.test", "tester", "token-123")
+	client.httpClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/api/v1/upload/complete/status" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("clientOperationId") != "operation-1" {
+			t.Fatalf("unexpected query: %s", r.URL.RawQuery)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":"0","data":{"state":"committed","node":{"id":42,"name":"file.bin","type":"file","libraryId":2}}}`,
+			)),
+		}, nil
+	})
+
+	result, err := client.UploadCompletionStatus(context.Background(), "operation-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.State != "committed" || result.Node == nil || result.Node.ID != 42 {
+		t.Fatalf("unexpected status result: %+v", result)
 	}
 }
 

@@ -185,6 +185,28 @@ var (
 )
 
 func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domainnode.Node, error) {
+	var created domainnode.Node
+	err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
+		result, createErr := u.createInExistingTransaction(txCtx, cmd)
+		if createErr != nil {
+			return createErr
+		}
+		created = result
+		return nil
+	})
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+
+	u.recordCreateSuccess(ctx, cmd, created)
+	return created, nil
+}
+
+// createInExistingTransaction 执行 node 创建的完整校验与写入，但不自行开启事务或提前写成功审计。
+func (u *NodeUseCase) createInExistingTransaction(
+	ctx context.Context,
+	cmd CreateNodeCommand,
+) (domainnode.Node, error) {
 	if err := u.ensureNodesConfigured(); err != nil {
 		return domainnode.Node{}, err
 	}
@@ -202,61 +224,56 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		return domainnode.Node{}, fmt.Errorf("%w: ext is too long", ErrInvalidArgument)
 	}
 
-	var created domainnode.Node
-	err := u.withinMutationTx(ctx, cmd.DryRun, func(txCtx context.Context) error {
-		parentID, err := u.resolveCreateParentID(txCtx, cmd.LibraryID, cmd.ParentID)
-		if err != nil {
-			return err
-		}
-		if err := u.nodes.LockSiblingNameScope(txCtx, cmd.LibraryID, parentID); err != nil {
-			return err
-		}
-		resolvedName, err := u.resolveCreateNodeName(
-			txCtx,
-			parentID,
-			cmd.LibraryID,
-			name,
-			normalizedExt,
-			cmd.Type,
-			cmd.ConflictPolicy,
-		)
-		if err != nil {
-			return err
-		}
-
-		result, err := u.nodes.CreateNode(txCtx, repository.CreateNodeInput{
-			Name:            resolvedName,
-			Type:            cmd.Type,
-			ParentID:        parentID,
-			LibraryID:       cmd.LibraryID,
-			Ext:             normalizedExt,
-			MIMEType:        strings.TrimSpace(cmd.MIMEType),
-			FileSize:        cmd.FileSize,
-			StorageKey:      strings.TrimSpace(cmd.StorageKey),
-			BuiltInType:     "DEF",
-			ArchiveMode:     false,
-			StorageProvider: cmd.StorageProvider,
-			StorageBucket:   cmd.StorageBucket,
-		})
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return ErrNotFound
-			}
-			if errors.Is(err, repository.ErrConflict) {
-				return errNodeNameAlreadyExists
-			}
-			if errors.Is(err, repository.ErrInvalidState) {
-				return fmt.Errorf("%w: invalid node create request", ErrInvalidArgument)
-			}
-			return err
-		}
-		created = result
-		return nil
-	})
+	parentID, err := u.resolveCreateParentID(ctx, cmd.LibraryID, cmd.ParentID)
+	if err != nil {
+		return domainnode.Node{}, err
+	}
+	if err := u.nodes.LockSiblingNameScope(ctx, cmd.LibraryID, parentID); err != nil {
+		return domainnode.Node{}, err
+	}
+	resolvedName, err := u.resolveCreateNodeName(
+		ctx,
+		parentID,
+		cmd.LibraryID,
+		name,
+		normalizedExt,
+		cmd.Type,
+		cmd.ConflictPolicy,
+	)
 	if err != nil {
 		return domainnode.Node{}, err
 	}
 
+	created, err := u.nodes.CreateNode(ctx, repository.CreateNodeInput{
+		Name:            resolvedName,
+		Type:            cmd.Type,
+		ParentID:        parentID,
+		LibraryID:       cmd.LibraryID,
+		Ext:             normalizedExt,
+		MIMEType:        strings.TrimSpace(cmd.MIMEType),
+		FileSize:        cmd.FileSize,
+		StorageKey:      strings.TrimSpace(cmd.StorageKey),
+		BuiltInType:     "DEF",
+		ArchiveMode:     false,
+		StorageProvider: cmd.StorageProvider,
+		StorageBucket:   cmd.StorageBucket,
+	})
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return domainnode.Node{}, ErrNotFound
+		}
+		if errors.Is(err, repository.ErrConflict) {
+			return domainnode.Node{}, errNodeNameAlreadyExists
+		}
+		if errors.Is(err, repository.ErrInvalidState) {
+			return domainnode.Node{}, fmt.Errorf("%w: invalid node create request", ErrInvalidArgument)
+		}
+		return domainnode.Node{}, err
+	}
+	return created, nil
+}
+
+func (u *NodeUseCase) recordCreateSuccess(ctx context.Context, cmd CreateNodeCommand, created domainnode.Node) {
 	_ = u.writeAudit(ctx, cmd.Actor, "node.create", true, map[string]any{
 		"node_id":    created.ID,
 		"library_id": created.LibraryID,
@@ -273,7 +290,6 @@ func (u *NodeUseCase) Create(ctx context.Context, cmd CreateNodeCommand) (domain
 		"type", created.Type,
 		"dry_run", cmd.DryRun,
 	)
-	return created, nil
 }
 
 func (u *NodeUseCase) GetAllDescendants(ctx context.Context, principal actor.Actor, nodeID, libraryID uint64) ([]domainnode.Node, error) {

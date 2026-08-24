@@ -11,6 +11,9 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // presignBatchConcurrency 与前端 upload-direct.ts 保持一致：单批 4 个 part 并发签名+PUT。
@@ -130,8 +133,9 @@ func (a *App) runUploadFile(args []string) error {
 	}
 
 	completeReq := UploadCompleteRequest{
-		UploadID:       uploadID,
-		ConflictPolicy: strings.TrimSpace(conflictPolicy),
+		UploadID:          uploadID,
+		ClientOperationID: uuid.NewString(),
+		ConflictPolicy:    strings.TrimSpace(conflictPolicy),
 	}
 	if initRes.Mode != "single" {
 		completeReq.Parts = make([]UploadCompletedPart, 0, len(collectedEtags))
@@ -145,6 +149,23 @@ func (a *App) runUploadFile(args []string) error {
 
 	node, err := client.UploadComplete(ctx, completeReq)
 	if err != nil {
+		if uploadCompletionOutcomeUncertain(err) {
+			reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			status, statusErr := client.UploadCompletionStatus(reconcileCtx, completeReq.ClientOperationID)
+			reconcileCancel()
+			if statusErr == nil && status.State == "committed" && status.Node != nil {
+				node = *status.Node
+				err = nil
+			} else {
+				return fmt.Errorf(
+					"upload complete outcome is uncertain (clientOperationId=%s): %w",
+					completeReq.ClientOperationID,
+					err,
+				)
+			}
+		}
+	}
+	if err != nil {
 		doAbort()
 		return fmt.Errorf("upload complete: %w", err)
 	}
@@ -157,6 +178,19 @@ func (a *App) runUploadFile(args []string) error {
 		node.ID, node.Name, node.LibraryID, node.ParentID, node.FileSize, initRes.Mode, initRes.TotalParts,
 	)
 	return nil
+}
+
+func uploadCompletionOutcomeUncertain(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return true
+	}
+	switch apiErr.StatusCode {
+	case 0, 408, 429:
+		return true
+	default:
+		return apiErr.StatusCode >= 500
+	}
 }
 
 // uploadAllParts 按 PRESIGN_BATCH_CONCURRENCY 批量签名并发 PUT，所有 part 完成后返回 partNumber→etag 映射。

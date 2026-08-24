@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// UploadHandler 暴露直传 MinIO 流程的 7 个端点：init / parts/sign / parts(GET) / renew / complete / abort。
+// UploadHandler 暴露直传 MinIO 流程的端点：init / parts/sign / parts(GET) / renew / complete / complete/status / abort。
 // 鉴权由 actorFromContext 注入；usecase 层做 actor 与 session.actor 一致性校验，
 // 不一致 / 不存在统一返回 404 防 uploadId 枚举，过期返回 410 Gone（参考 result.HandleUseCaseError 映射）。
 type UploadHandler struct {
@@ -42,9 +42,10 @@ type completedPartDTO struct {
 }
 
 type completeUploadRequest struct {
-	UploadID       string             `json:"uploadId" binding:"required"`
-	Parts          []completedPartDTO `json:"parts"`
-	ConflictPolicy string             `json:"conflictPolicy"`
+	UploadID          string             `json:"uploadId" binding:"required"`
+	ClientOperationID string             `json:"clientOperationId" binding:"omitempty,max=128"`
+	Parts             []completedPartDTO `json:"parts"`
+	ConflictPolicy    string             `json:"conflictPolicy"`
 }
 
 // Init 创建上传会话。
@@ -131,16 +132,36 @@ func (h *UploadHandler) Complete(ctx *gin.Context) {
 		}
 	}
 	node, err := h.uc.Complete(ctx.Request.Context(), usecase.CompleteUploadSessionCommand{
-		Actor:          actorFromContext(ctx),
-		UploadID:       req.UploadID,
-		Parts:          parts,
-		ConflictPolicy: usecase.NodeNameConflictPolicy(req.ConflictPolicy),
+		Actor:             actorFromContext(ctx),
+		UploadID:          req.UploadID,
+		ClientOperationID: req.ClientOperationID,
+		Parts:             parts,
+		ConflictPolicy:    usecase.NodeNameConflictPolicy(req.ConflictPolicy),
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)
 		return
 	}
 	Success(ctx, node)
+}
+
+// ReconcileCompletion 核对 complete 是否已经提交；未命中与跨 actor 查询统一返回 unknown。
+func (h *UploadHandler) ReconcileCompletion(ctx *gin.Context) {
+	operationID := strings.TrimSpace(ctx.Query("clientOperationId"))
+	if operationID == "" {
+		BadRequest(ctx, "clientOperationId is required")
+		return
+	}
+	result, err := h.uc.ReconcileCompletion(
+		ctx.Request.Context(),
+		actorFromContext(ctx),
+		operationID,
+	)
+	if err != nil {
+		HandleUseCaseError(ctx, err)
+		return
+	}
+	Success(ctx, result)
 }
 
 // Abort 取消上传，回收 MinIO + 删 session。

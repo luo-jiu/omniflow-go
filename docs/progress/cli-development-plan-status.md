@@ -37,7 +37,7 @@
 | `browser-map` | ls/resolve/create/update/rm |
 | `browser-bookmark` | tree/match/import/create/update/move/rm |
 | `config` | show |
-| `upload` | file（直传 MinIO，复用前端同一套 7 端点） |
+| `upload` | file（直传 MinIO，复用前端同一套 7 端点与 complete reconciliation） |
 | `storage` | migrate（入队迁移，含 `--dry-run`）、distribution（按 provider 统计当前节点子树）、migration ls / status / cancel（迁移任务管理） |
 | `resource-monitor` | sample（显式采集资源监测历史样本，含 `--dry-run`） |
 

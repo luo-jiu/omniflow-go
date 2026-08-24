@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -106,6 +107,33 @@ func TestUploadHelpListsFlags(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected %s in upload file help, got: %s", want, out)
 		}
+	}
+}
+
+func TestUploadCompletionOutcomeUncertain(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "network error", err: errors.New("connection reset"), want: true},
+		{name: "request timeout", err: &APIError{StatusCode: 408}, want: true},
+		{name: "rate limited", err: &APIError{StatusCode: 429}, want: true},
+		{name: "server error", err: &APIError{StatusCode: 503}, want: true},
+		{name: "missing session", err: &APIError{StatusCode: 404}, want: false},
+		{name: "conflict", err: &APIError{StatusCode: 409}, want: false},
+		{name: "expired", err: &APIError{StatusCode: 410}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := uploadCompletionOutcomeUncertain(tt.err); got != tt.want {
+				t.Fatalf("uploadCompletionOutcomeUncertain() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

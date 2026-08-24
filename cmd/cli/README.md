@@ -49,6 +49,7 @@
 - 浏览器书签命令支持结构化导入：`browser-bookmark import --file <path> [--dry-run] [--json]`
 - 上传命令直传 MinIO：`of upload file --library-id <id> --file <path> [--parent-id <id>] [--storage-provider <id>] [--conflict-policy <error|auto_rename|replace>]`
   - 走与前端相同的 7 端点流程（`/api/v1/upload/{init,parts/sign,complete,...}`）。
+  - complete 使用稳定 operation ID；网络错误或 `5xx` 后先查询 `/api/v1/upload/complete/status`，仍不明确时保留 session 并报告 operation ID，不自动 abort。
   - SIGINT/SIGTERM 时自动调 `DELETE /api/v1/upload/:uploadId` 收尾 MinIO + session。
   - 详见 `docs/architecture/upload-direct-design.md`。
 - 存储迁移命令把节点子树下的 `storage_objects` 物理对象搬到目标 provider，节点元数据保持不变：

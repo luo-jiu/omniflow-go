@@ -10,21 +10,26 @@ const TableNameUploadSession = "upload_sessions"
 
 // UploadSession mapped from table <upload_sessions>
 type UploadSession struct {
-	ID              string    `gorm:"column:id;type:text;primaryKey" json:"id"`
-	LibraryID       int64     `gorm:"column:library_id;type:bigint;not null" json:"library_id"`
-	ParentID        *int64    `gorm:"column:parent_id;type:bigint" json:"parent_id"`
-	ActorID         string    `gorm:"column:actor_id;type:text;not null;index:idx_upload_sessions_actor,priority:1" json:"actor_id"`
-	StorageKey      string    `gorm:"column:storage_key;type:text;not null" json:"storage_key"`
-	FileName        string    `gorm:"column:file_name;type:text;not null" json:"file_name"`
-	FileSize        int64     `gorm:"column:file_size;type:bigint;not null" json:"file_size"`
-	ContentType     string    `gorm:"column:content_type;type:text;not null" json:"content_type"`
-	StorageProvider string    `gorm:"column:storage_provider;type:text;not null" json:"storage_provider"`
-	Mode            string    `gorm:"column:mode;type:text;not null" json:"mode"`
-	MinioUploadID   *string   `gorm:"column:minio_upload_id;type:text" json:"minio_upload_id"`
-	PartSize        int64     `gorm:"column:part_size;type:bigint;not null" json:"part_size"`
-	ExpiresAt       time.Time `gorm:"column:expires_at;type:timestamp with time zone;not null;index:idx_upload_sessions_expires_at,priority:1" json:"expires_at"`
-	CreatedAt       time.Time `gorm:"column:created_at;type:timestamp with time zone;not null;default:now()" json:"created_at"`
-	UpdatedAt       time.Time `gorm:"column:updated_at;type:timestamp with time zone;not null;default:now()" json:"updated_at"`
+	ID                string     `gorm:"column:id;type:text;primaryKey" json:"id"`
+	LibraryID         int64      `gorm:"column:library_id;type:bigint;not null" json:"library_id"`
+	ParentID          *int64     `gorm:"column:parent_id;type:bigint" json:"parent_id"`
+	ActorID           string     `gorm:"column:actor_id;type:text;not null;uniqueIndex:uq_upload_sessions_actor_operation,priority:1;index:idx_upload_sessions_actor,priority:1" json:"actor_id"`
+	StorageKey        string     `gorm:"column:storage_key;type:text;not null" json:"storage_key"`
+	FileName          string     `gorm:"column:file_name;type:text;not null" json:"file_name"`
+	FileSize          int64      `gorm:"column:file_size;type:bigint;not null" json:"file_size"`
+	ContentType       string     `gorm:"column:content_type;type:text;not null" json:"content_type"`
+	StorageProvider   string     `gorm:"column:storage_provider;type:text;not null" json:"storage_provider"`
+	Mode              string     `gorm:"column:mode;type:text;not null" json:"mode"`
+	MinioUploadID     *string    `gorm:"column:minio_upload_id;type:text" json:"minio_upload_id"`
+	PartSize          int64      `gorm:"column:part_size;type:bigint;not null" json:"part_size"`
+	ExpiresAt         time.Time  `gorm:"column:expires_at;type:timestamp with time zone;not null;index:idx_upload_sessions_expires_at,priority:1" json:"expires_at"`
+	CreatedAt         time.Time  `gorm:"column:created_at;type:timestamp with time zone;not null;default:now()" json:"created_at"`
+	UpdatedAt         time.Time  `gorm:"column:updated_at;type:timestamp with time zone;not null;default:now()" json:"updated_at"`
+	Status            string     `gorm:"column:status;type:text;not null;default:pending" json:"status"`
+	ClientOperationID *string    `gorm:"column:client_operation_id;type:text;uniqueIndex:uq_upload_sessions_actor_operation,priority:2" json:"client_operation_id"`
+	CompletedNodeID   *int64     `gorm:"column:completed_node_id;type:bigint" json:"completed_node_id"`
+	CompletedAt       *time.Time `gorm:"column:completed_at;type:timestamp with time zone" json:"completed_at"`
+	CompletionResult  *string    `gorm:"column:completion_result;type:jsonb" json:"completion_result"`
 }
 
 // TableName UploadSession's table name
