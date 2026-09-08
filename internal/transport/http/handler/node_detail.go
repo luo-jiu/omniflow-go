@@ -1,6 +1,26 @@
 package handler
 
-import "github.com/gin-gonic/gin"
+import (
+	"time"
+
+	domainnode "omniflow-go/internal/domain/node"
+
+	"github.com/gin-gonic/gin"
+)
+
+type nodeDetailResponse struct {
+	domainnode.Node
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func newNodeDetailResponse(node domainnode.Node) nodeDetailResponse {
+	return nodeDetailResponse{
+		Node:      node,
+		CreatedAt: node.CreatedAt,
+		UpdatedAt: node.UpdatedAt,
+	}
+}
 
 // GetNodeDetail 按节点 ID 查询节点详情。
 func (h *NodeHandler) GetNodeDetail(ctx *gin.Context) {
@@ -19,5 +39,5 @@ func (h *NodeHandler) GetNodeDetail(ctx *gin.Context) {
 		HandleUseCaseError(ctx, err)
 		return
 	}
-	Success(ctx, node)
+	Success(ctx, newNodeDetailResponse(node))
 }

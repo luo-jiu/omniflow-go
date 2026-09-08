@@ -1,5 +1,7 @@
 # Go API 契约状态摘要
 
+新增只读 `POST /api/v1/nodes/metadata/query`，支持根目录、单节点、分页子节点与子树搜索；CLI 对应 `of fs browse`。不改变现有节点 API，不访问 MinIO 或修复根节点。详见 [节点元数据查询契约](../architecture/node-metadata-query.md)。本机真实 PostgreSQL 目录分页、子树搜索及路径解析已验收，云端镜像未发布。
+
 更新时间：2026-08-24
 状态：Go API 当前契约已收口，持续维护
 
@@ -129,6 +131,7 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - 手动重命名和移动仍保持可见名称重复即 `409`，不自动改名。
   - 数据库唯一索引也必须按同一可见名称语义维护，不能只用 `name` 判断文件节点冲突；迁移脚本见 `docs/schema/2026-05-03-node-visible-name-and-storage-provider.sql`。
 - `GET /api/v1/nodes/:nodeId`
+  - 节点详情返回 `createdAt` 和 `updatedAt`，直接映射 `nodes.created_at / updated_at`，供客户端展示创建与最后修改时间。
   - 文件节点详情会返回物理存储位置：`storageProvider`、`storageProviderType`、`storageProviderLabel`、`storageEndpoint`、`storageBucket`、`storageKey`。
   - `storageProvider` 持久化 provider 别名（例如 `local-minio`、`win-minio`），用于区分同为 MinIO 的不同机器或不同桶，也用于后续 S3 / OSS 等多存储位置的无感切换；历史类型值（如 `MINIO`）仅保留兼容读取能力。
   - `storageEndpoint` 来自当前 `configs/storage.yaml` 快照，不在数据库中重复持久化；密钥不通过节点详情接口返回。

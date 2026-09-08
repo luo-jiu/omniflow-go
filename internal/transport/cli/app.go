@@ -393,6 +393,23 @@ func (a *App) buildCommandTree() *command {
 		},
 		Run: a.runFSSearch,
 	}
+	fs.Children["browse"] = &command{
+		Name: "browse", Summary: "Browse and search library metadata with cursor pagination",
+		Usage: "of fs browse --library-id <id> [--mode root|children|search|node] " +
+			"[--node-id <id>] [--parent-id <id>] [--ancestor-id <id>] [--keyword <text>] " +
+			"[--node-type dir|file] [--tag-ids <ids>] [--tag-match-mode ANY|ALL] " +
+			"[--limit <n>] [--cursor <cursor>] [--base-url <url>] [--json]",
+		Flags: []string{
+			"--library-id <id> required", "--mode <mode> root, children (default), search or node",
+			"--node-id <id> required for node mode", "--parent-id <id> direct children (default root)",
+			"--ancestor-id <id> search subtree", "--keyword <text> literal name substring",
+			"--node-type <type> dir or file", "--tag-ids <ids> comma-separated tags",
+			"--tag-match-mode <mode> ANY or ALL", "--limit <n> page size, 1..100",
+			"--cursor <cursor> next page", "--base-url <url> API base URL", "--json output JSON",
+		},
+		Examples: []string{"of fs browse --library-id 3 --mode search --keyword music --json"},
+		Run:      a.runFSBrowse,
+	}
 	archive := &command{
 		Name:     "archive",
 		Summary:  "Archive directory commands",

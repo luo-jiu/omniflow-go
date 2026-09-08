@@ -21,6 +21,8 @@ func toDomainNodeModel(m *pgmodel.Node) domainnode.Node {
 		BuiltInType: m.BuiltInType,
 		ArchiveMode: boolToArchiveMode(m.ArchiveMode),
 		ViewMeta:    m.ViewMeta,
+		CreatedAt:   m.CreatedAt,
+		UpdatedAt:   m.UpdatedAt,
 	}
 }
 

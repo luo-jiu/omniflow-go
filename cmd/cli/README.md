@@ -1,5 +1,7 @@
 # OmniFlow CLI 开发规范
 
+只读资料库目录查询使用 `of fs browse`，支持 `--mode root|children|search|node`、`--node-id`、`--parent-id`、`--ancestor-id`、`--keyword`、`--node-type`、`--tag-ids`、`--tag-match-mode`、`--limit`、`--cursor`、`--base-url` 和 `--json`。必须传 `--library-id`；详情见 [元数据查询契约](../../docs/architecture/node-metadata-query.md)。不修改原 `fs ls/search` 行为。
+
 本目录存放 CLI 入口。当前 CLI 采用“薄入口 + 传输层命令实现”的结构：
 
 - 入口：`cmd/cli/main.go`

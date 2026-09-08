@@ -33,7 +33,7 @@
 | `health` | 健康检查 |
 | `auth` | login/status/whoami/logout |
 | `lib` | 资料库列表 |
-| `fs` | mkdir/rename/configure/mv/rm/ls/search/archive/recycle/path resolve（configure 可配置 viewer 夹具） |
+| `fs` | mkdir/rename/configure/mv/rm/ls/search/browse/archive/recycle/path resolve（browse 提供只读元数据分页、子树搜索和单节点查询；configure 可配置 viewer 夹具） |
 | `browser-map` | ls/resolve/create/update/rm |
 | `browser-bookmark` | tree/match/import/create/update/move/rm |
 | `config` | show |

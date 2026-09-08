@@ -1,5 +1,18 @@
 # OmniFlow CLI 最小版快速使用
 
+## 分页浏览与搜索元数据
+
+下面的 `3` 仅为示例，测试须换成非第一个资料库的实际 ID：
+
+```bash
+of fs browse --library-id 3 --mode root --json
+of fs browse --library-id 3 --mode children --limit 20 --json
+of fs browse --library-id 3 --mode search --keyword 音乐 --node-type dir --json
+of fs browse --library-id 3 --mode node --node-id 88 --json
+```
+
+子目录传 `--parent-id`；子树搜索传 `--ancestor-id`。响应 `hasMore=true` 时保留筛选条件并传 `--cursor <nextCursor>` 续页。元数据可读不代表对象存储在线；规范路径和安全字段见 [查询契约](node-metadata-query.md)。
+
 该 CLI 放在同仓库，目标是最小可用：
 
 - 支持登录态管理（本地配置）
