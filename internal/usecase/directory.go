@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -40,14 +41,15 @@ type BatchFileLinkItem struct {
 }
 
 type UpdateFileContentCommand struct {
-	Actor           actor.Actor
-	LibraryID       uint64
-	NodeID          uint64
-	FileSize        int64
-	ContentType     string
-	StorageProvider string
-	Content         io.Reader
-	DryRun          bool
+	ExpectedStorageKey *string
+	Actor              actor.Actor
+	LibraryID          uint64
+	NodeID             uint64
+	FileSize           int64
+	ContentType        string
+	StorageProvider    string
+	Content            io.Reader
+	DryRun             bool
 }
 
 type DirectoryUseCase struct {
@@ -243,6 +245,9 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	if err := u.nodes.AuthorizeMutation(ctx, cmd.Actor, cmd.LibraryID); err != nil {
 		return domainnode.Node{}, err
 	}
+	if cmd.ExpectedStorageKey != nil && node.StorageKey != *cmd.ExpectedStorageKey {
+		return domainnode.Node{}, fmt.Errorf("%w: file content changed; read the file again", repository.ErrConflict)
+	}
 
 	extWithDot := ""
 	if ext := strings.TrimSpace(node.Ext); ext != "" {
@@ -303,14 +308,18 @@ func (u *DirectoryUseCase) UpdateFileContent(
 	}
 
 	oldKey, err := u.nodes.ReplaceFileStorage(ctx, cmd.NodeID, cmd.LibraryID, repository.ReplaceFileStorageInput{
-		NewObjectKey:   newStorageKey,
-		NewFileSize:    cmd.FileSize,
-		NewContentType: contentType,
-		NewProvider:    providerAlias,
-		NewBucket:      store.Bucket(),
+		ExpectedStorageKey: cmd.ExpectedStorageKey,
+		NewObjectKey:       newStorageKey,
+		NewFileSize:        cmd.FileSize,
+		NewContentType:     contentType,
+		NewProvider:        providerAlias,
+		NewBucket:          store.Bucket(),
 	})
 	if err != nil {
-		_ = store.Delete(ctx, newStorageKey)
+		// 提交回执丢失时，新对象可能已被引用，不能立即删除。
+		if !errors.Is(err, errFileStorageCommitUnknown) {
+			_ = store.Delete(ctx, newStorageKey)
+		}
 		return domainnode.Node{}, fmt.Errorf("replace file storage: %w", err)
 	}
 

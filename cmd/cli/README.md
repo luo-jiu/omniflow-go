@@ -120,3 +120,7 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 
 - 省略或 `error`：同目录重名时返回 `409`
 - `auto_rename`：自动改成 `name`、`name (1)`、`name (2)`
+
+## 文本内容保存补充
+
+`of fs write --library-id 3 --node-id 9 --file ./notes.txt --dry-run --json` 验证既有文件保存，去掉 `--dry-run` 执行；`--expected-storage-key` 可指定节点详情中的版本条件。新文件使用上传命令。详见 [条件写入契约](../../docs/architecture/conditional-file-write.md)。

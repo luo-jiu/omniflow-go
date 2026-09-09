@@ -12,6 +12,7 @@ import (
 	pgmodel "omniflow-go/internal/repository/postgres/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type CreateNodeInput struct {
@@ -417,11 +418,12 @@ func (r *NodeRepository) isDescendant(ctx context.Context, nodeID, targetID, lib
 
 // ReplaceFileStorageInput 文件存储替换参数。
 type ReplaceFileStorageInput struct {
-	NewObjectKey   string
-	NewFileSize    int64
-	NewContentType string
-	NewProvider    string
-	NewBucket      string
+	ExpectedStorageKey *string
+	NewObjectKey       string
+	NewFileSize        int64
+	NewContentType     string
+	NewProvider        string
+	NewBucket          string
 }
 
 // FindFileByNameInParent 在同级目录中按文件名主体与扩展名查找文件节点（不含已删除）。
@@ -470,6 +472,13 @@ func (r *NodeRepository) ReplaceFileStorage(
 ) (string, error) {
 	q := r.query(ctx)
 	now := time.Now().UTC()
+	// 调用方持有事务，先锁定节点，串行化空文件绑定和已有内容替换。
+	_, lockErr := q.Node.WithContext(ctx).
+		Where(q.Node.ID.Eq(toPGInt64(nodeID)), q.Node.LibraryID.Eq(toPGInt64(libraryID))).
+		Clauses(clause.Locking{Strength: "UPDATE"}).First()
+	if lockErr != nil {
+		return "", mapDBError(lockErr)
+	}
 
 	// 1. 查找 node_files 记录；历史上右键新建文件可能只有节点元数据，没有存储绑定。
 	nodeFile, err := q.NodeFile.WithContext(ctx).
@@ -480,6 +489,9 @@ func (r *NodeRepository) ReplaceFileStorage(
 		First()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			if input.ExpectedStorageKey != nil && *input.ExpectedStorageKey != "" {
+				return "", ErrConflict
+			}
 			return r.attachFileStorage(ctx, nodeID, libraryID, input, now)
 		}
 		return "", fmt.Errorf("find node_files: %w", mapDBError(err))
@@ -493,6 +505,9 @@ func (r *NodeRepository) ReplaceFileStorage(
 		return "", fmt.Errorf("find storage_object: %w", mapDBError(err))
 	}
 	oldObjectKey := storageObj.ObjectKey
+	if input.ExpectedStorageKey != nil && oldObjectKey != *input.ExpectedStorageKey {
+		return "", ErrConflict
+	}
 
 	// 3. 更新 storage_objects
 	_, err = q.StorageObject.WithContext(ctx).

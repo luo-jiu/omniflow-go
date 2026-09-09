@@ -106,3 +106,7 @@ CLI 会把登录会话写到：
 - `OMNIFLOW_BASE_URL`
 - `OMNIFLOW_USERNAME`
 - `OMNIFLOW_TOKEN`
+
+## 文本内容保存补充
+
+`of fs write --library-id 3 --node-id 9 --file ./notes.txt --dry-run --json` 验证已有文件的文本保存，去掉 `--dry-run` 执行。可选 `--expected-storage-key` 提供版本条件；详见 [条件写入契约](conditional-file-write.md)。

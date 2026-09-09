@@ -250,7 +250,7 @@ func (a *App) buildCommandTree() *command {
 	fs := &command{
 		Name:     "fs",
 		Summary:  "File system commands",
-		Usage:    "of fs <mkdir|rename|configure|mv|rm|ls|search|archive|recycle|path> [flags]",
+		Usage:    "of fs <mkdir|write|rename|configure|mv|rm|ls|search|archive|recycle|path> [flags]",
 		Children: map[string]*command{},
 	}
 	fs.Children["mkdir"] = &command{
@@ -275,6 +275,13 @@ func (a *App) buildCommandTree() *command {
 			"of fs mkdir --library-id 1 --parent-id 100 --name chapter-1 --json",
 		},
 		Run: a.runFSMkdir,
+	}
+	fs.Children["write"] = &command{
+		Name: "write", Summary: "Write UTF-8 content to an existing library file",
+		Usage:    "of fs write --library-id <id> --node-id <id> --file <path> [--expected-storage-key <key>] [--dry-run] [--json]",
+		Flags:    []string{"--library-id <id>", "--node-id <id>", "--file <path>", "--expected-storage-key <key> (optional CAS token)", "--dry-run", "--json", "--base-url <url>"},
+		Examples: []string{"of fs write --library-id 3 --node-id 9 --file ./notes.txt --dry-run --json"},
+		Run:      a.runFSWrite,
 	}
 	fs.Children["rename"] = &command{
 		Name:    "rename",

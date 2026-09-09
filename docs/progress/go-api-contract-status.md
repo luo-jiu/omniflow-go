@@ -1,5 +1,7 @@
 # Go API 契约状态摘要
 
+新增条件文本保存 `PUT /api/v1/nodes/:nodeId/content/conditional`，CLI 对应 `of fs write`。详见 [文件内容条件写入](../architecture/conditional-file-write.md)。
+
 新增只读 `POST /api/v1/nodes/metadata/query`，支持根目录、单节点、分页子节点与子树搜索；CLI 对应 `of fs browse`。不改变现有节点 API，不访问 MinIO 或修复根节点。详见 [节点元数据查询契约](../architecture/node-metadata-query.md)。本机真实 PostgreSQL 目录分页、子树搜索及路径解析已验收，云端镜像未发布。
 
 更新时间：2026-08-24

@@ -10,6 +10,22 @@ import (
 	"testing"
 )
 
+func TestRunFSWriteHelpAndInvalidArguments(t *testing.T) {
+	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
+	app := NewApp(stdout, stderr)
+	if code := app.Run([]string{"help", "fs", "write"}); code != 0 {
+		t.Fatalf("help failed: %s", stderr)
+	}
+	if !strings.Contains(stdout.String(), "--expected-storage-key") || !strings.Contains(stdout.String(), "--dry-run") {
+		t.Fatalf("incomplete help: %s", stdout)
+	}
+	for _, args := range [][]string{{"fs", "write"}, {"fs", "write", "unexpected"}} {
+		if app.Run(args) == 0 {
+			t.Fatalf("invalid args accepted: %v", args)
+		}
+	}
+}
+
 func TestRunHelpAuth(t *testing.T) {
 	t.Parallel()
 

@@ -30,10 +30,11 @@ type batchFileLinkRequest struct {
 }
 
 type updateFileContentRequest struct {
-	LibraryID       uint64  `json:"libraryId" binding:"required"`
-	Content         *string `json:"content" binding:"required"`
-	ContentType     string  `json:"contentType"`
-	StorageProvider string  `json:"storageProvider"`
+	ExpectedStorageKey *string `json:"expectedStorageKey"`
+	LibraryID          uint64  `json:"libraryId" binding:"required"`
+	Content            *string `json:"content" binding:"required"`
+	ContentType        string  `json:"contentType"`
+	StorageProvider    string  `json:"storageProvider"`
 }
 
 // GetFileLink 获取目录文件节点的预签名链接。
@@ -123,6 +124,15 @@ func (h *DirectoryHandler) BatchGetFileLinks(ctx *gin.Context) {
 
 // UpdateFileContent 按节点 ID 更新文件内容，保留节点身份不变。
 func (h *DirectoryHandler) UpdateFileContent(ctx *gin.Context) {
+	h.updateFileContent(ctx, false)
+}
+
+// UpdateFileContentConditional 要求提供版本条件，避免旧客户端意外覆盖。
+func (h *DirectoryHandler) UpdateFileContentConditional(ctx *gin.Context) {
+	h.updateFileContent(ctx, true)
+}
+
+func (h *DirectoryHandler) updateFileContent(ctx *gin.Context, requireCondition bool) {
 	dryRun, ok := QueryBool(ctx, false, "dryRun", "dry_run")
 	if !ok {
 		return
@@ -142,6 +152,10 @@ func (h *DirectoryHandler) UpdateFileContent(ctx *gin.Context) {
 		BadRequest(ctx, "content is required")
 		return
 	}
+	if requireCondition && req.ExpectedStorageKey == nil {
+		BadRequest(ctx, "expectedStorageKey is required for conditional writes")
+		return
+	}
 
 	if h.directoryUseCase == nil {
 		InternalError(ctx, "directory service not configured")
@@ -150,14 +164,15 @@ func (h *DirectoryHandler) UpdateFileContent(ctx *gin.Context) {
 
 	contentBytes := []byte(*req.Content)
 	node, err := h.directoryUseCase.UpdateFileContent(ctx.Request.Context(), usecase.UpdateFileContentCommand{
-		Actor:           actorFromContext(ctx),
-		LibraryID:       req.LibraryID,
-		NodeID:          uri.NodeID,
-		FileSize:        int64(len(contentBytes)),
-		ContentType:     req.ContentType,
-		StorageProvider: strings.TrimSpace(req.StorageProvider),
-		Content:         strings.NewReader(*req.Content),
-		DryRun:          dryRun,
+		ExpectedStorageKey: req.ExpectedStorageKey,
+		Actor:              actorFromContext(ctx),
+		LibraryID:          req.LibraryID,
+		NodeID:             uri.NodeID,
+		FileSize:           int64(len(contentBytes)),
+		ContentType:        req.ContentType,
+		StorageProvider:    strings.TrimSpace(req.StorageProvider),
+		Content:            strings.NewReader(*req.Content),
+		DryRun:             dryRun,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

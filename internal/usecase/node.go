@@ -1717,10 +1717,26 @@ func (u *NodeUseCase) FindFileByNameInParent(
 	return u.findNodeView(ctx, uint64(row.ID), libraryID)
 }
 
+var errFileStorageCommitUnknown = errors.New("file storage transaction commit outcome unknown")
+
 // ReplaceFileStorage 替换文件节点的存储绑定，返回旧的 object_key 用于存储清理。
 func (u *NodeUseCase) ReplaceFileStorage(ctx context.Context, nodeID, libraryID uint64, input repository.ReplaceFileStorageInput) (string, error) {
 	if err := u.ensureNodesConfigured(); err != nil {
 		return "", err
 	}
-	return u.nodes.ReplaceFileStorage(ctx, nodeID, libraryID, input)
+	if u.tx == nil {
+		return "", fmt.Errorf("%w: file replacement requires transaction manager", ErrInvalidArgument)
+	}
+	var oldKey string
+	writeCompleted := false
+	err := u.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		var err error
+		oldKey, err = u.nodes.ReplaceFileStorage(txCtx, nodeID, libraryID, input)
+		writeCompleted = err == nil
+		return err
+	})
+	if err != nil && writeCompleted {
+		return "", errors.Join(errFileStorageCommitUnknown, err)
+	}
+	return oldKey, err
 }
