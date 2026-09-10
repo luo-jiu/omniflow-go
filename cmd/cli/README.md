@@ -1,5 +1,7 @@
 # OmniFlow CLI 开发规范
 
+`of fs tags` / `of fs tags-update` 提供节点正式标签查询和原子增删；后者支持 `--add-tag-ids`、`--remove-tag-ids`、`--dry-run`，两者都要求 `--library-id`、`--node-id`，支持 `--json`。见 [节点标签增量契约](../../docs/architecture/node-tag-delta.md)。
+
 只读资料库目录查询使用 `of fs browse`，支持 `--mode root|children|search|node`、`--node-id`、`--parent-id`、`--ancestor-id`、`--keyword`、`--node-type`、`--tag-ids`、`--tag-match-mode`、`--limit`、`--cursor`、`--base-url` 和 `--json`。必须传 `--library-id`；详情见 [元数据查询契约](../../docs/architecture/node-metadata-query.md)。不修改原 `fs ls/search` 行为。
 
 本目录存放 CLI 入口。当前 CLI 采用“薄入口 + 传输层命令实现”的结构：
@@ -122,5 +124,7 @@ GOCACHE=/tmp/go-build go build -o ./bin/of ./cmd/cli
 - `auto_rename`：自动改成 `name`、`name (1)`、`name (2)`
 
 ## 文本内容保存补充
+
+`of fs cp --library-id 3 --node-id 9 --parent-id 10 [--name copy.txt] [--recursive] [--conflict-policy error|auto_rename] [--dry-run] [--json]` 复制同库节点。目录必须显式递归，文件对象独立存储；提交不明时先检查目标，不自动重试。详见 [复制契约](../../docs/architecture/node-copy-contract.md)。
 
 `of fs write --library-id 3 --node-id 9 --file ./notes.txt --dry-run --json` 验证既有文件保存，去掉 `--dry-run` 执行；`--expected-storage-key` 可指定节点详情中的版本条件。新文件使用上传命令。详见 [条件写入契约](../../docs/architecture/conditional-file-write.md)。

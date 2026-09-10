@@ -250,7 +250,7 @@ func (a *App) buildCommandTree() *command {
 	fs := &command{
 		Name:     "fs",
 		Summary:  "File system commands",
-		Usage:    "of fs <mkdir|write|rename|configure|mv|rm|ls|search|archive|recycle|path> [flags]",
+		Usage:    "of fs <mkdir|write|rename|configure|mv|rm|ls|search|tags|tags-update|archive|recycle|path> [flags]",
 		Children: map[string]*command{},
 	}
 	fs.Children["mkdir"] = &command{
@@ -301,6 +301,17 @@ func (a *App) buildCommandTree() *command {
 		},
 		Run: a.runFSRename,
 	}
+	fs.Children["tags"] = &command{
+		Name: "tags", Summary: "读取节点直接标签", Usage: "of fs tags --library-id <id> --node-id <id> [--json] [--base-url <url>]",
+		Flags: []string{"--library-id <id> library id", "--node-id <id> node id", "--json JSON output", "--base-url <url> API base URL"},
+		Run:   a.runFSTags,
+	}
+	fs.Children["tags-update"] = &command{
+		Name: "tags-update", Summary: "原子增删节点标签", Usage: "of fs tags-update --library-id <id> --node-id <id> [--add-tag-ids <ids>] [--remove-tag-ids <ids>] [--dry-run] [--json] [--base-url <url>]",
+		Flags:    []string{"--library-id <id> library id", "--node-id <id> node id", "--add-tag-ids <ids> add comma-separated IDs", "--remove-tag-ids <ids> remove comma-separated IDs", "--dry-run validate without committing", "--json JSON output", "--base-url <url> API base URL"},
+		Examples: []string{"of fs tags-update --library-id 3 --node-id 9 --add-tag-ids 2,3 --remove-tag-ids 4 --dry-run --json"},
+		Run:      a.runFSTagsUpdate,
+	}
 	fs.Children["configure"] = &command{
 		Name:    "configure",
 		Summary: "Configure node viewer metadata",
@@ -320,6 +331,14 @@ func (a *App) buildCommandTree() *command {
 			"of fs configure --node-id 123 --built-in-type ASMR --dry-run --json",
 		},
 		Run: a.runFSConfigure,
+	}
+	fs.Children["cp"] = &command{
+		Name:     "cp",
+		Summary:  "Copy a file or explicit recursive directory within a library",
+		Usage:    "of fs cp --library-id <id> --node-id <id> --parent-id <id> [--name <filename>] [--recursive] [--conflict-policy <error|auto_rename>] [--dry-run] [--json] [--base-url <url>]",
+		Flags:    []string{"--library-id <id> library id", "--node-id <id> source node", "--parent-id <id> destination directory", "--name <filename> complete filename", "--recursive copy directory contents", "--conflict-policy <error|auto_rename> name conflicts", "--dry-run validate only", "--json JSON output", "--base-url <url> API base URL"},
+		Examples: []string{"of fs cp --library-id 3 --node-id 9 --parent-id 10 --name copy.txt --dry-run --json", "of fs cp --library-id 3 --node-id 12 --parent-id 10 --recursive --conflict-policy auto_rename"},
+		Run:      a.runFSCopy,
 	}
 	fs.Children["mv"] = &command{
 		Name:    "mv",

@@ -1,5 +1,7 @@
 # Go API 契约状态摘要
 
+新增 GET/PATCH `/api/v1/nodes/:nodeId/tags`：正式标签关系读取与原子增删，支持 dryRun，见 [节点标签增量契约](../architecture/node-tag-delta.md)。
+
 新增条件文本保存 `PUT /api/v1/nodes/:nodeId/content/conditional`，CLI 对应 `of fs write`。详见 [文件内容条件写入](../architecture/conditional-file-write.md)。
 
 新增只读 `POST /api/v1/nodes/metadata/query`，支持根目录、单节点、分页子节点与子树搜索；CLI 对应 `of fs browse`。不改变现有节点 API，不访问 MinIO 或修复根节点。详见 [节点元数据查询契约](../architecture/node-metadata-query.md)。本机真实 PostgreSQL 目录分页、子树搜索及路径解析已验收，云端镜像未发布。
@@ -166,3 +168,7 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - 对外请求或响应契约发生变化。
 - CLI 新增可操作能力，需要同步说明 API 覆盖关系。
 - 新增跨模块回归风险，需要纳入持续回归清单。
+
+## 内部节点复制补充（2026-09-10）
+
+新增 `POST /api/v1/nodes/:nodeId/copy`，支持同库文件、显式递归目录、独立对象、`error|auto_rename` 和完整 dry-run；CLI 同步 `fs cp`。请求、响应及提交不明处理见 [复制契约](../architecture/node-copy-contract.md)。

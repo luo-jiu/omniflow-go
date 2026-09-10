@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"gorm.io/gorm/clause"
+
 	domainnode "omniflow-go/internal/domain/node"
 	pgmodel "omniflow-go/internal/repository/postgres/model"
 )
@@ -53,9 +55,18 @@ func (r *NodeRepository) ListAllDescendants(ctx context.Context, nodeID, library
 
 // ListDirectChildren 查询单层子节点，保持同级排序。
 func (r *NodeRepository) ListDirectChildren(ctx context.Context, nodeID, libraryID uint64) ([]domainnode.Node, error) {
-	q := r.query(ctx)
+	return r.ListDirectChildrenLimited(ctx, nodeID, libraryID, -1)
+}
 
-	rows, err := q.Node.WithContext(ctx).
+// ListDirectChildrenLimited 限制单层枚举数量，供有资源预算的复制使用。
+func (r *NodeRepository) ListDirectChildrenLimited(ctx context.Context, nodeID, libraryID uint64, limit int) ([]domainnode.Node, error) {
+	q := r.query(ctx)
+	childrenQuery := q.Node.WithContext(ctx)
+	if limit >= 0 {
+		childrenQuery = childrenQuery.Clauses(clause.Locking{Strength: "SHARE"})
+	}
+
+	rows, err := childrenQuery.
 		Where(
 			q.Node.LibraryID.Eq(toPGInt64(libraryID)),
 			q.Node.ParentID.Eq(toPGInt64(nodeID)),
@@ -64,6 +75,7 @@ func (r *NodeRepository) ListDirectChildren(ctx context.Context, nodeID, library
 			q.Node.SortOrder.Asc(),
 			q.Node.ID.Asc(),
 		).
+		Limit(limit).
 		Find()
 	if err != nil {
 		return nil, err
@@ -107,8 +119,21 @@ func (r *NodeRepository) ListAncestors(ctx context.Context, nodeID, libraryID ui
 
 // FindViewByID 查询单个节点并补齐文件元信息。
 func (r *NodeRepository) FindViewByID(ctx context.Context, nodeID, libraryID uint64) (domainnode.Node, error) {
+	return r.findViewByID(ctx, nodeID, libraryID, false)
+}
+
+// FindViewForCopy 在复制事务内锁定节点，防止源文件替换或目标目录删除。
+func (r *NodeRepository) FindViewForCopy(ctx context.Context, nodeID, libraryID uint64) (domainnode.Node, error) {
+	return r.findViewByID(ctx, nodeID, libraryID, true)
+}
+
+func (r *NodeRepository) findViewByID(ctx context.Context, nodeID, libraryID uint64, lock bool) (domainnode.Node, error) {
 	q := r.query(ctx)
-	row, err := q.Node.WithContext(ctx).
+	nodeQuery := q.Node.WithContext(ctx)
+	if lock {
+		nodeQuery = nodeQuery.Clauses(clause.Locking{Strength: "SHARE"})
+	}
+	row, err := nodeQuery.
 		Where(
 			q.Node.ID.Eq(toPGInt64(nodeID)),
 			q.Node.LibraryID.Eq(toPGInt64(libraryID)),

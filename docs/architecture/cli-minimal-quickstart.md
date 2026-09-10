@@ -1,5 +1,7 @@
 # OmniFlow CLI 最小版快速使用
 
+节点标签：`of fs tags --library-id 3 --node-id 9 --json`；增删预演：`of fs tags-update --library-id 3 --node-id 9 --add-tag-ids 2 --remove-tag-ids 4 --dry-run --json`。见 [节点标签增量契约](node-tag-delta.md)。
+
 ## 分页浏览与搜索元数据
 
 下面的 `3` 仅为示例，测试须换成非第一个资料库的实际 ID：
@@ -108,5 +110,7 @@ CLI 会把登录会话写到：
 - `OMNIFLOW_TOKEN`
 
 ## 文本内容保存补充
+
+内部复制：`of fs cp --library-id 3 --node-id 9 --parent-id 10 --name copy.txt --dry-run --json`。目录加 `--recursive`，重名可选 `--conflict-policy auto_rename`；只支持同库显式 ID，详见 [复制契约](node-copy-contract.md)。
 
 `of fs write --library-id 3 --node-id 9 --file ./notes.txt --dry-run --json` 验证已有文件的文本保存，去掉 `--dry-run` 执行。可选 `--expected-storage-key` 提供版本条件；详见 [条件写入契约](conditional-file-write.md)。

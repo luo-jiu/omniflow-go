@@ -1,10 +1,14 @@
 # CLI `--dry-run` 契约与进度摘要
 
+`fs tags-update` / PATCH 节点 tags 使用节点行锁与完整关系/metadata 更新后事务回滚，无对象存储副作用，见 [节点标签增量契约](../architecture/node-tag-delta.md)。
+
 更新时间：2026-08-04
 状态：核心代码已完成，端到端联调与观测收口待持续验证  
 适用范围：`omniflow-go` 后端写接口与 `of` CLI 写命令
 
 ## 1. 当前结论
+
+节点复制 `POST /api/v1/nodes/:nodeId/copy` / `fs cp` 已接入完整数据库创建校验后回滚，预演仅探测源对象、不上传或删除；见 [复制契约](../architecture/node-copy-contract.md)。
 
 `--dry-run` 已成为 OmniFlow 写链路的正式契约，不是临时调试开关。
 

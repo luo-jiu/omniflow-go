@@ -1,5 +1,7 @@
 # 多维标签基座
 
+节点直接标签现已新增 GET/PATCH `/nodes/:nodeId/tags`，原子增删、正式关系读取和旧 metadata 同步见 [节点标签增量契约](node-tag-delta.md)。下文旧 viewer 的全量兼容接口仍保留。
+
 更新时间：2026-05-07
 
 适用范围：`tags`、`tag_target_kinds`、`tag_bind_policies`、`node_resource_targets`、`tag_aliases`、`node_tag_rel`、标签 HTTP API、节点搜索与 `nodes.view_meta.tagIds` 兼容链路。
@@ -168,7 +170,7 @@ OmniFlow 的标签从“按 `type` 区分的扁平标签”演进为“可描述
 
 `library_id` 由数据库触发器校验，必须与节点所属资料库一致。
 
-当前还没有单独的“节点标签绑定 API”。已有 ASMR 等 viewer 继续写 `nodes.view_meta.tagIds`，后端在 `PUT /api/v1/nodes/:nodeId` 处理 `viewMeta` 时识别该字段并同步关系表。
+当前新增的节点标签绑定 API 见 [节点标签增量契约](node-tag-delta.md)。已有 ASMR 等 viewer 继续写 `nodes.view_meta.tagIds`，后端在 `PUT /api/v1/nodes/:nodeId` 处理 `viewMeta` 时识别该字段并同步关系表。
 
 同步时要求 `tagIds` 全部是当前用户可读、未删除且已启用的标签；只要存在无效或不可读 ID，节点更新会失败并回滚，避免 `viewMeta.tagIds` 与 `node_tag_rel` 分叉。
 

@@ -1,5 +1,7 @@
 # CLI 开发计划与进度台账
 
+新增 `fs tags` / `fs tags-update`，支持正式节点标签查询、原子增删及 dry-run，见 [节点标签增量契约](../architecture/node-tag-delta.md)。
+
 更新时间：2026-08-04
 状态：M1-M4 已完成，M5 路径体验层进行中
 
@@ -58,7 +60,7 @@
 
 按当前优先级：
 
-1. 继续完善路径输入层，评估 `fs cp` / `fs put` 的命令设计。
+1. `fs cp` 已支持同库独立复制、显式递归、冲突策略和 dry-run（当前仅 ID 输入），见 [复制契约](../architecture/node-copy-contract.md)。继续完善路径输入层，评估 `fs put`。
 2. 与后端协作补回收站路径解析能力后，再评估 `recycle --path`。
 3. 设计 `of version` 与发布安装流程。
 4. RAG 命令域开始前，先补对应后端能力和文档契约。
