@@ -4,6 +4,8 @@
 package bootstrap
 
 import (
+	"net/http"
+
 	"omniflow-go/internal/app"
 	"omniflow-go/internal/audit"
 	"omniflow-go/internal/authz"
@@ -14,6 +16,7 @@ import (
 	httpRouter "omniflow-go/internal/transport/http/router"
 	"omniflow-go/internal/usecase"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 )
 
@@ -23,11 +26,12 @@ func InitializeApplication(configPath string) (*app.App, func(), error) {
 		NewLogger,
 		NewDatabase,
 		NewRedis,
-		authz.NewAllowAll,
+		authz.NewLibraryAuthorizer,
 		audit.NewLogSink,
 		repository.NewObjectStorage,
-		wire.Bind(new(authz.Authorizer), new(*authz.AllowAll)),
+		wire.Bind(new(authz.Authorizer), new(*authz.LibraryAuthorizer)),
 		wire.Bind(new(audit.Sink), new(*audit.LogSink)),
+		wire.Bind(new(http.Handler), new(*gin.Engine)),
 		repository.NewSessionRepository,
 		repository.NewTransactor,
 		repository.NewUserRepository,

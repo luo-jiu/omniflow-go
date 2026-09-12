@@ -122,3 +122,12 @@ func (r *LibraryRepository) FindByID(ctx context.Context, id uint64) (domainlibr
 	}
 	return toDomainLibraryModel(row), nil
 }
+
+// LibraryOwnerID 返回资料库的 owner 用户 ID。
+func (r *LibraryRepository) LibraryOwnerID(ctx context.Context, id uint64) (uint64, error) {
+	lib, err := r.FindByID(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+	return lib.UserID, nil
+}

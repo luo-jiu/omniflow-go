@@ -102,3 +102,5 @@ transport -> usecase -> domain(port) <- repository(impl)
 5. 改完代码后执行必要测试，并根据 `docs/architecture/documentation-standard.md` 更新文档。
 
 一句话总结：代码、测试和文档必须一起维护当前 Go 契约。
+
+生产 bootstrap 使用按 owner 校验的 `LibraryAuthorizer`，`AllowAll` 只保留给测试构造。
