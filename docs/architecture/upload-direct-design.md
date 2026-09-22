@@ -1,6 +1,6 @@
 # 直传 MinIO 上传链路（终态）
 
-更新时间：2026-08-24
+更新时间：2026-09-22
 状态：已落地（前端 + 后端 + CLI）
 
 ## 1. 背景与决策
@@ -40,7 +40,7 @@ OmniFlow 的上传链路从 proxy 模式（client → backend → MinIO）切换
 - 新客户端在 complete body 中传稳定、最长 128 字符的 `clientOperationId`；旧客户端未传时，后端使用 `upload:<uploadId>` 保持兼容。
 - `upload_sessions.status` 从 `pending` 转为 `committed`，并保存 `completed_node_id / completion_result / completed_at`；node 创建与回执写入同一个 PostgreSQL 事务。
 - 重复 complete 使用同一 operation 时直接重放已保存的 node；multipart complete 响应丢失时，后端可用对象 `HEAD + size` 确认 MinIO 是否已完成。
-- status 查询返回 `unknown / uncommitted / committed`；`committed` 同时返回 node。未命中和其他 actor 的 operation 都返回 `unknown`，避免枚举。
+- status 查询当前只返回 `unknown / committed`；`committed` 同时返回提交时的 node 快照。未命中、其他 actor、过期回执及 pending 均返回 `unknown`。pending 包含 complete 已认领、对象正在完成或节点事务尚未提交的状态，不能证明最终未提交。协议类型中的 `uncommitted` 仅为旧客户端兼容保留，当前后端没有可证明终局未提交的持久状态，不再由 pending 推导该值。
 - 网络错误、`408 / 429 / 5xx` 属于提交结果不确定，客户端先查询 status；仍不明确时保留 session，禁止自动 abort、重传或创建第二份结果。
 - `404 / 410` 和其他明确 `4xx` 属于确定失败，可按普通失败路径收尾。
 
@@ -48,6 +48,7 @@ OmniFlow 的上传链路从 proxy 模式（client → backend → MinIO）切换
 - 所有端点校验 actor 与 `upload_sessions.actor_id` 一致；
 - 不一致 / session 不存在统一返回 `404`（防 uploadId 枚举）；
 - lease 过期返回 `410 Gone`（客户端需要重新 init）。
+- status 是查询例外：未命中或跨 actor 返回 unknown；命中当前 actor 的 session 后必须重新通过该库 read 权限，权限已撤销返回 403，不泄露已存 node 回执。此次加固不改变 Complete 的既有重放分支。
 
 ## 3. 双层 TTL 模型
 
@@ -64,6 +65,8 @@ abort    ──→ 原子认领 cleanup，回收对象后删行
 - **URL 签名**：细粒度的“这个 URL 还能用”信号。无状态，不可改。过期或 5xx 时客户端重新 sign，不需重新 init。
 - **operation 认领**：complete、abort 和 janitor 通过数据库条件更新互斥。complete 在临界过期时至少续出 15 分钟操作租约，janitor 不会根据过期快照误删正在提交的对象。
 - **完成回执**：committed 行仅用于短期结果重放；7 天后 janitor 只删回执，不删除 node 或对象。
+
+客户端可在 init 前自行生成并保存稳定 `clientOperationId`，但后端只在 complete 认领时将它绑定到 session；init/PUT 期间按该 ID 查询仍可能 unknown。失败后清除认领或 abort 删除 session 也会变为 unknown，不能据此推断“肯定没提交”并新建上传。跨重启查询只需相同 actor 的有效登录与原 operation ID，不需要原沙箱存活；7 天回执过期以后仍须保持未知，不自动重放。
 
 后端不需要持久化签名状态，所有 URL 校验由 MinIO 自己完成。
 
@@ -119,3 +122,7 @@ abort    ──→ 原子认领 cleanup，回收对象后删行
 | `electron/ipc/http.ts::http:upload`（chunked proxy） | `http:upload:presigned-put` |
 
 `http:upload:formdata` 保留：仅服务于头像这类小文件、走后端 `POST /api/v1/files/upload` 代理保存的旧链路。
+
+## 9. 状态核对回归
+
+`upload_session_status_test.go` 使用 sqlmock 验证同一 operation 先 pending/unknown 后 committed、未命中/过期/非完成状态保持 unknown、查询限定 actor，以及命中回执后的当前资料库 read 权限。权限撤销返回现有 403 语义，未命中不查询或披露其他 operation 的库归属。测试不读写真实资料库，不新增 schema 或 endpoint。

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"omniflow-go/internal/actor"
+	"omniflow-go/internal/authz"
 	domainnode "omniflow-go/internal/domain/node"
 	domainsession "omniflow-go/internal/domain/uploadsession"
 	"omniflow-go/internal/repository"
@@ -214,11 +215,15 @@ func (u *UploadSessionUseCase) ReconcileCompletion(
 		}
 		return UploadCompletionStatusResult{}, err
 	}
+	if err := u.authorize(ctx, act, session.LibraryID, authz.ActionRead); err != nil {
+		return UploadCompletionStatusResult{}, err
+	}
 	if !session.ExpiresAt.IsZero() && time.Now().UTC().After(session.ExpiresAt) {
 		return UploadCompletionStatusResult{State: UploadCompletionStateUnknown}, nil
 	}
 	if session.Status != domainsession.StatusCommitted {
-		return UploadCompletionStatusResult{State: UploadCompletionStateUncommitted}, nil
+		// pending 也包含已认领且正在完成对象/提交节点的请求；查询不能证明最终未提交。
+		return UploadCompletionStatusResult{State: UploadCompletionStateUnknown}, nil
 	}
 	node, err := decodeUploadCompletionNode(session)
 	if err != nil {

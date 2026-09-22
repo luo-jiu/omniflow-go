@@ -111,7 +111,7 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
   - `GET /api/v1/upload/parts?uploadId=...`：透传 MinIO ListParts 返回 `partNumber / etag / size`，断点续传支持，顺手刷 lease。
   - `POST /api/v1/upload/:uploadId/renew`：心跳续约，仅刷 lease 不签 URL。
   - `POST /api/v1/upload/complete`：接收可选 `clientOperationId`；multipart 调 CompleteMultipartUpload，single 校验对象存在；node 与完成回执在同一个 PostgreSQL 事务内提交，支持 `conflictPolicy=error|auto_rename|replace`，重复 operation 重放同一 node。
-  - `GET /api/v1/upload/complete/status?clientOperationId=...`：返回 `unknown / uncommitted / committed`；committed 同时返回 node，未命中与其他 actor 的 operation 均返回 unknown。
+  - `GET /api/v1/upload/complete/status?clientOperationId=...`：当前返回 `unknown / committed`；committed 同时返回提交时 node。未命中、其他 actor、过期或 pending 均为 unknown，pending 不能证明在途 complete 最终未提交。命中当前 actor 的 session 后重新校验 library read 权限，撤销返回 403；兼容类型保留 uncommitted，但当前后端不从 pending 产生该值。
   - `DELETE /api/v1/upload/:uploadId`：MinIO AbortMultipartUpload + 删 session 行。
   - 鉴权语义：actor 与 session.actor 不一致 / session 不存在统一返回 `404`（防 uploadId 枚举）；lease 过期返回 `410 Gone`。
   - 双层 TTL：DB lease（24h，可续）与 presigned URL 签名（1h，不可改）解耦；URL 过期可重新 sign 而无需重新 init。
