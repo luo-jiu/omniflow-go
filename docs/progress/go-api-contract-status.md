@@ -106,12 +106,13 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 - `PATCH /api/v1/nodes/:nodeId/archive/built-in-type/batch-set`
 - Browser file mapping 与 browser bookmark 相关接口
 - 直传 MinIO 流程（已替代旧 proxy 整传 / 分片整传 / 进度轮询）：
-  - `POST /api/v1/upload/init`：创建会话，返回 `uploadId / storageKey / mode(single|multipart) / partSize / totalParts / expiresAt`。`fileSize ≤ 16 MiB` 走 single；否则 multipart，partSize=16 MiB。`storageKey = libraries/{libraryId}/{uuid}.{ext}` 由后端生成，客户端不可写。
+  - `POST /api/v1/upload/init`：创建会话，返回 `uploadId / storageKey / mode(single|multipart) / partSize / totalParts / expiresAt`。`fileSize ≤ 16 MiB` 走 single；否则 multipart，partSize=16 MiB。`storageKey = libraries/{libraryId}/{uuid}.{ext}` 由后端生成，客户端不可写。可选 `strictParent=true` 仅用于要求固定目标目录的受控主进程上传；普通客户端省略并保持兼容。
   - `POST /api/v1/upload/parts/sign`：颁发分片预签名 PUT URL（默认 1h），顺手刷新会话 lease 至 `now + 24h`（隐式续约）。
   - `GET /api/v1/upload/parts?uploadId=...`：透传 MinIO ListParts 返回 `partNumber / etag / size`，断点续传支持，顺手刷 lease。
   - `POST /api/v1/upload/:uploadId/renew`：心跳续约，仅刷 lease 不签 URL。
   - `POST /api/v1/upload/complete`：接收可选 `clientOperationId`；multipart 调 CompleteMultipartUpload，single 校验对象存在；node 与完成回执在同一个 PostgreSQL 事务内提交，支持 `conflictPolicy=error|auto_rename|replace`，重复 operation 重放同一 node。
   - `GET /api/v1/upload/complete/status?clientOperationId=...`：当前返回 `unknown / committed`；committed 同时返回提交时 node。未命中、其他 actor、过期或 pending 均为 unknown，pending 不能证明在途 complete 最终未提交。命中当前 actor 的 session 后重新校验 library read 权限，撤销返回 403；兼容类型保留 uncommitted，但当前后端不从 pending 产生该值。
+  - `strictParent=true` 会持久化到 `upload_sessions.strict_parent`，仅用于受控 Agent 产物固定目标目录；init 及 complete 均要求同库目录存在，禁止缺失时回退资料库根目录。迁移见 `docs/schema/2026-09-22-upload-strict-parent.sql`，普通上传省略该字段保持兼容。
   - `DELETE /api/v1/upload/:uploadId`：MinIO AbortMultipartUpload + 删 session 行。
   - 鉴权语义：actor 与 session.actor 不一致 / session 不存在统一返回 `404`（防 uploadId 枚举）；lease 过期返回 `410 Gone`。
   - 双层 TTL：DB lease（24h，可续）与 presigned URL 签名（1h，不可改）解耦；URL 过期可重新 sign 而无需重新 init。

@@ -39,6 +39,7 @@ func toDomain(row *pgmodel.UploadSession) domain.UploadSession {
 		ID:                row.ID,
 		LibraryID:         uint64(row.LibraryID),
 		ParentID:          parentID,
+		StrictParent:      row.StrictParent,
 		ActorID:           row.ActorID,
 		StorageKey:        row.StorageKey,
 		FileName:          row.FileName,

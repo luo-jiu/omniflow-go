@@ -14,6 +14,7 @@ import (
 	"omniflow-go/internal/audit"
 	"omniflow-go/internal/authz"
 	"omniflow-go/internal/config"
+	domainnode "omniflow-go/internal/domain/node"
 	domainsession "omniflow-go/internal/domain/uploadsession"
 	"omniflow-go/internal/repository"
 	uploadsessionpg "omniflow-go/internal/repository/postgres/impl/uploadsession"
@@ -37,9 +38,11 @@ const uploadCleanupClaimTTL = 5 * time.Minute
 
 // InitUploadSessionCommand 创建直传会话所需参数。
 type InitUploadSessionCommand struct {
-	Actor           actor.Actor
-	LibraryID       uint64
-	ParentID        uint64
+	Actor     actor.Actor
+	LibraryID uint64
+	ParentID  uint64
+	// StrictParent 要求 complete 始终写入该父目录；普通上传保持兼容默认 false。
+	StrictParent    bool
 	FileName        string
 	FileSize        int64
 	ContentType     string
@@ -155,6 +158,11 @@ func (u *UploadSessionUseCase) Init(ctx context.Context, cmd InitUploadSessionCo
 	if err := u.authorize(ctx, cmd.Actor, cmd.LibraryID, authz.ActionUpload); err != nil {
 		return InitUploadSessionResult{}, err
 	}
+	if cmd.StrictParent {
+		if err := u.validateStrictParent(ctx, cmd.Actor, cmd.LibraryID, cmd.ParentID); err != nil {
+			return InitUploadSessionResult{}, err
+		}
+	}
 
 	base := extractUploadBaseName(fileName)
 	extWithDot := path.Ext(base)
@@ -185,6 +193,7 @@ func (u *UploadSessionUseCase) Init(ctx context.Context, cmd InitUploadSessionCo
 		ID:              sessionID,
 		LibraryID:       cmd.LibraryID,
 		ParentID:        cmd.ParentID,
+		StrictParent:    cmd.StrictParent,
 		ActorID:         cmd.Actor.ID,
 		StorageKey:      storageKey,
 		FileName:        fileName,
@@ -221,6 +230,27 @@ func (u *UploadSessionUseCase) Init(ctx context.Context, cmd InitUploadSessionCo
 		TotalParts: totalParts,
 		ExpiresAt:  expiresAt,
 	}, nil
+}
+
+// validateStrictParent verifies the fixed upload target before any object-store side effect.
+func (u *UploadSessionUseCase) validateStrictParent(ctx context.Context, principal actor.Actor, libraryID, parentID uint64) error {
+	if parentID == 0 {
+		return fmt.Errorf("%w: strict parent requires a directory", ErrInvalidArgument)
+	}
+	parent, err := u.nodes.GetNodeDetail(ctx, principal, parentID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if parent.LibraryID != libraryID {
+		return ErrNotFound
+	}
+	if parent.Type != domainnode.TypeDirectory {
+		return fmt.Errorf("%w: strict parent must be a directory", ErrInvalidArgument)
+	}
+	return nil
 }
 
 // SignParts 颁发分片预签名 URL，并隐式续约会话 lease。

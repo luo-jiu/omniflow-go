@@ -84,6 +84,12 @@ func (u *UploadSessionUseCase) Complete(ctx context.Context, cmd CompleteUploadS
 	if session.Status == domainsession.StatusCommitted {
 		return decodeUploadCompletionNode(session)
 	}
+	if session.StrictParent {
+		if err := u.validateStrictParent(ctx, cmd.Actor, session.LibraryID, session.ParentID); err != nil {
+			u.releaseOperationClaim(session.ID, operationID)
+			return domainnode.Node{}, err
+		}
+	}
 
 	store, err := u.registry.Get(session.StorageProvider)
 	if err != nil {
@@ -110,6 +116,7 @@ func (u *UploadSessionUseCase) Complete(ctx context.Context, cmd CompleteUploadS
 		Name:            name,
 		Type:            domainnode.TypeFile,
 		ParentID:        session.ParentID,
+		StrictParent:    session.StrictParent,
 		LibraryID:       session.LibraryID,
 		Ext:             ext,
 		MIMEType:        session.ContentType,

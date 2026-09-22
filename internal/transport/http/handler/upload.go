@@ -27,6 +27,7 @@ type initUploadRequest struct {
 	FileSize        int64  `json:"fileSize" binding:"required,min=1"`
 	ContentType     string `json:"contentType"`
 	StorageProvider string `json:"storageProvider"`
+	StrictParent    bool   `json:"strictParent"`
 }
 
 // PartNumbers 同时限制下界 1（防空请求）和上界 200（防恶意客户端一次签 10000 个膨胀响应；
@@ -62,6 +63,7 @@ func (h *UploadHandler) Init(ctx *gin.Context) {
 		FileSize:        req.FileSize,
 		ContentType:     req.ContentType,
 		StorageProvider: req.StorageProvider,
+		StrictParent:    req.StrictParent,
 	})
 	if err != nil {
 		HandleUseCaseError(ctx, err)

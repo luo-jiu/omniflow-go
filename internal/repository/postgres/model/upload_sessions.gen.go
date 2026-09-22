@@ -30,6 +30,7 @@ type UploadSession struct {
 	CompletedNodeID   *int64     `gorm:"column:completed_node_id;type:bigint" json:"completed_node_id"`
 	CompletedAt       *time.Time `gorm:"column:completed_at;type:timestamp with time zone" json:"completed_at"`
 	CompletionResult  *string    `gorm:"column:completion_result;type:jsonb" json:"completion_result"`
+	StrictParent      bool       `gorm:"column:strict_parent;type:boolean;not null" json:"strict_parent"`
 }
 
 // TableName UploadSession's table name

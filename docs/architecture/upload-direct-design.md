@@ -35,6 +35,8 @@ OmniFlow 的上传链路从 proxy 模式（client → backend → MinIO）切换
 
 **conflictPolicy** 在 `complete` 阶段透传给 `NodeUseCase.Create`，支持 `error / auto_rename / replace`。Session 表不存策略，避免 schema 漂移。
 
+`init` 可选接收 `strictParent=true`。该标志只保存目标目录语义，不改变普通上传默认值；启用时 init 先要求 `parentId` 是当前资料库目录，complete 再次要求同一目录存在且属于该资料库。父目录删除或跨库后返回 404/参数错误，不回退资料库根目录。Agent file-output 使用此标志，普通上传与 CLI 省略它保持历史兼容。
+
 **complete / reconciliation 契约**：
 
 - 新客户端在 complete body 中传稳定、最长 128 字符的 `clientOperationId`；旧客户端未传时，后端使用 `upload:<uploadId>` 保持兼容。

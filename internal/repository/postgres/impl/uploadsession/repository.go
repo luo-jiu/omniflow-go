@@ -46,6 +46,7 @@ type CreateInput struct {
 	ID              string
 	LibraryID       uint64
 	ParentID        uint64
+	StrictParent    bool
 	ActorID         string
 	StorageKey      string
 	FileName        string
@@ -63,6 +64,7 @@ func (r *UploadSessionRepository) Create(ctx context.Context, input CreateInput)
 		ID:              input.ID,
 		LibraryID:       int64(input.LibraryID),
 		ParentID:        nullableInt64(int64(input.ParentID)),
+		StrictParent:    input.StrictParent,
 		ActorID:         input.ActorID,
 		StorageKey:      input.StorageKey,
 		FileName:        input.FileName,

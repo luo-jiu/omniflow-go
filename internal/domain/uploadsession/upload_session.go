@@ -16,6 +16,7 @@ type UploadSession struct {
 	ID                string
 	LibraryID         uint64
 	ParentID          uint64
+	StrictParent      bool
 	ActorID           string
 	StorageKey        string
 	FileName          string

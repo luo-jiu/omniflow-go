@@ -46,6 +46,7 @@ func newUploadSession(db *gorm.DB, opts ...gen.DOOption) uploadSession {
 	_uploadSession.CompletedNodeID = field.NewInt64(tableName, "completed_node_id")
 	_uploadSession.CompletedAt = field.NewTime(tableName, "completed_at")
 	_uploadSession.CompletionResult = field.NewString(tableName, "completion_result")
+	_uploadSession.StrictParent = field.NewBool(tableName, "strict_parent")
 
 	_uploadSession.fillFieldMap()
 
@@ -76,6 +77,7 @@ type uploadSession struct {
 	CompletedNodeID   field.Int64
 	CompletedAt       field.Time
 	CompletionResult  field.String
+	StrictParent      field.Bool
 
 	fieldMap map[string]field.Expr
 }
@@ -112,6 +114,7 @@ func (u *uploadSession) updateTableName(table string) *uploadSession {
 	u.CompletedNodeID = field.NewInt64(table, "completed_node_id")
 	u.CompletedAt = field.NewTime(table, "completed_at")
 	u.CompletionResult = field.NewString(table, "completion_result")
+	u.StrictParent = field.NewBool(table, "strict_parent")
 
 	u.fillFieldMap()
 
@@ -140,7 +143,7 @@ func (u *uploadSession) GetFieldByName(fieldName string) (field.OrderExpr, bool)
 }
 
 func (u *uploadSession) fillFieldMap() {
-	u.fieldMap = make(map[string]field.Expr, 20)
+	u.fieldMap = make(map[string]field.Expr, 21)
 	u.fieldMap["id"] = u.ID
 	u.fieldMap["library_id"] = u.LibraryID
 	u.fieldMap["parent_id"] = u.ParentID
@@ -161,6 +164,7 @@ func (u *uploadSession) fillFieldMap() {
 	u.fieldMap["completed_node_id"] = u.CompletedNodeID
 	u.fieldMap["completed_at"] = u.CompletedAt
 	u.fieldMap["completion_result"] = u.CompletionResult
+	u.fieldMap["strict_parent"] = u.StrictParent
 }
 
 func (u uploadSession) clone(db *gorm.DB) uploadSession {

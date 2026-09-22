@@ -54,8 +54,10 @@ type CreateNodeCommand struct {
 	StorageKey      string
 	StorageProvider string
 	StorageBucket   string
-	ConflictPolicy  NodeNameConflictPolicy
-	DryRun          bool
+	// StrictParent 禁止 parent 缺失时沿用普通创建链路的资料库根目录回退。
+	StrictParent   bool
+	ConflictPolicy NodeNameConflictPolicy
+	DryRun         bool
 }
 
 type UpdateNodeCommand struct {
@@ -224,7 +226,7 @@ func (u *NodeUseCase) createInExistingTransaction(
 		return domainnode.Node{}, fmt.Errorf("%w: ext is too long", ErrInvalidArgument)
 	}
 
-	parentID, err := u.resolveCreateParentID(ctx, cmd.LibraryID, cmd.ParentID)
+	parentID, err := u.resolveCreateParentID(ctx, cmd.LibraryID, cmd.ParentID, cmd.StrictParent)
 	if err != nil {
 		return domainnode.Node{}, err
 	}
@@ -1643,8 +1645,11 @@ func extractViewMetaTagIDs(rawViewMeta string) ([]uint64, bool, error) {
 	return normalizePositiveUint64List(tagIDs), true, nil
 }
 
-func (u *NodeUseCase) resolveCreateParentID(ctx context.Context, libraryID, parentID uint64) (uint64, error) {
+func (u *NodeUseCase) resolveCreateParentID(ctx context.Context, libraryID, parentID uint64, strictParent bool) (uint64, error) {
 	if parentID == 0 {
+		if strictParent {
+			return 0, fmt.Errorf("%w: strict parent requires a directory", ErrInvalidArgument)
+		}
 		return u.nodes.EnsureLibraryRootNodeID(ctx, libraryID)
 	}
 
@@ -1657,6 +1662,9 @@ func (u *NodeUseCase) resolveCreateParentID(ctx context.Context, libraryID, pare
 	}
 	if !errors.Is(err, repository.ErrNotFound) {
 		return 0, err
+	}
+	if strictParent {
+		return 0, ErrNotFound
 	}
 
 	rootID, rootErr := u.nodes.EnsureLibraryRootNodeID(ctx, libraryID)
