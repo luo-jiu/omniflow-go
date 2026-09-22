@@ -172,3 +172,7 @@ Go 当前能力包含以下扩展能力，后续应按 Go 自身契约维护：
 ## 内部节点复制补充（2026-09-10）
 
 新增 `POST /api/v1/nodes/:nodeId/copy`，支持同库文件、显式递归目录、独立对象、`error|auto_rename` 和完整 dry-run；CLI 同步 `fs cp`。请求、响应及提交不明处理见 [复制契约](../architecture/node-copy-contract.md)。
+
+## 条件批量改名补充（2026-09-22）
+
+新增 `POST /api/v1/nodes/rename/batch/conditional` 与 `GET /api/v1/nodes/rename/batch/status`；同库最多 50 个普通文件，严格旧值条件、原子提交、dry-run、operation ID 持久回执，CLI 同步 `fs rename-batch/rename-status`。需先执行回执表与可见名称唯一索引迁移；详见 [条件批量改名契约](../architecture/node-conditional-rename.md)。

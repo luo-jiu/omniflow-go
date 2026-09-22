@@ -1,5 +1,7 @@
 # OmniFlow CLI 开发规范
 
+`of fs rename-batch --library-id 3 --operation-id <uuid> --file proposal.json --dry-run --json` 对明确旧值快照批量改名；文件为 items 数组。提交不明时使用 `of fs rename-status --library-id 3 --operation-id <uuid> --json` 查询持久回执，不能把 not_found 当作无在途操作。详见 [条件批量改名](../../docs/architecture/node-conditional-rename.md)。
+
 `of fs tags` / `of fs tags-update` 提供节点正式标签查询和原子增删；后者支持 `--add-tag-ids`、`--remove-tag-ids`、`--dry-run`，两者都要求 `--library-id`、`--node-id`，支持 `--json`。见 [节点标签增量契约](../../docs/architecture/node-tag-delta.md)。
 
 只读资料库目录查询使用 `of fs browse`，支持 `--mode root|children|search|node`、`--node-id`、`--parent-id`、`--ancestor-id`、`--keyword`、`--node-type`、`--tag-ids`、`--tag-match-mode`、`--limit`、`--cursor`、`--base-url` 和 `--json`。必须传 `--library-id`；详情见 [元数据查询契约](../../docs/architecture/node-metadata-query.md)。不修改原 `fs ls/search` 行为。

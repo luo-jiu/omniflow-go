@@ -1,5 +1,7 @@
 # CLI 开发计划与进度台账
 
+新增 `fs rename-batch` / `fs rename-status`，支持 1～50 个同库普通文件的条件原子改名、dry-run 和持久回执查询，见 [条件批量改名](../architecture/node-conditional-rename.md)。
+
 新增 `fs tags` / `fs tags-update`，支持正式节点标签查询、原子增删及 dry-run，见 [节点标签增量契约](../architecture/node-tag-delta.md)。
 
 更新时间：2026-08-04

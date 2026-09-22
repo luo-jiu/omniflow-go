@@ -22,6 +22,7 @@ var (
 	MigrationTaskItem      *migrationTaskItem
 	Node                   *node
 	NodeFile               *nodeFile
+	NodeMutationReceipt    *nodeMutationReceipt
 	NodeResourceTarget     *nodeResourceTarget
 	NodeTagRel             *nodeTagRel
 	ResourceMonitorSamples *resourceMonitorSamples
@@ -44,6 +45,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	MigrationTaskItem = &Q.MigrationTaskItem
 	Node = &Q.Node
 	NodeFile = &Q.NodeFile
+	NodeMutationReceipt = &Q.NodeMutationReceipt
 	NodeResourceTarget = &Q.NodeResourceTarget
 	NodeTagRel = &Q.NodeTagRel
 	ResourceMonitorSamples = &Q.ResourceMonitorSamples
@@ -67,6 +69,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		MigrationTaskItem:      newMigrationTaskItem(db, opts...),
 		Node:                   newNode(db, opts...),
 		NodeFile:               newNodeFile(db, opts...),
+		NodeMutationReceipt:    newNodeMutationReceipt(db, opts...),
 		NodeResourceTarget:     newNodeResourceTarget(db, opts...),
 		NodeTagRel:             newNodeTagRel(db, opts...),
 		ResourceMonitorSamples: newResourceMonitorSamples(db, opts...),
@@ -91,6 +94,7 @@ type Query struct {
 	MigrationTaskItem      migrationTaskItem
 	Node                   node
 	NodeFile               nodeFile
+	NodeMutationReceipt    nodeMutationReceipt
 	NodeResourceTarget     nodeResourceTarget
 	NodeTagRel             nodeTagRel
 	ResourceMonitorSamples resourceMonitorSamples
@@ -116,6 +120,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		MigrationTaskItem:      q.MigrationTaskItem.clone(db),
 		Node:                   q.Node.clone(db),
 		NodeFile:               q.NodeFile.clone(db),
+		NodeMutationReceipt:    q.NodeMutationReceipt.clone(db),
 		NodeResourceTarget:     q.NodeResourceTarget.clone(db),
 		NodeTagRel:             q.NodeTagRel.clone(db),
 		ResourceMonitorSamples: q.ResourceMonitorSamples.clone(db),
@@ -148,6 +153,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		MigrationTaskItem:      q.MigrationTaskItem.replaceDB(db),
 		Node:                   q.Node.replaceDB(db),
 		NodeFile:               q.NodeFile.replaceDB(db),
+		NodeMutationReceipt:    q.NodeMutationReceipt.replaceDB(db),
 		NodeResourceTarget:     q.NodeResourceTarget.replaceDB(db),
 		NodeTagRel:             q.NodeTagRel.replaceDB(db),
 		ResourceMonitorSamples: q.ResourceMonitorSamples.replaceDB(db),
@@ -170,6 +176,7 @@ type queryCtx struct {
 	MigrationTaskItem      IMigrationTaskItemDo
 	Node                   INodeDo
 	NodeFile               INodeFileDo
+	NodeMutationReceipt    INodeMutationReceiptDo
 	NodeResourceTarget     INodeResourceTargetDo
 	NodeTagRel             INodeTagRelDo
 	ResourceMonitorSamples IResourceMonitorSamplesDo
@@ -192,6 +199,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		MigrationTaskItem:      q.MigrationTaskItem.WithContext(ctx),
 		Node:                   q.Node.WithContext(ctx),
 		NodeFile:               q.NodeFile.WithContext(ctx),
+		NodeMutationReceipt:    q.NodeMutationReceipt.WithContext(ctx),
 		NodeResourceTarget:     q.NodeResourceTarget.WithContext(ctx),
 		NodeTagRel:             q.NodeTagRel.WithContext(ctx),
 		ResourceMonitorSamples: q.ResourceMonitorSamples.WithContext(ctx),

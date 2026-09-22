@@ -1,5 +1,7 @@
 # OmniFlow CLI 最小版快速使用
 
+批量改名：`of fs rename-batch --library-id 3 --operation-id <uuid> --file proposal.json --dry-run --json`；回执核对：`of fs rename-status --library-id 3 --operation-id <uuid> --json`。proposal.json 保存完整旧值和新主体名的 items 数组；详见 [条件批量改名契约](node-conditional-rename.md)。
+
 节点标签：`of fs tags --library-id 3 --node-id 9 --json`；增删预演：`of fs tags-update --library-id 3 --node-id 9 --add-tag-ids 2 --remove-tag-ids 4 --dry-run --json`。见 [节点标签增量契约](node-tag-delta.md)。
 
 ## 分页浏览与搜索元数据

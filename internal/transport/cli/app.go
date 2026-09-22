@@ -250,7 +250,7 @@ func (a *App) buildCommandTree() *command {
 	fs := &command{
 		Name:     "fs",
 		Summary:  "File system commands",
-		Usage:    "of fs <mkdir|write|rename|configure|mv|rm|ls|search|tags|tags-update|archive|recycle|path> [flags]",
+		Usage:    "of fs <mkdir|write|rename|rename-batch|rename-status|configure|mv|rm|ls|search|tags|tags-update|archive|recycle|path> [flags]",
 		Children: map[string]*command{},
 	}
 	fs.Children["mkdir"] = &command{
@@ -300,6 +300,20 @@ func (a *App) buildCommandTree() *command {
 			"of fs rename --node-id 123 --name notes-v2 --json",
 		},
 		Run: a.runFSRename,
+	}
+	fs.Children["rename-batch"] = &command{
+		Name: "rename-batch", Summary: "Atomically rename files with expected snapshots",
+		Usage:    "of fs rename-batch --library-id <id> --operation-id <uuid> --file <items.json> [--dry-run] [--json] [--base-url <url>]",
+		Flags:    []string{"--library-id <id> library ID", "--operation-id <uuid> stable operation UUID", "--file <path> JSON items array", "--dry-run validate and roll back", "--json JSON output", "--base-url <url> API base URL"},
+		Examples: []string{"of fs rename-batch --library-id 3 --operation-id 12345678-1234-4234-8234-123456789abc --file proposal.json --dry-run --json"},
+		Run:      a.runFSRenameBatch,
+	}
+	fs.Children["rename-status"] = &command{
+		Name: "rename-status", Summary: "Query an atomic rename receipt",
+		Usage:    "of fs rename-status --library-id <id> --operation-id <uuid> [--json] [--base-url <url>]",
+		Flags:    []string{"--library-id <id> library ID", "--operation-id <uuid> operation UUID", "--json JSON output", "--base-url <url> API base URL"},
+		Examples: []string{"of fs rename-status --library-id 3 --operation-id 12345678-1234-4234-8234-123456789abc --json"},
+		Run:      a.runFSRenameStatus,
 	}
 	fs.Children["tags"] = &command{
 		Name: "tags", Summary: "读取节点直接标签", Usage: "of fs tags --library-id <id> --node-id <id> [--json] [--base-url <url>]",
